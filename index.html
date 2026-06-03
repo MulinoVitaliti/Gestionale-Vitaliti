@@ -1,0 +1,781 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Gestionale Vitaliti</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.44.0/tabler-icons.min.css">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:Arial,sans-serif;font-size:14px;color:#1a1a1a;background:#f5f5f5;height:100vh;display:flex;flex-direction:column}
+.app{display:flex;flex:1;overflow:hidden}
+.sidebar{width:210px;flex-shrink:0;border-right:1px solid #e0e0e0;padding:16px 0;background:#fff}
+.logo{padding:0 16px 20px;font-size:15px;font-weight:600;color:#1a1a1a}
+.logo span{color:#888;font-weight:400;font-size:12px;display:block;margin-top:2px}
+.nav-item{display:flex;align-items:center;gap:8px;padding:9px 16px;cursor:pointer;font-size:13px;color:#666;border-left:3px solid transparent}
+.nav-item:hover{background:#f5f5f5;color:#1a1a1a}
+.nav-item.active{color:#1a56db;background:#eff6ff;border-left:3px solid #1a56db;font-weight:600}
+.nav-item i{font-size:17px}
+.main{flex:1;overflow-y:auto;padding:24px;background:#f5f5f5}
+.page{display:none}
+.page.active{display:block}
+.page-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+.page-title{font-size:20px;font-weight:600}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border-radius:8px;border:1px solid #d1d5db;background:#fff;cursor:pointer;font-size:13px;color:#374151}
+.btn:hover{background:#f9fafb}
+.btn-primary{background:#1a56db;color:#fff;border-color:#1a56db}
+.btn-primary:hover{background:#1345b7;border-color:#1345b7}
+.btn-danger{background:#ef4444;color:#fff;border-color:#ef4444}
+.btn-danger:hover{background:#dc2626}
+.metrics{display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:22px}
+.metric{background:#fff;border-radius:10px;padding:16px;border:1px solid #e5e7eb}
+.metric-label{font-size:12px;color:#6b7280;margin-bottom:6px}
+.metric-value{font-size:24px;font-weight:600}
+.metric-sub{font-size:11px;color:#9ca3af;margin-top:4px}
+.pipeline{display:grid;grid-template-columns:repeat(4,1fr);gap:14px}
+.pipeline-col{background:#f9fafb;border-radius:10px;padding:14px;border:1px solid #e5e7eb}
+.col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.col-title{font-size:11px;font-weight:600;color:#6b7280;text-transform:uppercase;letter-spacing:0.5px}
+.col-count{background:#fff;border:1px solid #e5e7eb;border-radius:20px;padding:1px 8px;font-size:11px;color:#6b7280}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:12px;margin-bottom:8px;cursor:pointer}
+.card:hover{border-color:#1a56db;box-shadow:0 1px 3px rgba(0,0,0,0.08)}
+.card-name{font-size:13px;font-weight:600;margin-bottom:4px}
+.card-sub{font-size:11px;color:#6b7280}
+.card-footer{display:flex;align-items:center;justify-content:space-between;margin-top:8px}
+.badge{font-size:11px;padding:2px 9px;border-radius:20px;font-weight:500}
+.badge-lead{background:#eff6ff;color:#1a56db}
+.badge-camp{background:#fff7ed;color:#c2410c}
+.badge-att{background:#fefce8;color:#a16207}
+.badge-acq{background:#f0fdf4;color:#15803d}
+.badge-uscita{background:#fef2f2;color:#b91c1c}
+.badge-entrata{background:#f0fdf4;color:#15803d}
+.table-wrap{overflow-x:auto;background:#fff;border-radius:10px;border:1px solid #e5e7eb}
+table{width:100%;border-collapse:collapse;font-size:13px}
+thead th{text-align:left;padding:10px 14px;font-size:11px;font-weight:600;color:#6b7280;border-bottom:1px solid #e5e7eb;text-transform:uppercase;letter-spacing:0.4px;background:#f9fafb}
+tbody td{padding:11px 14px;border-bottom:1px solid #f3f4f6;vertical-align:middle}
+tbody tr:last-child td{border-bottom:none}
+tbody tr:hover{background:#f9fafb}
+.avatar{width:34px;height:34px;border-radius:50%;background:#eff6ff;color:#1a56db;display:inline-flex;align-items:center;justify-content:center;font-size:11px;font-weight:600;flex-shrink:0}
+.flex-row{display:flex;align-items:center;gap:10px}
+.search-bar{display:flex;align-items:center;gap:10px;margin-bottom:16px;background:#fff;border:1px solid #e5e7eb;border-radius:8px;padding:0 12px}
+.search-bar i{color:#9ca3af;font-size:17px}
+.search-bar input{flex:1;padding:9px 0;border:none;background:transparent;font-size:13px;color:#1a1a1a;outline:none}
+.modal-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:100;align-items:center;justify-content:center}
+.modal-overlay.open{display:flex}
+.modal{background:#fff;border-radius:12px;border:1px solid #e5e7eb;padding:26px;width:500px;max-width:96vw;max-height:90vh;overflow-y:auto;box-shadow:0 10px 40px rgba(0,0,0,0.15)}
+.modal-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:22px}
+.modal-title{font-size:16px;font-weight:600}
+.form-group{margin-bottom:15px}
+.form-label{font-size:12px;color:#374151;font-weight:600;margin-bottom:5px;display:block}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 11px;border-radius:7px;border:1px solid #d1d5db;font-size:13px;color:#1a1a1a;background:#fff;outline:none}
+.form-group input:focus,.form-group select:focus,.form-group textarea:focus{border-color:#1a56db;box-shadow:0 0 0 2px rgba(26,86,219,0.15)}
+.form-group textarea{resize:vertical;min-height:70px}
+.form-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.section-card{background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:16px;margin-bottom:16px}
+.section-title{font-size:13px;font-weight:600;margin-bottom:14px;display:flex;align-items:center;gap:7px;color:#374151}
+.entrata{color:#15803d}
+.uscita{color:#b91c1c}
+.tabs{display:flex;gap:0;border-bottom:1px solid #e5e7eb;margin-bottom:16px}
+.tab{padding:9px 16px;font-size:13px;cursor:pointer;color:#6b7280;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tab.active{color:#1a56db;border-bottom-color:#1a56db;font-weight:600}
+.contab-filters{display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap}
+.pill{padding:5px 14px;border-radius:20px;font-size:12px;cursor:pointer;border:1px solid #e5e7eb;color:#6b7280;background:#fff;font-weight:500}
+.pill.active{background:#1a56db;color:#fff;border-color:#1a56db}
+.dettaglio-overlay{display:none;position:fixed;inset:0;background:rgba(0,0,0,0.3);z-index:100;align-items:flex-start;justify-content:flex-end}
+.dettaglio-overlay.open{display:flex}
+.dettaglio-panel{background:#fff;border-left:1px solid #e5e7eb;width:440px;height:100vh;overflow-y:auto;padding:26px;box-shadow:-4px 0 20px rgba(0,0,0,0.08)}
+.storico-item{display:flex;align-items:center;justify-content:space-between;padding:9px 0;border-bottom:1px solid #f3f4f6;font-size:12px}
+.empty{text-align:center;padding:32px 20px;color:#9ca3af;font-size:13px}
+.dash-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="sidebar">
+    <div class="logo">Vitaliti <i class="ti ti-wheat" style="font-size:16px;color:#1a56db"></i><span>Gestionale interno</span></div>
+    <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i> Dashboard</div>
+    <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i> Pipeline vendite</div>
+    <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i> Clienti</div>
+    <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i> Ordini</div>
+    <div class="nav-item" onclick="showPage('contabilita')" id="nav-contabilita"><i class="ti ti-chart-bar"></i> Contabilità</div>
+  </div>
+
+  <div class="main">
+
+    <!-- DASHBOARD -->
+    <div class="page active" id="page-dashboard">
+      <div class="page-header">
+        <div class="page-title">Dashboard</div>
+        <span style="font-size:12px;color:#6b7280">Mulino Vitaliti Antonio</span>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="metric-label">Clienti attivi</div><div class="metric-value" id="m-clienti">0</div><div class="metric-sub">in anagrafica</div></div>
+        <div class="metric"><div class="metric-label">Ordini aperti</div><div class="metric-value" id="m-ordini">0</div><div class="metric-sub">in lavorazione</div></div>
+        <div class="metric"><div class="metric-label">Entrate totali</div><div class="metric-value entrata" id="m-entrate">€0</div><div class="metric-sub">movimenti positivi</div></div>
+        <div class="metric"><div class="metric-label">Saldo contabile</div><div class="metric-value" id="m-saldo">€0</div><div class="metric-sub">entrate − uscite</div></div>
+      </div>
+      <div class="dash-grid">
+        <div class="section-card">
+          <div class="section-title"><i class="ti ti-layout-kanban"></i> Pipeline — ultimi contatti</div>
+          <div id="dash-pipeline" class="empty">Nessun contatto ancora.</div>
+        </div>
+        <div class="section-card">
+          <div class="section-title"><i class="ti ti-clipboard-list"></i> Ultimi ordini</div>
+          <div id="dash-ordini" class="empty">Nessun ordine ancora.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- PIPELINE -->
+    <div class="page" id="page-pipeline">
+      <div class="page-header">
+        <div class="page-title">Pipeline vendite</div>
+        <button class="btn btn-primary" onclick="openModal('modal-lead')"><i class="ti ti-plus"></i> Aggiungi contatto</button>
+      </div>
+      <div class="pipeline" id="pipeline-board"></div>
+    </div>
+
+    <!-- CLIENTI -->
+    <div class="page" id="page-clienti">
+      <div class="page-header">
+        <div class="page-title">Clienti</div>
+        <button class="btn btn-primary" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i> Nuovo cliente</button>
+      </div>
+      <div class="search-bar">
+        <i class="ti ti-search"></i>
+        <input type="text" placeholder="Cerca cliente per nome o città..." id="search-clienti" oninput="renderClienti()">
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Cliente</th><th>Città</th><th>Telefono</th><th>Prodotti</th><th>Stato</th><th></th></tr></thead>
+          <tbody id="tbl-clienti"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ORDINI -->
+    <div class="page" id="page-ordini">
+      <div class="page-header">
+        <div class="page-title">Ordini</div>
+        <button class="btn btn-primary" onclick="openModal('modal-ordine')"><i class="ti ti-plus"></i> Nuovo ordine</button>
+      </div>
+      <div class="tabs">
+        <div class="tab active" onclick="filterOrdini('tutti',this)">Tutti</div>
+        <div class="tab" onclick="filterOrdini('aperto',this)">Aperti</div>
+        <div class="tab" onclick="filterOrdini('spedito',this)">Spediti</div>
+        <div class="tab" onclick="filterOrdini('consegnato',this)">Consegnati</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>N°</th><th>Cliente</th><th>Prodotto</th><th>Qtà (kg)</th><th>Importo</th><th>Data</th><th>Stato</th><th></th></tr></thead>
+          <tbody id="tbl-ordini"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- CONTABILITÀ -->
+    <div class="page" id="page-contabilita">
+      <div class="page-header">
+        <div class="page-title">Contabilità</div>
+        <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i> Aggiungi movimento</button>
+      </div>
+      <div class="metrics" style="grid-template-columns:repeat(3,1fr)">
+        <div class="metric"><div class="metric-label">Totale entrate</div><div class="metric-value entrata" id="c-entrate">€0</div></div>
+        <div class="metric"><div class="metric-label">Totale uscite</div><div class="metric-value uscita" id="c-uscite">€0</div></div>
+        <div class="metric"><div class="metric-label">Saldo netto</div><div class="metric-value" id="c-saldo">€0</div></div>
+      </div>
+      <div class="contab-filters">
+        <div class="pill active" onclick="filterContab('tutti',this)">Tutti</div>
+        <div class="pill" onclick="filterContab('entrata',this)">Entrate</div>
+        <div class="pill" onclick="filterContab('uscita',this)">Uscite</div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th style="text-align:right">Saldo</th><th></th></tr></thead>
+          <tbody id="tbl-contab"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- MODAL LEAD -->
+<div class="modal-overlay" id="modal-lead">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Aggiungi contatto pipeline</div><button class="btn" onclick="closeModal('modal-lead')"><i class="ti ti-x"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Nome / Ragione sociale *</label><input type="text" id="lead-nome" placeholder="Es. Panificio Rossi"></div>
+      <div class="form-group"><label class="form-label">Referente</label><input type="text" id="lead-contatto" placeholder="Nome cognome"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Telefono</label><input type="text" id="lead-tel" placeholder="333 1234567"></div>
+      <div class="form-group"><label class="form-label">Città</label><input type="text" id="lead-citta" placeholder="Es. Catania"></div>
+    </div>
+    <div class="form-group"><label class="form-label">Prodotto di interesse</label>
+      <select id="lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">Stato pipeline</label>
+      <select id="lead-stato"><option value="lead">Lead</option><option value="campionatura">Campionatura inviata</option><option value="attesa">In attesa risposta</option><option value="acquisito">Cliente acquisito</option></select>
+    </div>
+    <div class="form-group"><label class="form-label">Note</label><textarea id="lead-note" placeholder="Informazioni aggiuntive..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-lead')">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaLead()"><i class="ti ti-check"></i> Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL CLIENTE -->
+<div class="modal-overlay" id="modal-cliente">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Nuovo cliente</div><button class="btn" onclick="closeModal('modal-cliente')"><i class="ti ti-x"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome" placeholder="Es. Panificio Bianchi"></div>
+      <div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref" placeholder="Nome cognome"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel" placeholder="333 1234567"></div>
+      <div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email" placeholder="info@..."></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta" placeholder="Es. Catania"></div>
+      <div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="cl-ind" placeholder="Via..."></div>
+    </div>
+    <div class="form-group"><label class="form-label">Prodotti di interesse</label><input type="text" id="cl-prod" placeholder="Es. Semola rimacinata, Farina 00"></div>
+    <div class="form-group"><label class="form-label">Note</label><textarea id="cl-note" placeholder="Informazioni aggiuntive..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-cliente')">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaCliente()"><i class="ti ti-check"></i> Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL ORDINE -->
+<div class="modal-overlay" id="modal-ordine">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Nuovo ordine</div><button class="btn" onclick="closeModal('modal-ordine')"><i class="ti ti-x"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Cliente *</label><select id="ord-cliente"><option value="">— seleziona —</option></select></div>
+      <div class="form-group"><label class="form-label">Prodotto</label>
+        <select id="ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="ord-qty" placeholder="0" min="0"></div>
+      <div class="form-group"><label class="form-label">Importo (€)</label><input type="number" id="ord-importo" placeholder="0.00" step="0.01"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div>
+      <div class="form-group"><label class="form-label">Stato</label>
+        <select id="ord-stato"><option value="aperto">Aperto</option><option value="spedito">Spedito</option><option value="consegnato">Consegnato</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Note</label><textarea id="ord-note" placeholder="Riferimento fattura, note spedizione..."></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-ordine')">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaOrdine()"><i class="ti ti-check"></i> Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL MOVIMENTO -->
+<div class="modal-overlay" id="modal-movimento">
+  <div class="modal">
+    <div class="modal-header"><div class="modal-title">Aggiungi movimento contabile</div><button class="btn" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div>
+      <div class="form-group"><label class="form-label">Tipo</label>
+        <select id="mov-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select>
+      </div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" placeholder="0.00" step="0.01" min="0"></div>
+      <div class="form-group"><label class="form-label">Categoria</label>
+        <select id="mov-cat"><option>Vendita prodotti</option><option>Bonifico cliente</option><option>Versamento contante</option><option>Fornitore</option><option>Utenze</option><option>Mutuo</option><option>Tasse/imposte</option><option>Commissioni bancarie</option><option>Assegno</option><option>Altro</option></select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc" placeholder="Es. Pagamento fattura 45/A - Panificio Rossi"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn" onclick="closeModal('modal-movimento')">Annulla</button>
+      <button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i> Salva</button>
+    </div>
+  </div>
+</div>
+
+<!-- DETTAGLIO CLIENTE -->
+<div class="dettaglio-overlay" id="dettaglio-overlay" onclick="chiudiDettaglio(event)">
+  <div class="dettaglio-panel" id="dettaglio-panel"></div>
+</div>
+
+<script>
+let state = {
+  leads: [
+    {id:1,nome:'Panificio Daoud Ilham',contatto:'Ilham',tel:'',citta:'Belpasso',prodotto:'Semola rimacinata di grano duro',stato:'acquisito',note:'Cliente storico'},
+    {id:2,nome:'Il Sorriso di Nicol Simonetta',contatto:'Simonetta',tel:'',citta:'Catania',prodotto:'Farina 00',stato:'acquisito',note:''},
+    {id:3,nome:'Grasso Rosario',contatto:'Rosario',tel:'',citta:'Catania',prodotto:'Semola rimacinata di grano duro',stato:'acquisito',note:''},
+    {id:4,nome:'Panetteria Pippo SAS',contatto:'',tel:'',citta:'Sicilia',prodotto:'Semola rimacinata di grano duro',stato:'acquisito',note:''},
+    {id:5,nome:'Schloesslmuehle Des Silbernagl',contatto:'Stefan',tel:'',citta:'Germania',prodotto:'Semola rimacinata di grano duro',stato:'acquisito',note:'Cliente estero'},
+    {id:6,nome:'Nuovo panificio zona Catania',contatto:'',tel:'',citta:'Catania',prodotto:'Farina integrale',stato:'campionatura',note:'Campione inviato 15/03'},
+    {id:7,nome:'Ristorante Da Mario',contatto:'Mario',tel:'347 9988776',citta:'Palermo',prodotto:'Semola rimacinata di grano duro',stato:'lead',note:'Contatto da fiera'},
+    {id:8,nome:'Pasticceria Veneziana',contatto:'',tel:'',citta:'Messina',prodotto:'Farina 00',stato:'attesa',note:'In attesa risposta preventivo'},
+  ],
+  clienti: [
+    {id:1,nome:'Panificio Daoud Ilham',ref:'Ilham',tel:'',email:'',citta:'Belpasso',ind:'',prod:'Semola rimacinata di grano duro',note:''},
+    {id:2,nome:'Il Sorriso di Nicol Simonetta',ref:'Simonetta',tel:'',email:'',citta:'Catania',ind:'',prod:'Farina 00',note:''},
+    {id:3,nome:'Grasso Rosario',ref:'Rosario',tel:'',email:'',citta:'Catania',ind:'',prod:'Semola rimacinata di grano duro',note:''},
+    {id:4,nome:'Panetteria Pippo SAS di Boragno Faust',ref:'',tel:'',email:'',citta:'Sicilia',ind:'',prod:'Semola',note:''},
+    {id:5,nome:'Schloesslmuehle Des Silbernagl',ref:'Stefan',tel:'',email:'',citta:'Germania',ind:'',prod:'Semola rimacinata di grano duro',note:'Pagamenti in euro da estero'},
+  ],
+  ordini: [
+    {id:1,cliente:'Grasso Rosario',prodotto:'Semola rimacinata di grano duro',qty:500,importo:499.20,data:'2024-01-31',stato:'consegnato',note:'Fatt. N. 5 del 15.01.2024'},
+    {id:2,cliente:'Schloesslmuehle Des Silbernagl',prodotto:'Semola rimacinata di grano duro',qty:720,importo:711.36,data:'2024-01-30',stato:'consegnato',note:'FT 153/A del 27.12.2023'},
+    {id:3,cliente:'Il Sorriso di Nicol Simonetta',prodotto:'Farina 00',qty:320,importo:314.50,data:'2024-03-07',stato:'consegnato',note:'Saldo ft. 18'},
+    {id:4,cliente:'Panificio Daoud Ilham',prodotto:'Semola rimacinata di grano duro',qty:370,importo:361.92,data:'2024-03-05',stato:'consegnato',note:'Doc. n.32-24'},
+    {id:5,cliente:'Grasso Rosario',prodotto:'Semola rimacinata di grano duro',qty:510,importo:499.20,data:'2024-03-21',stato:'consegnato',note:'Fatt. N. 28'},
+    {id:6,cliente:'Panetteria Pippo SAS di Boragno Faust',prodotto:'Semola rimacinata di grano duro',qty:450,importo:436.80,data:'2024-07-09',stato:'spedito',note:'66/A CASH'},
+    {id:7,cliente:'Grasso Rosario',prodotto:'Semola rimacinata di grano duro',qty:350,importo:343.20,data:'2024-07-18',stato:'aperto',note:'N. 78'},
+    {id:8,cliente:'Schloesslmuehle Des Silbernagl',prodotto:'Semola rimacinata di grano duro',qty:940,importo:917.28,data:'2024-08-01',stato:'aperto',note:'RA nr. 72/A'},
+  ],
+  movimenti: [
+    {id:1,data:'2024-01-02',tipo:'entrata',importo:6600,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET - Bancomat Sportello 0050'},
+    {id:2,data:'2024-01-02',tipo:'entrata',importo:393.12,cat:'Bonifico cliente',desc:'BONIFICO - IL SORRISO DI NICOL SIMONETTA - Saldo ft.155'},
+    {id:3,data:'2024-01-05',tipo:'uscita',importo:669,cat:'Utenze',desc:'PAG.FORNIT. ELETTRICA/GA - ENEL ENERGIA S P A'},
+    {id:4,data:'2024-01-15',tipo:'uscita',importo:3063.29,cat:'Commissioni bancarie',desc:'CARTA DI CREDITO - NEXI S.P.A.'},
+    {id:5,data:'2024-01-16',tipo:'uscita',importo:758.95,cat:'Mutuo',desc:'RIMBORSO FINANZIAMENTO MUTUO FONDIARIO - RATA N.84'},
+    {id:6,data:'2024-01-22',tipo:'entrata',importo:4050,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET - Bancomat Sportello 0050'},
+    {id:7,data:'2024-01-31',tipo:'entrata',importo:499.20,cat:'Bonifico cliente',desc:'BONIFICO - GRASSO ROSARIO - FATT. N. 5'},
+    {id:8,data:'2024-02-13',tipo:'uscita',importo:16674.84,cat:'Assegno',desc:'VS. ASSEGNO - Proprio assegno 05036-84090-0100586399'},
+    {id:9,data:'2024-03-01',tipo:'entrata',importo:4500,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET - Bancomat Sportello 0050'},
+    {id:10,data:'2024-06-03',tipo:'entrata',importo:5600,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET - Bancomat Sportello 0050'},
+  ],
+  nextLeadId:9,nextClienteId:6,nextOrdineId:9,nextMovId:11,
+  ordiniFilter:'tutti',contabFilter:'tutti'
+};
+
+function fmt(n){return'€'+parseFloat(n).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});}
+function initials(s){return s.split(' ').slice(0,2).map(w=>w[0]||'').join('').toUpperCase();}
+
+function showPage(id){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  document.getElementById('page-'+id).classList.add('active');
+  document.getElementById('nav-'+id).classList.add('active');
+  if(id==='pipeline')renderPipeline();
+  if(id==='clienti')renderClienti();
+  if(id==='ordini')renderOrdini();
+  if(id==='contabilita')renderContab();
+  if(id==='dashboard')renderDash();
+}
+
+function openModal(id){
+  if(id==='modal-ordine'){
+    let sel=document.getElementById('ord-cliente');
+    sel.innerHTML='<option value="">— seleziona —</option>';
+    state.clienti.forEach(c=>{let o=document.createElement('option');o.value=c.nome;o.textContent=c.nome;sel.appendChild(o);});
+    document.getElementById('ord-data').value=new Date().toISOString().slice(0,10);
+  }
+  if(id==='modal-movimento') document.getElementById('mov-data').value=new Date().toISOString().slice(0,10);
+  document.getElementById(id).classList.add('open');
+}
+function closeModal(id){document.getElementById(id).classList.remove('open');}
+
+function statoLabel(s){return{lead:'Lead',campionatura:'Campionatura inviata',attesa:'In attesa risposta',acquisito:'Cliente acquisito'}[s]||s;}
+function statoClass(s){return{lead:'badge-lead',campionatura:'badge-camp',attesa:'badge-att',acquisito:'badge-acq'}[s]||'';}
+
+function renderPipeline(){
+  const cols=[{key:'lead',label:'Lead'},{key:'campionatura',label:'Campionatura inviata'},{key:'attesa',label:'In attesa risposta'},{key:'acquisito',label:'Cliente acquisito'}];
+  const board=document.getElementById('pipeline-board');
+  board.innerHTML='';
+  cols.forEach(col=>{
+    const items=state.leads.filter(l=>l.stato===col.key);
+    const div=document.createElement('div');
+    div.className='pipeline-col';
+    div.innerHTML=`<div class="col-header"><span class="col-title">${col.label}</span><span class="col-count">${items.length}</span></div>`;
+    items.forEach(l=>{
+      const c=document.createElement('div');c.className='card';
+      c.innerHTML=`<div class="card-name">${l.nome}</div><div class="card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="card-footer"><span class="badge ${statoClass(l.stato)}">${statoLabel(l.stato)}</span>${l.contatto?`<span style="font-size:11px;color:#9ca3af">${l.contatto}</span>`:''}</div>`;
+      div.appendChild(c);
+    });
+    if(!items.length){const e=document.createElement('div');e.style.cssText='text-align:center;padding:20px 0;color:#d1d5db;font-size:12px';e.textContent='Nessun contatto';div.appendChild(e);}
+    board.appendChild(div);
+  });
+}
+
+function renderClienti(){
+  const q=(document.getElementById('search-clienti').value||'').toLowerCase();
+  const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||c.citta.toLowerCase().includes(q));
+  const tb=document.getElementById('tbl-clienti');
+  tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="6" class="empty">Nessun cliente trovato</td></tr>';return;}
+  list.forEach(c=>{
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td><div class="flex-row"><div class="avatar">${initials(c.nome)}</div><div><div style="font-weight:600;font-size:13px">${c.nome}</div><div style="font-size:11px;color:#9ca3af">${c.email||''}</div></div></div></td><td>${c.citta||'—'}</td><td>${c.tel||'—'}</td><td style="font-size:12px;color:#6b7280;max-width:160px">${c.prod||'—'}</td><td><span class="badge badge-acq">Attivo</span></td><td><button class="btn" style="padding:5px 10px;font-size:12px" onclick="apriDettaglio(${c.id})"><i class="ti ti-eye"></i> Dettaglio</button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function apriDettaglio(id){
+  const c=state.clienti.find(x=>x.id===id);if(!c)return;
+  const ordini=state.ordini.filter(o=>o.cliente===c.nome);
+  const totOrdini=ordini.reduce((s,o)=>s+o.importo,0);
+  document.getElementById('dettaglio-panel').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:22px">
+      <div class="flex-row"><div class="avatar" style="width:46px;height:46px;font-size:15px">${initials(c.nome)}</div><div><div style="font-weight:600;font-size:16px">${c.nome}</div><div style="font-size:12px;color:#6b7280">${c.citta||''}</div></div></div>
+      <button class="btn" onclick="chiudiDettaglio()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="section-card">
+      <div class="section-title"><i class="ti ti-info-circle"></i> Dati contatto</div>
+      <table style="width:100%;font-size:13px">
+        <tr><td style="color:#6b7280;padding:5px 0">Referente</td><td style="text-align:right;font-weight:500">${c.ref||'—'}</td></tr>
+        <tr><td style="color:#6b7280;padding:5px 0">Telefono</td><td style="text-align:right">${c.tel||'—'}</td></tr>
+        <tr><td style="color:#6b7280;padding:5px 0">Email</td><td style="text-align:right">${c.email||'—'}</td></tr>
+        <tr><td style="color:#6b7280;padding:5px 0">Indirizzo</td><td style="text-align:right">${c.ind||'—'}</td></tr>
+        <tr><td style="color:#6b7280;padding:5px 0">Prodotti</td><td style="text-align:right">${c.prod||'—'}</td></tr>
+      </table>
+    </div>
+    <div class="section-card">
+      <div class="section-title"><i class="ti ti-clipboard-list"></i> Storico ordini <span style="font-size:11px;color:#9ca3af;font-weight:400;margin-left:4px">${ordini.length} ordini · ${fmt(totOrdini)}</span></div>
+      ${ordini.length?ordini.map(o=>`<div class="storico-item"><div><div style="font-weight:600">${o.prodotto}</div><div style="color:#6b7280">${o.data} · ${o.qty} kg</div>${o.note?`<div style="color:#9ca3af;font-size:11px">${o.note}</div>`:''}</div><div style="text-align:right"><div style="font-weight:600">${fmt(o.importo)}</div><span class="badge ${o.stato==='consegnato'?'badge-acq':o.stato==='spedito'?'badge-camp':'badge-lead'}">${o.stato}</span></div></div>`).join(''):'<div style="color:#9ca3af;font-size:13px;padding:8px 0">Nessun ordine registrato</div>'}
+      ${c.note?`<div style="margin-top:12px;padding-top:12px;border-top:1px solid #f3f4f6;font-size:12px;color:#6b7280">${c.note}</div>`:''}
+    </div>`;
+  document.getElementById('dettaglio-overlay').classList.add('open');
+}
+function chiudiDettaglio(e){
+  if(!e||e.target===document.getElementById('dettaglio-overlay'))
+    document.getElementById('dettaglio-overlay').classList.remove('open');
+}
+
+function renderOrdini(){
+  const list=state.ordini.filter(o=>state.ordiniFilter==='tutti'||o.stato===state.ordiniFilter);
+  const tb=document.getElementById('tbl-ordini');
+  tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="8" class="empty">Nessun ordine trovato</td></tr>';return;}
+  list.forEach(o=>{
+    const sc=o.stato==='consegnato'?'badge-acq':o.stato==='spedito'?'badge-camp':'badge-lead';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="font-family:monospace;font-size:12px;color:#6b7280">#${String(o.id).padStart(3,'0')}</td><td style="font-weight:600">${o.cliente}</td><td style="font-size:12px;color:#6b7280">${o.prodotto}</td><td>${o.qty} kg</td><td style="font-weight:600">${fmt(o.importo)}</td><td style="font-size:12px;color:#6b7280">${o.data}</td><td><span class="badge ${sc}">${o.stato}</span></td><td><button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="eliminaOrdine(${o.id})"><i class="ti ti-trash"></i></button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function eliminaOrdine(id){
+  if(!confirm('Eliminare questo ordine?'))return;
+  state.ordini=state.ordini.filter(o=>o.id!==id);
+  renderOrdini();renderDash();
+}
+
+function filterOrdini(f,el){
+  state.ordiniFilter=f;
+  document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');renderOrdini();
+}
+
+function renderContab(){
+  const sorted=[...state.movimenti].sort((a,b)=>b.data.localeCompare(a.data));
+  const movs=sorted.filter(m=>state.contabFilter==='tutti'||m.tipo===state.contabFilter);
+  let run=0;
+  const saldoMap={};
+  [...state.movimenti].sort((a,b)=>a.data.localeCompare(b.data)).forEach(m=>{run+=m.tipo==='entrata'?m.importo:-m.importo;saldoMap[m.id]=run;});
+  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
+  const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+m.importo,0);
+  document.getElementById('c-entrate').textContent=fmt(totE);
+  document.getElementById('c-uscite').textContent=fmt(totU);
+  const sn=totE-totU;
+  const el=document.getElementById('c-saldo');
+  el.textContent=fmt(sn);el.className='metric-value '+(sn>=0?'entrata':'uscita');
+  const tb=document.getElementById('tbl-contab');
+  tb.innerHTML='';
+  if(!movs.length){tb.innerHTML='<tr><td colspan="7" class="empty">Nessun movimento</td></tr>';return;}
+  movs.forEach(m=>{
+    const sign=m.tipo==='entrata'?'+':'-';
+    const cl=m.tipo==='entrata'?'entrata':'uscita';
+    const tr=document.createElement('tr');
+    tr.innerHTML=`<td style="font-size:12px;color:#6b7280;white-space:nowrap">${m.data}</td><td style="font-size:13px;font-weight:500">${m.desc}</td><td style="font-size:12px;color:#6b7280">${m.cat}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td class="${cl}" style="font-weight:600;text-align:right;white-space:nowrap">${sign}${fmt(m.importo)}</td><td style="text-align:right;font-size:12px;color:#6b7280;white-space:nowrap">${fmt(saldoMap[m.id])}</td><td><button class="btn btn-danger" style="padding:4px 8px;font-size:11px" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function eliminaMov(id){
+  if(!confirm('Eliminare questo movimento?'))return;
+  state.movimenti=state.movimenti.filter(m=>m.id!==id);
+  renderContab();renderDash();
+}
+
+function filterContab(f,el){
+  state.contabFilter=f;
+  document.querySelectorAll('.contab-filters .pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');renderContab();
+}
+
+function renderDash(){
+  document.getElementById('m-clienti').textContent=state.clienti.length;
+  document.getElementById('m-ordini').textContent=state.ordini.filter(o=>o.stato==='aperto').length;
+  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
+  document.getElementById('m-entrate').textContent=fmt(totE);
+  const sn=state.movimenti.reduce((s,m)=>s+(m.tipo==='entrata'?m.importo:-m.importo),0);
+  const se=document.getElementById('m-saldo');
+  se.textContent=fmt(sn);se.className='metric-value '+(sn>=0?'entrata':'uscita');
+  const pl=document.getElementById('dash-pipeline');
+  const recent=[...state.leads].slice(-5).reverse();
+  pl.innerHTML=recent.map(l=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6"><span style="font-size:13px;font-weight:500">${l.nome}</span><span class="badge ${statoClass(l.stato)}">${statoLabel(l.stato)}</span></div>`).join('') || '<div class="empty" style="padding:16px 0">Nessun contatto</div>';
+  const od=document.getElementById('dash-ordini');
+  const lastOrd=[...state.ordini].slice(-5).reverse();
+  od.innerHTML=lastOrd.map(o=>`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid #f3f4f6"><div><div style="font-size:13px;font-weight:600">${o.cliente}</div><div style="font-size:11px;color:#9ca3af">${o.prodotto} · ${o.qty} kg</div></div><div style="text-align:right"><div style="font-size:13px;font-weight:600">${fmt(o.importo)}</div><span class="badge ${o.stato==='consegnato'?'badge-acq':o.stato==='spedito'?'badge-camp':'badge-lead'}">${o.stato}</span></div></div>`).join('') || '<div class="empty" style="padding:16px 0">Nessun ordine</div>';
+}
+
+function salvaLead(){
+  const nome=document.getElementById('lead-nome').value.trim();
+  if(!nome)return alert('Inserisci il nome');
+  state.leads.push({id:state.nextLeadId++,nome,contatto:document.getElementById('lead-contatto').value,tel:document.getElementById('lead-tel').value,citta:document.getElementById('lead-citta').value,prodotto:document.getElementById('lead-prodotto').value,stato:document.getElementById('lead-stato').value,note:document.getElementById('lead-note').value});
+  closeModal('modal-lead');renderPipeline();
+  ['lead-nome','lead-contatto','lead-tel','lead-citta','lead-note'].forEach(id=>document.getElementById(id).value='');
+}
+
+function salvaCliente(){
+  const nome=document.getElementById('cl-nome').value.trim();
+  if(!nome)return alert('Inserisci la ragione sociale');
+  state.clienti.push({id:state.nextClienteId++,nome,ref:document.getElementById('cl-ref').value,tel:document.getElementById('cl-tel').value,email:document.getElementById('cl-email').value,citta:document.getElementById('cl-citta').value,ind:document.getElementById('cl-ind').value,prod:document.getElementById('cl-prod').value,note:document.getElementById('cl-note').value});
+  closeModal('modal-cliente');renderClienti();
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-ind','cl-prod','cl-note'].forEach(id=>document.getElementById(id).value='');
+}
+
+function salvaOrdine(){
+  const cl=document.getElementById('ord-cliente').value;
+  if(!cl)return alert('Seleziona un cliente');
+  state.ordini.push({id:state.nextOrdineId++,cliente:cl,prodotto:document.getElementById('ord-prodotto').value,qty:parseFloat(document.getElementById('ord-qty').value)||0,importo:parseFloat(document.getElementById('ord-importo').value)||0,data:document.getElementById('ord-data').value,stato:document.getElementById('ord-stato').value,note:document.getElementById('ord-note').value});
+  closeModal('modal-ordine');renderOrdini();renderDash();
+}
+
+function salvaMovimento(){
+  const data=document.getElementById('mov-data').value;
+  const desc=document.getElementById('mov-desc').value.trim();
+  const imp=parseFloat(document.getElementById('mov-importo').value)||0;
+  if(!data||!desc||!imp)return alert('Compila data, descrizione e importo');
+  state.movimenti.push({id:state.nextMovId++,data,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:document.getElementById('mov-cat').value,desc});
+  closeModal('modal-movimento');renderContab();renderDash();
+  ['mov-desc','mov-importo'].forEach(id=>document.getElementById(id).value='');
+}
+
+renderDash();
+</script>
+</body>
+</html>
+
+<script>
+// ── AI ASSISTANT ─────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+
+  // Aggiungi voce AI nella sidebar
+  const sidebar = document.querySelector('.sidebar');
+  const aiNav = document.createElement('div');
+  aiNav.className = 'nav-item';
+  aiNav.id = 'nav-ai';
+  aiNav.innerHTML = '<i class="ti ti-robot"></i> Assistente AI';
+  aiNav.onclick = function(){ showPage('ai'); };
+  sidebar.appendChild(aiNav);
+
+  // Aggiungi separatore e sezione suggerimenti nella sidebar
+  const sep = document.createElement('div');
+  sep.style.cssText = 'border-top:1px solid #e5e7eb;margin:12px 0';
+  sidebar.appendChild(sep);
+
+  const sugNav = document.createElement('div');
+  sugNav.style.cssText = 'padding:8px 16px;font-size:11px;color:#9ca3af;font-weight:600;text-transform:uppercase;letter-spacing:0.5px';
+  sugNav.textContent = 'Analisi rapida';
+  sidebar.appendChild(sugNav);
+
+  ['📊 Analisi vendite','⚠️ Clienti inattivi','💰 Riepilogo contabile'].forEach((label, i) => {
+    const btn = document.createElement('div');
+    btn.className = 'nav-item';
+    btn.style.fontSize = '12px';
+    btn.textContent = label;
+    btn.onclick = function(){
+      showPage('ai');
+      const prompts = [
+        'Analizza le vendite: dammi un riepilogo degli ordini per cliente, il totale fatturato e i prodotti più venduti.',
+        'Controlla i clienti: quali non hanno ordini recenti? Chi potrebbe aver bisogno di un follow-up?',
+        'Fai un riepilogo completo della contabilità: totale entrate, uscite, saldo netto e le categorie di spesa principali.'
+      ];
+      setTimeout(() => sendAIMessage(prompts[i]), 100);
+    };
+    sidebar.appendChild(btn);
+  });
+
+  // Aggiungi pagina AI nel main
+  const main = document.querySelector('.main');
+  const aiPage = document.createElement('div');
+  aiPage.className = 'page';
+  aiPage.id = 'page-ai';
+  aiPage.innerHTML = `
+    <div class="page-header">
+      <div class="page-title">Assistente AI <span style="font-size:13px;color:#6b7280;font-weight:400;margin-left:8px">Powered by Claude</span></div>
+      <button class="btn" onclick="clearChat()"><i class="ti ti-trash"></i> Pulisci chat</button>
+    </div>
+
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:10px;margin-bottom:20px">
+      <div onclick="sendAIMessage('Quanti clienti ho e quali sono i più attivi per ordini?')" style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='#1a56db'" onmouseout="this.style.borderColor='#e5e7eb'">
+        <div style="font-size:20px;margin-bottom:6px">👥</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:3px">Analisi clienti</div>
+        <div style="font-size:11px;color:#9ca3af">Chi ordina di più?</div>
+      </div>
+      <div onclick="sendAIMessage('Analizza gli ordini aperti e spediti. Cosa devo seguire prioritariamente?')" style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='#1a56db'" onmouseout="this.style.borderColor='#e5e7eb'">
+        <div style="font-size:20px;margin-bottom:6px">📦</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:3px">Ordini da seguire</div>
+        <div style="font-size:11px;color:#9ca3af">Cosa è aperto?</div>
+      </div>
+      <div onclick="sendAIMessage('Analizza la contabilità e dimmi come stiamo andando finanziariamente. Suggerisci qualcosa.')" style="background:#fff;border:1px solid #e5e7eb;border-radius:10px;padding:14px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='#1a56db'" onmouseout="this.style.borderColor='#e5e7eb'">
+        <div style="font-size:20px;margin-bottom:6px">💰</div>
+        <div style="font-size:13px;font-weight:600;margin-bottom:3px">Situazione finanziaria</div>
+        <div style="font-size:11px;color:#9ca3af">Come stiamo?</div>
+      </div>
+    </div>
+
+    <div style="background:#fff;border:1px solid #e5e7eb;border-radius:12px;display:flex;flex-direction:column;height:480px">
+      <div id="chat-messages" style="flex:1;overflow-y:auto;padding:20px;display:flex;flex-direction:column;gap:14px">
+        <div style="display:flex;gap:10px;align-items:flex-start">
+          <div style="width:32px;height:32px;border-radius:50%;background:#eff6ff;color:#1a56db;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px"><i class="ti ti-robot"></i></div>
+          <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;max-width:80%;font-size:13px;line-height:1.6">
+            Ciao Giovanni! Sono il tuo assistente AI. Ho accesso a tutti i dati del gestionale: clienti, ordini, pipeline vendite e contabilità.<br><br>
+            Puoi chiedermi qualsiasi cosa, ad esempio:<br>
+            • <em>"Chi sono i miei clienti migliori?"</em><br>
+            • <em>"Quali ordini sono ancora aperti?"</em><br>
+            • <em>"Come sta andando la contabilità?"</em><br>
+            • <em>"Suggerisci chi contattare questa settimana"</em>
+          </div>
+        </div>
+      </div>
+      <div style="border-top:1px solid #e5e7eb;padding:14px;display:flex;gap:10px;align-items:flex-end">
+        <textarea id="chat-input" placeholder="Scrivi una domanda sui tuoi dati..." style="flex:1;border:1px solid #d1d5db;border-radius:8px;padding:10px 12px;font-size:13px;resize:none;min-height:42px;max-height:120px;font-family:Arial,sans-serif;line-height:1.5;outline:none" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='42px';this.style.height=Math.min(this.scrollHeight,120)+'px'"></textarea>
+        <button class="btn btn-primary" onclick="sendChat()" id="send-btn" style="height:42px;padding:0 16px;flex-shrink:0"><i class="ti ti-send"></i> Invia</button>
+      </div>
+    </div>
+  `;
+  main.appendChild(aiPage);
+
+  window.chatHistory = [];
+
+  window.clearChat = function(){
+    window.chatHistory = [];
+    const msgs = document.getElementById('chat-messages');
+    msgs.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start">
+      <div style="width:32px;height:32px;border-radius:50%;background:#eff6ff;color:#1a56db;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px"><i class="ti ti-robot"></i></div>
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;max-width:80%;font-size:13px;line-height:1.6">Chat pulita. Come posso aiutarti?</div>
+    </div>`;
+  };
+
+  function getContextData(){
+    const clientiList = state.clienti.map(c => `- ${c.nome} (${c.citta||'N/D'}) | Prodotti: ${c.prod||'N/D'}`).join('\n');
+    const ordiniList = state.ordini.map(o => `- #${o.id} | Cliente: ${o.cliente} | Prodotto: ${o.prodotto} | Qtà: ${o.qty}kg | Importo: €${o.importo} | Data: ${o.data} | Stato: ${o.stato}`).join('\n');
+    const pipelineList = state.leads.map(l => `- ${l.nome} (${l.citta||'N/D'}) | Stato: ${l.stato} | Prodotto: ${l.prodotto}`).join('\n');
+    const movList = state.movimenti.map(m => `- ${m.data} | ${m.tipo.toUpperCase()} | €${m.importo} | ${m.cat} | ${m.desc}`).join('\n');
+    const totE = state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
+    const totU = state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+m.importo,0);
+
+    return `Sei l'assistente AI del gestionale aziendale di Mulino Vitaliti Antonio, un'azienda familiare fondata nel 1930 che vende semola rimacinata di grano duro, farine e prodotti del mulino in tutta Italia.
+
+DATI AGGIORNATI DEL GESTIONALE:
+
+CLIENTI (${state.clienti.length} totali):
+${clientiList}
+
+PIPELINE VENDITE (${state.leads.length} contatti):
+${pipelineList}
+
+ORDINI (${state.ordini.length} totali):
+${ordiniList}
+
+CONTABILITÀ (${state.movimenti.length} movimenti):
+Totale entrate: €${totE.toFixed(2)}
+Totale uscite: €${totU.toFixed(2)}
+Saldo netto: €${(totE-totU).toFixed(2)}
+Movimenti:
+${movList}
+
+Rispondi sempre in italiano, in modo chiaro e pratico. Dai consigli concreti e utili per la gestione dell'azienda.`;
+  }
+
+  window.sendAIMessage = function(text){
+    document.getElementById('chat-input').value = text;
+    sendChat();
+  };
+
+  window.sendChat = async function(){
+    const input = document.getElementById('chat-input');
+    const text = input.value.trim();
+    if(!text) return;
+
+    input.value = '';
+    input.style.height = '42px';
+
+    const msgs = document.getElementById('chat-messages');
+
+    // Messaggio utente
+    const userDiv = document.createElement('div');
+    userDiv.style.cssText = 'display:flex;gap:10px;align-items:flex-start;flex-direction:row-reverse';
+    userDiv.innerHTML = `
+      <div style="width:32px;height:32px;border-radius:50%;background:#1a56db;color:#fff;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:13px;font-weight:600">GV</div>
+      <div style="background:#eff6ff;border:1px solid #bfdbfe;border-radius:10px;padding:12px 14px;max-width:80%;font-size:13px;line-height:1.6">${text}</div>
+    `;
+    msgs.appendChild(userDiv);
+
+    // Loading
+    const loadDiv = document.createElement('div');
+    loadDiv.style.cssText = 'display:flex;gap:10px;align-items:flex-start';
+    loadDiv.id = 'ai-loading';
+    loadDiv.innerHTML = `
+      <div style="width:32px;height:32px;border-radius:50%;background:#eff6ff;color:#1a56db;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px"><i class="ti ti-robot"></i></div>
+      <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;font-size:13px;color:#9ca3af"><i class="ti ti-dots" style="animation:pulse 1s infinite"></i> Sto elaborando...</div>
+    `;
+    msgs.appendChild(loadDiv);
+    msgs.scrollTop = msgs.scrollHeight;
+
+    // Disabilita bottone
+    document.getElementById('send-btn').disabled = true;
+
+    // Aggiungi al history
+    window.chatHistory.push({ role: 'user', content: text });
+
+    // Prepara messaggi con contesto
+    const messagesWithContext = [
+      { role: 'user', content: getContextData() + '\n\n---\n\nPrima domanda: ' + window.chatHistory[0].content },
+      ...window.chatHistory.slice(1).map((m, i) => ({ role: m.role, content: m.content }))
+    ];
+    if(window.chatHistory.length > 1){
+      messagesWithContext[0].content = getContextData();
+      messagesWithContext.push({ role: 'user', content: text });
+    }
+
+    try {
+      const res = await fetch('/api/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ messages: messagesWithContext.length > 1 ? messagesWithContext : [{ role:'user', content: getContextData() + '\n\n---\n\n' + text }] })
+      });
+      const data = await res.json();
+      document.getElementById('ai-loading').remove();
+
+      const reply = data.reply || data.error || 'Errore nella risposta.';
+      window.chatHistory.push({ role: 'assistant', content: reply });
+
+      const aiDiv = document.createElement('div');
+      aiDiv.style.cssText = 'display:flex;gap:10px;align-items:flex-start';
+      aiDiv.innerHTML = `
+        <div style="width:32px;height:32px;border-radius:50%;background:#eff6ff;color:#1a56db;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:16px"><i class="ti ti-robot"></i></div>
+        <div style="background:#f9fafb;border:1px solid #e5e7eb;border-radius:10px;padding:12px 14px;max-width:85%;font-size:13px;line-height:1.7;white-space:pre-wrap">${reply}</div>
+      `;
+      msgs.appendChild(aiDiv);
+    } catch(err) {
+      document.getElementById('ai-loading').remove();
+      const errDiv = document.createElement('div');
+      errDiv.style.cssText = 'display:flex;gap:10px;align-items:flex-start';
+      errDiv.innerHTML = `<div style="width:32px;height:32px;border-radius:50%;background:#fef2f2;color:#ef4444;display:flex;align-items:center;justify-content:center;flex-shrink:0"><i class="ti ti-alert-circle"></i></div><div style="background:#fef2f2;border:1px solid #fecaca;border-radius:10px;padding:12px 14px;font-size:13px;color:#b91c1c">Errore di connessione. Controlla che il server sia attivo.</div>`;
+      msgs.appendChild(errDiv);
+    }
+
+    document.getElementById('send-btn').disabled = false;
+    msgs.scrollTop = msgs.scrollHeight;
+  };
+
+});
+</script>
