@@ -582,16 +582,16 @@ let state = {
     {id:6,cliente:'Panetteria Pippo SAS',prodotto:'Semola rimacinata di grano duro',qty:450,importo:436.80,data:'2024-07-09',stato:'aperto',note:''},
   ],
   movimenti:[
-    {id:1,data:'2024-01-02',tipo:'entrata',importo:6600,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET'},
-    {id:2,data:'2024-01-02',tipo:'entrata',importo:393.12,cat:'Bonifico cliente',desc:'BONIFICO - IL SORRISO DI NICOL SIMONETTA'},
-    {id:3,data:'2024-01-05',tipo:'uscita',importo:669,cat:'Utenze',desc:'ENEL ENERGIA S P A'},
-    {id:4,data:'2024-01-15',tipo:'uscita',importo:3063.29,cat:'Commissioni bancarie',desc:'CARTA DI CREDITO - NEXI'},
-    {id:5,data:'2024-01-16',tipo:'uscita',importo:758.95,cat:'Mutuo',desc:'RIMBORSO MUTUO - RATA N.84'},
-    {id:6,data:'2024-01-22',tipo:'entrata',importo:4050,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET'},
-    {id:7,data:'2024-01-31',tipo:'entrata',importo:499.20,cat:'Bonifico cliente',desc:'BONIFICO - GRASSO ROSARIO'},
-    {id:8,data:'2024-02-13',tipo:'uscita',importo:16674.84,cat:'Assegno',desc:'VS. ASSEGNO 05036-84090'},
-    {id:9,data:'2024-03-01',tipo:'entrata',importo:4500,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET'},
-    {id:10,data:'2024-06-03',tipo:'entrata',importo:5600,cat:'Versamento contante',desc:'VERS. CONT. ATM/CASH RET'},
+    {id:1,data:'2024-01-02',tipo:'entrata',importo:6600,cat:'Versamento contante',descrizione:'VERS. CONT. ATM/CASH RET'},
+    {id:2,data:'2024-01-02',tipo:'entrata',importo:393.12,cat:'Bonifico cliente',descrizione:'BONIFICO - IL SORRISO DI NICOL SIMONETTA'},
+    {id:3,data:'2024-01-05',tipo:'uscita',importo:669,cat:'Utenze',descrizione:'ENEL ENERGIA S P A'},
+    {id:4,data:'2024-01-15',tipo:'uscita',importo:3063.29,cat:'Commissioni bancarie',descrizione:'CARTA DI CREDITO - NEXI'},
+    {id:5,data:'2024-01-16',tipo:'uscita',importo:758.95,cat:'Mutuo',descrizione:'RIMBORSO MUTUO - RATA N.84'},
+    {id:6,data:'2024-01-22',tipo:'entrata',importo:4050,cat:'Versamento contante',descrizione:'VERS. CONT. ATM/CASH RET'},
+    {id:7,data:'2024-01-31',tipo:'entrata',importo:499.20,cat:'Bonifico cliente',descrizione:'BONIFICO - GRASSO ROSARIO'},
+    {id:8,data:'2024-02-13',tipo:'uscita',importo:16674.84,cat:'Assegno',descrizione:'VS. ASSEGNO 05036-84090'},
+    {id:9,data:'2024-03-01',tipo:'entrata',importo:4500,cat:'Versamento contante',descrizione:'VERS. CONT. ATM/CASH RET'},
+    {id:10,data:'2024-06-03',tipo:'entrata',importo:5600,cat:'Versamento contante',descrizione:'VERS. CONT. ATM/CASH RET'},
   ],
   nextLeadId:8,nextClienteId:6,nextOrdineId:7,nextMovId:11,nextUserId:6,nextFaseId:5,
   ordiniFilter:'tutti',contabFilter:'tutti',
@@ -848,7 +848,7 @@ function renderContab(){
   if(!movs.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun movimento</div></td></tr>';return;}
   movs.forEach(m=>{
     const tr=document.createElement('tr');
-    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${m.data}</td><td style="font-weight:500">${m.desc}</td><td style="font-size:12px;color:var(--text-2)">${m.cat}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${fmt(saldoMap[m.id])}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${m.data}</td><td style="font-weight:500">${m.descrizione}</td><td style="font-size:12px;color:var(--text-2)">${m.cat}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${fmt(saldoMap[m.id])}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -971,9 +971,9 @@ async function aggiornaOrdine(){
 
 // ── SALVA MOVIMENTO ───────────────────────────────────────────────────────
 async function salvaMovimento(){
-  const d=document.getElementById('mov-data').value,desc=document.getElementById('mov-desc').value.trim(),imp=parseFloat(document.getElementById('mov-importo').value)||0;
-  if(!d||!desc||!imp)return alert('Compila data, descrizione e importo');
-  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:document.getElementById('mov-cat').value,desc});
+  const d=document.getElementById('mov-data').value,descrizione=document.getElementById('mov-desc').value.trim(),imp=parseFloat(document.getElementById('mov-importo').value)||0;
+  if(!d||!descrizione||!imp)return alert('Compila data, descrizione e importo');
+  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:document.getElementById('mov-cat').value,descrizione});
   if(!data.error) state.movimenti.unshift(data);
   closeModal('modal-movimento'); renderContab(); renderDash(); showSave();
 }
@@ -982,14 +982,14 @@ function editMovimento(id){
   document.getElementById('edit-mov-id').value=m.id;
   document.getElementById('edit-mov-data').value=m.data;
   document.getElementById('edit-mov-importo').value=m.importo;
-  document.getElementById('edit-mov-desc').value=m.desc;
+  document.getElementById('edit-mov-desc').value=m.descrizione;
   const ts=document.getElementById('edit-mov-tipo'); for(let o of ts.options) if(o.value===m.tipo)o.selected=true;
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
   openModal('modal-edit-movimento');
 }
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:document.getElementById('edit-mov-cat').value,desc:document.getElementById('edit-mov-desc').value};
+  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:document.getElementById('edit-mov-cat').value,descrizione:document.getElementById('edit-mov-desc').value};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
