@@ -589,7 +589,7 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat"><option>Vendita prodotti</option><option>Bonifico cliente</option><option>Versamento contante</option><option>Fornitore</option><option>Utenze</option><option>Mutuo</option><option>Tasse/imposte</option><option>Commissioni bancarie</option><option>Assegno</option><option>Altro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-movimento')">Annulla</button><button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
@@ -599,7 +599,7 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal-body">
     <input type="hidden" id="edit-mov-id">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat"><option>Vendita prodotti</option><option>Bonifico cliente</option><option>Versamento contante</option><option>Fornitore</option><option>Utenze</option><option>Mutuo</option><option>Tasse/imposte</option><option>Commissioni bancarie</option><option>Assegno</option><option>Altro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
@@ -961,7 +961,15 @@ function openModal(id){
     state.clienti.forEach(c=>{const o=document.createElement('option');o.value=c.nome;o.textContent=c.nome;s.appendChild(o);});
     document.getElementById('ord-data').value=new Date().toISOString().slice(0,10);
   }
-  if(id==='modal-movimento') document.getElementById('mov-data').value=new Date().toISOString().slice(0,10);
+  if(id==='modal-movimento'){
+    document.getElementById('mov-data').value=new Date().toISOString().slice(0,10);
+    populateCatSelect('mov-cat');
+    document.getElementById('mov-cat-custom').style.display='none';
+  }
+  if(id==='modal-edit-movimento'){
+    populateCatSelect('edit-mov-cat');
+    document.getElementById('edit-mov-cat-custom').style.display='none';
+  }
   if(id==='modal-lead'||id==='modal-edit-lead') populateFasiSelects();
   if(id==='modal-gestisci-fasi') renderFasiList();
   document.getElementById(id).classList.add('open');
@@ -1263,7 +1271,7 @@ async function aggiornaOrdine(){
 async function salvaMovimento(){
   const d=document.getElementById('mov-data').value,descrizione=document.getElementById('mov-desc').value.trim(),imp=parseFloat(document.getElementById('mov-importo').value)||0;
   if(!d||!descrizione||!imp)return alert('Compila data, descrizione e importo');
-  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:document.getElementById('mov-cat').value,descrizione});
+  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:getCatValue('mov-cat','mov-cat-custom'),descrizione});
   if(!data.error) state.movimenti.unshift(data);
   closeModal('modal-movimento'); renderContab(); renderDash(); showSave();
 }
@@ -1274,12 +1282,13 @@ function editMovimento(id){
   document.getElementById('edit-mov-importo').value=m.importo;
   document.getElementById('edit-mov-desc').value=m.descrizione;
   const ts=document.getElementById('edit-mov-tipo'); for(let o of ts.options) if(o.value===m.tipo)o.selected=true;
+  populateCatSelect('edit-mov-cat', m.cat||'');
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
   openModal('modal-edit-movimento');
 }
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:document.getElementById('edit-mov-cat').value,descrizione:document.getElementById('edit-mov-desc').value};
+  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
@@ -1689,7 +1698,106 @@ function sendChat(){
     }).finally(()=>{document.getElementById('send-btn').disabled=false;msgs.scrollTop=msgs.scrollHeight;});
 }
 
-// ── PASSWORD FINANZA ──────────────────────────────────────────────────────
+// ── CATEGORIE DINAMICHE ───────────────────────────────────────────────────
+const CAT_DEFAULT = ['Vendita prodotti','Bonifico cliente','Versamento contante','Fornitore','Utenze','Mutuo','Tasse/imposte','Commissioni bancarie','Assegno'];
+
+function loadCat(){
+  try{ const s=localStorage.getItem('vv_categorie'); return s?JSON.parse(s):[...CAT_DEFAULT]; }catch(e){ return [...CAT_DEFAULT]; }
+}
+function saveCat(cats){ try{localStorage.setItem('vv_categorie',JSON.stringify(cats));}catch(e){} }
+
+function populateCatSelect(selId, currentVal=''){
+  const cats = loadCat();
+  const sel = document.getElementById(selId); if(!sel)return;
+  sel.innerHTML = cats.map(c=>`<option value="${c}" ${c===currentVal?'selected':''}>${c}</option>`).join('');
+  sel.innerHTML += `<option value="__gestisci__">⚙️ Gestisci categorie...</option>`;
+  sel.innerHTML += `<option value="__altro__">+ Nuova categoria</option>`;
+  if(currentVal && !cats.includes(currentVal)){
+    sel.innerHTML = `<option value="${currentVal}" selected>${currentVal}</option>` + sel.innerHTML;
+  }
+}
+
+function onCatChange(selId, customId){
+  const sel = document.getElementById(selId);
+  const custom = document.getElementById(customId);
+  if(sel.value === '__altro__'){
+    custom.style.display='block';
+    custom.focus();
+  } else if(sel.value === '__gestisci__'){
+    sel.value = sel.options[0].value;
+    apriGestisciCategorie();
+  } else {
+    if(custom) custom.style.display='none';
+  }
+}
+
+function getCatValue(selId, customId){
+  const sel = document.getElementById(selId);
+  const custom = document.getElementById(customId);
+  if(sel.value === '__altro__' || sel.value === '__gestisci__'){
+    const val = (custom?.value||'').trim();
+    if(val){
+      // Salva la nuova categoria
+      const cats = loadCat();
+      if(!cats.includes(val)){ cats.push(val); saveCat(cats); }
+    }
+    return val || 'Altro';
+  }
+  return sel.value;
+}
+
+function apriGestisciCategorie(){
+  const cats = loadCat();
+  const html = `
+    <div style="display:grid;gap:6px;margin-bottom:14px" id="cat-edit-list">
+      ${cats.map((c,i)=>`
+        <div style="display:flex;align-items:center;gap:8px;padding:7px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)">
+          <input type="text" value="${c}" id="cat-item-${i}" style="flex:1;border:none;background:transparent;font-size:13px;font-family:var(--font);outline:none">
+          <button class="btn btn-danger btn-sm btn-icon" onclick="eliminaCat(${i})"><i class="ti ti-trash"></i></button>
+        </div>`).join('')}
+    </div>
+    <div style="display:flex;gap:8px">
+      <input type="text" id="nuova-cat-input" placeholder="Nuova categoria..." style="flex:1;padding:8px 11px;border:1px solid var(--border-strong);border-radius:var(--r);font-size:13px;font-family:var(--font)" onkeydown="if(event.key==='Enter')aggiungiCat()">
+      <button class="btn btn-primary" onclick="aggiungiCat()"><i class="ti ti-plus"></i>Aggiungi</button>
+    </div>
+    <div style="display:flex;justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-primary" onclick="salvaCatModificate()"><i class="ti ti-check"></i>Salva modifiche</button>
+    </div>`;
+
+  // Usa un modal temporaneo
+  let m = document.getElementById('modal-cat-gestisci');
+  if(!m){
+    m = document.createElement('div');
+    m.id='modal-cat-gestisci';
+    m.className='modal-overlay';
+    m.innerHTML=`<div class="modal" style="width:480px"><div class="modal-header"><div class="modal-title">Gestisci categorie</div><button class="btn btn-icon" onclick="closeModal('modal-cat-gestisci')"><i class="ti ti-x"></i></button></div><div class="modal-body" id="cat-modal-body"></div></div>`;
+    document.body.appendChild(m);
+  }
+  document.getElementById('cat-modal-body').innerHTML=html;
+  m.classList.add('open');
+}
+
+function eliminaCat(i){
+  const cats=loadCat(); cats.splice(i,1); saveCat(cats);
+  apriGestisciCategorie();
+}
+function aggiungiCat(){
+  const val=document.getElementById('nuova-cat-input').value.trim(); if(!val)return;
+  const cats=loadCat(); if(!cats.includes(val)){cats.push(val);saveCat(cats);}
+  apriGestisciCategorie();
+}
+function salvaCatModificate(){
+  const cats=loadCat();
+  cats.forEach((_,i)=>{
+    const el=document.getElementById('cat-item-'+i);
+    if(el&&el.value.trim()) cats[i]=el.value.trim();
+  });
+  saveCat(cats);
+  closeModal('modal-cat-gestisci');
+  populateCatSelect('mov-cat');
+  populateCatSelect('edit-mov-cat');
+  showSave();
+}
 const FINANZA_PASSWORD = 'vitaliti1930';
 let finanzaSblocata = false;
 let _finanzaTarget = '';
