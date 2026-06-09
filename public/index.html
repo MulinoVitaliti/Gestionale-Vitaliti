@@ -116,6 +116,9 @@ tbody tr:hover{background:var(--surface-2)}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
 .add-col-btn{width:235px;flex-shrink:0;border:2px dashed var(--border);border-radius:var(--rl);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;background:transparent;height:56px;font-family:var(--font)}
 .add-col-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
+.ac-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
+.ac-item:last-child{border-bottom:none}
+.ac-item:hover{background:var(--brand-light)}
 .fmt-btn{padding:4px 7px;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer;font-size:13px;color:var(--text);font-family:var(--font);transition:all .15s;display:inline-flex;align-items:center}
 .fmt-btn:hover{background:var(--border);border-color:var(--border-strong)}
 #email-body-editor:empty:before{content:attr(placeholder);color:var(--text-3);pointer-events:none}
@@ -1288,7 +1291,10 @@ function apriComposer(opts={}){
   document.getElementById('composer-status').textContent='';
   document.getElementById('composer-title').textContent = opts.title||'Nuova email';
   openModal('modal-email');
-  setTimeout(()=>document.getElementById('email-to').focus(),100);
+  setTimeout(()=>{
+    document.getElementById('email-to').focus();
+    initAutocomplete('email-to');
+  },150);
 }
 
 function execFmt(cmd, val=null){
@@ -1387,7 +1393,7 @@ function caricaEmail(){
     api.get('/api/bozze').then(data=>{
       if(!data.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-file-text"></i><p>Nessuna bozza</p></div>';return;}
       list.innerHTML=data.map((b,i)=>`
-        <div class="email-item" onclick="apriComposer({draftId:${b.id},to:'${(b.to||'').replace(/'/g,"\\'")}',subject:'${(b.subject||'').replace(/'/g,"\\'")}',body:${JSON.stringify(b.body||'')},title:'Modifica bozza'})">
+        <div class="email-item" onclick="apriDraft(${i})" id="draft-${i}">
           <div class="email-item-top"><div class="email-item-from" style="color:var(--text-2);font-style:italic">${b.to||'(nessun destinatario)'}</div><div class="email-item-date">${new Date(b.data||Date.now()).toLocaleDateString('it-IT')}</div></div>
           <div class="email-item-subject">${b.subject||'(nessun oggetto)'}</div>
           <div class="email-item-preview" style="color:var(--orange)">Bozza</div>
@@ -1527,10 +1533,43 @@ function apriTemplateSelector(){
   openModal('modal-template-sel');
 }
 
+function apriDraft(idx){
+  const b=(window._emailCache||[])[idx]; if(!b)return;
+  apriComposer({draftId:b.id, to:b.to||'', subject:b.subject||'', body:b.body||'', title:'Modifica bozza'});
+}
+
+// ── AUTOCOMPLETE CLIENTI ──────────────────────────────────────────────────
+function initAutocomplete(inputId){
+  const input = document.getElementById(inputId);
+  if(!input || input._acInit) return;
+  input._acInit = true;
+  let dropdown = document.createElement('div');
+  dropdown.style.cssText='position:absolute;background:#fff;border:1px solid var(--border);border-radius:var(--r);box-shadow:var(--shadow-md);z-index:9999;max-height:200px;overflow-y:auto;display:none;min-width:280px;top:100%;left:0';
+  input.parentElement.style.position='relative';
+  input.parentElement.appendChild(dropdown);
+  input.addEventListener('input', ()=>{
+    const q=input.value.toLowerCase().trim();
+    if(!q){dropdown.style.display='none';return;}
+    const matches=(state.clienti||[]).filter(c=>
+      c.nome.toLowerCase().includes(q)||
+      (c.email||'').toLowerCase().includes(q)||
+      (c.ref||'').toLowerCase().includes(q)
+    ).slice(0,6);
+    if(!matches.length){dropdown.style.display='none';return;}
+    dropdown.innerHTML=matches.map(c=>`
+      <div class="ac-item" onmousedown="event.preventDefault()" onclick="(function(){document.getElementById('${inputId}').value='${(c.email||c.nome).replace(/'/g,"\\'")}';document.getElementById('${inputId}')._acDrop.style.display='none'})()">
+        <div style="font-weight:600;font-size:13px">${c.nome}</div>
+        <div style="font-size:11px;color:var(--text-2)">${c.email||'(nessuna email)'}${c.citta?' · '+c.citta:''}</div>
+      </div>`).join('');
+    input._acDrop=dropdown;
+    dropdown.style.display='block';
+  });
+  input.addEventListener('blur',()=>setTimeout(()=>dropdown.style.display='none',200));
+}
+
 async function generaEmailModal(){
   const subj=document.getElementById('email-subject').value||'presentazione';
   const to=document.getElementById('email-to').value||'cliente';
-  const btn=document.querySelector('.fmt-btn [class*="wand"]')?.closest('.fmt-btn');
   try{
     const resp=await fetch('/api/gmail/genera',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:subj,cliente:to,prodotto:'semola rimacinata',note:''})});
     const data=await resp.json();
