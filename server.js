@@ -441,16 +441,18 @@ app.get('/api/gmail/status', (req, res) => {
 
 app.get('/api/gmail/inbox', async (req, res) => {
   if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  const folder = req.query.folder || 'inbox';
+  const labelIds = folder === 'sent' ? ['SENT'] : ['INBOX'];
   try {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const list = await gmail.users.messages.list({ userId: 'me', maxResults: 20, labelIds: ['INBOX'] });
+    const list = await gmail.users.messages.list({ userId: 'me', maxResults: 20, labelIds });
     if (!list.data.messages) return res.json({ emails: [] });
     const emails = await Promise.all(list.data.messages.slice(0, 15).map(async m => {
-      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'Subject', 'Date'] });
+      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Date'] });
       const headers = msg.data.payload.headers;
       const get = name => (headers.find(h => h.name === name) || {}).value || '';
-      return { id: m.id, from: get('From'), subject: get('Subject'), date: get('Date'), snippet: msg.data.snippet, unread: msg.data.labelIds?.includes('UNREAD') };
+      return { id: m.id, from: get('From'), to: get('To'), subject: get('Subject'), date: get('Date'), snippet: msg.data.snippet, unread: msg.data.labelIds?.includes('UNREAD') };
     }));
     res.json({ emails });
   } catch (err) { res.json({ error: err.message }); }
