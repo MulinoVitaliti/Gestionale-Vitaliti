@@ -1710,35 +1710,23 @@ function populateCatSelect(selId, currentVal=''){
   const cats = loadCat();
   const sel = document.getElementById(selId); if(!sel)return;
   sel.innerHTML = cats.map(c=>`<option value="${c}" ${c===currentVal?'selected':''}>${c}</option>`).join('');
-  sel.innerHTML += `<option value="__altro__">Altro</option>`;
-  if(currentVal && !cats.includes(currentVal) && currentVal!=='__altro__'){
+  sel.innerHTML += `<option value="__gestisci__">Gestisci categorie...</option>`;
+  if(currentVal && !cats.includes(currentVal) && currentVal!=='__gestisci__'){
     sel.innerHTML = `<option value="${currentVal}" selected>${currentVal}</option>` + sel.innerHTML;
   }
 }
 
 function onCatChange(selId, customId){
   const sel = document.getElementById(selId);
-  const custom = document.getElementById(customId);
-  if(sel.value === '__altro__'){
-    custom.style.display='block';
-    custom.focus();
-  } else {
-    if(custom) custom.style.display='none';
+  if(sel.value === '__gestisci__'){
+    sel.value = sel.options[0].value;
+    apriGestisciCategorie();
   }
 }
 
 function getCatValue(selId, customId){
   const sel = document.getElementById(selId);
-  const custom = document.getElementById(customId);
-  if(sel.value === '__altro__' || sel.value === '__gestisci__'){
-    const val = (custom?.value||'').trim();
-    if(val){
-      // Salva la nuova categoria
-      const cats = loadCat();
-      if(!cats.includes(val)){ cats.push(val); saveCat(cats); }
-    }
-    return val || 'Altro';
-  }
+  if(sel.value === '__gestisci__') return sel.options[0].value;
   return sel.value;
 }
 
