@@ -1158,17 +1158,21 @@ async function checkGmailStatus(){
     }
   }catch(e){}
 }
+let emailFolder = 'inbox';
 function caricaEmail(){
   const list=document.getElementById('email-list'); if(!list)return;
   list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-loader"></i><p>Caricamento...</p></div>';
-  fetch('/api/gmail/inbox').then(r=>r.json()).then(data=>{
+  fetch('/api/gmail/inbox?folder='+emailFolder).then(r=>r.json()).then(data=>{
     if(data.error){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-alert-circle"></i><p>${data.error}</p></div>`;return;}
     if(!data.emails||!data.emails.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-inbox"></i><p>Nessuna email</p></div>';return;}
     const unread=data.emails.filter(e=>e.unread).length;
-    const cnt=document.getElementById('inbox-count'); if(cnt){cnt.textContent=unread;cnt.style.display=unread?'':'none';}
+    const cnt=document.getElementById('inbox-count'); if(cnt){cnt.textContent=unread;cnt.style.display=unread&&emailFolder==='inbox'?'':'none';}
     list.innerHTML=data.emails.map((e,i)=>`
-      <div class="email-item ${e.unread?'unread':''}" onclick="mostraEmail(${i})" id="eitem-${i}" data-idx="${i}">
-        <div class="email-item-top"><div class="email-item-from">${(e.from||'').replace(/<.*>/,'').trim()}</div><div class="email-item-date">${new Date(e.date||Date.now()).toLocaleDateString('it-IT')}</div></div>
+      <div class="email-item ${e.unread?'unread':''}" onclick="mostraEmail(${i})" id="eitem-${i}">
+        <div class="email-item-top">
+          <div class="email-item-from">${emailFolder==='sent'?(e.to||'').replace(/<.*>/,'').trim():(e.from||'').replace(/<.*>/,'').trim()}</div>
+          <div class="email-item-date">${new Date(e.date||Date.now()).toLocaleDateString('it-IT')}</div>
+        </div>
         <div class="email-item-subject">${e.subject||'(nessun oggetto)'}</div>
         <div class="email-item-preview">${e.snippet||''}</div>
       </div>`).join('');
@@ -1190,6 +1194,7 @@ function mostraEmail(idx){
 }
 function switchEmailNav(tab,el){
   document.querySelectorAll('.email-nav-item').forEach(t=>t.classList.remove('active')); el.classList.add('active');
+  emailFolder = tab==='inbox' ? 'inbox' : 'sent';
   document.getElementById('email-list-title').textContent=tab==='inbox'?'In arrivo':'Inviati';
   caricaEmail();
 }
