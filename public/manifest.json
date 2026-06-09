@@ -1,0 +1,24 @@
+{
+  "name": "Mulino Vitaliti — Gestionale",
+  "short_name": "Vitaliti",
+  "description": "Gestionale interno Mulino Vitaliti Antonio dal 1930",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#F8F9FA",
+  "theme_color": "#A8412A",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/logo-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/logo-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
