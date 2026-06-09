@@ -934,12 +934,16 @@ function filterOrdini(f,el){state.ordiniFilter=f;document.querySelectorAll('.tab
 
 // ── CONTABILITÀ ───────────────────────────────────────────────────────────
 function renderContab(){
-  const sorted=[...state.movimenti].sort((a,b)=>b.data.localeCompare(a.data));
-  const movs=sorted.filter(m=>state.contabFilter==='tutti'||m.tipo===state.contabFilter);
+  const sorted=[...state.movimenti].sort((a,b)=>(a.data||'').localeCompare(b.data||''));
+  const movs=(state.contabFilter==='tutti'?[...state.movimenti]:[...state.movimenti].filter(m=>m.tipo===state.contabFilter)).sort((a,b)=>b.data.localeCompare(a.data));
   let run=0; const saldoMap={};
-  [...state.movimenti].sort((a,b)=>a.data.localeCompare(b.data)).forEach(m=>{run+=m.tipo==='entrata'?m.importo:-m.importo;saldoMap[m.id]=run;});
-  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
-  const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+m.importo,0);
+  sorted.forEach(m=>{
+    const imp=parseFloat(m.importo)||0;
+    run+=m.tipo==='entrata'?imp:-imp;
+    saldoMap[m.id]=run;
+  });
+  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-entrate').textContent=fmt(totE);
   document.getElementById('c-uscite').textContent=fmt(totU);
   const sn=totE-totU;
@@ -955,8 +959,8 @@ function renderContab(){
 }
 function renderBarCharts(){
   const eMap={}, uMap={};
-  state.movimenti.filter(m=>m.tipo==='entrata').forEach(m=>{eMap[m.cat]=(eMap[m.cat]||0)+m.importo;});
-  state.movimenti.filter(m=>m.tipo==='uscita').forEach(m=>{uMap[m.cat]=(uMap[m.cat]||0)+m.importo;});
+  state.movimenti.filter(m=>m.tipo==='entrata').forEach(m=>{eMap[m.cat]=(eMap[m.cat]||0)+(parseFloat(m.importo)||0);});
+  state.movimenti.filter(m=>m.tipo==='uscita').forEach(m=>{uMap[m.cat]=(uMap[m.cat]||0)+(parseFloat(m.importo)||0);});
   function draw(data,id,cls){
     const c=document.getElementById(id); if(!c)return;
     const total=Object.values(data).reduce((s,v)=>s+v,0);
@@ -979,9 +983,9 @@ function renderDash(){
   document.getElementById('dash-date').textContent=today.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('m-clienti').textContent=state.clienti.length;
   document.getElementById('m-ordini').textContent=state.ordini.filter(o=>o.stato==='aperto').length;
-  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+m.importo,0);
+  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('m-entrate').textContent=fmt(totE);
-  const sn=state.movimenti.reduce((s,m)=>s+(m.tipo==='entrata'?m.importo:-m.importo),0);
+  const sn=state.movimenti.reduce((s,m)=>s+(m.tipo==='entrata'?(parseFloat(m.importo)||0):-(parseFloat(m.importo)||0)),0);
   const se=document.getElementById('m-saldo'); se.textContent=fmt(sn); se.className='metric-value '+(sn>=0?'green':'red');
   const fMap={}; state.fasi.forEach(f=>fMap[f.id]=f.label);
   const pl=document.getElementById('dash-pipeline');
