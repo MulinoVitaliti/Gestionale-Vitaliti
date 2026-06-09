@@ -70,6 +70,7 @@ async function initDB() {
         importo NUMERIC NOT NULL,
         cat TEXT,
         descrizione TEXT,
+        fatturazione TEXT DEFAULT 'non_applicabile',
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -329,17 +330,20 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione } = req.body;
   try {
-    const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione) VALUES ($1,$2,$3,$4,$5) RETURNING *', [data, tipo, importo, cat, descrizione]);
+    const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile']);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione } = req.body;
   try {
-    await pool.query('UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5 WHERE id=$6', [data, tipo, importo, cat, descrizione, req.params.id]);
+    await pool.query(
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6 WHERE id=$7',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', req.params.id]
+    );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
