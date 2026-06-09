@@ -420,12 +420,17 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Totale uscite</div><div class="metric-value red" id="c-uscite">€0</div></div>
         <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="c-saldo">€0</div></div>
       </div>
+      <div class="metrics-grid metrics-3" style="margin-bottom:18px">
+        <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
+        <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Da fatturare</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">ancora senza fattura</div></div>
+        <div class="metric-card" style="border-top-color:var(--blue)"><div class="metric-label"><i class="ti ti-refresh"></i>Acconti</div><div class="metric-value" style="color:var(--blue)" id="c-acconti">€0</div><div class="metric-sub">fattura parziale</div></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="stat-entrate"></div></div>
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="stat-uscite"></div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
     </div>
     <div class="page" id="page-email">
       <div class="email-layout">
@@ -585,9 +590,10 @@ tbody tr:hover{background:var(--surface-2)}
 <div class="modal-overlay" id="modal-movimento">
   <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
-    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
+    <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="acconto">🔄 Acconto</option><option value="non_applicabile">— Non applicabile</option></select></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-movimento')">Annulla</button><button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
@@ -595,9 +601,10 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal"><div class="modal-header"><div class="modal-title">Modifica movimento</div><button class="btn btn-icon" onclick="closeModal('modal-edit-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <input type="hidden" id="edit-mov-id">
-    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
+    <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="acconto">🔄 Acconto</option><option value="non_applicabile">— Non applicabile</option></select></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
@@ -1135,6 +1142,14 @@ function renderContab(){
   document.getElementById('c-uscite').textContent=fmt(totU);
   const sn=totE-totU;
   const cse=document.getElementById('c-saldo'); cse.textContent=fmt(sn); cse.className='metric-value '+(sn>=0?'green':'red');
+  // Fatturazione
+  const entrate=state.movimenti.filter(m=>m.tipo==='entrata');
+  const totFatt=entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const totAcc=entrate.filter(m=>m.fatturazione==='acconto').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  document.getElementById('c-fatturato').textContent=fmt(totFatt);
+  document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
+  document.getElementById('c-acconti').textContent=fmt(totAcc);
   renderBarCharts();
   const tb=document.getElementById('tbl-contab'); tb.innerHTML='';
   if(!movs.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun movimento</div></td></tr>';return;}
@@ -1143,7 +1158,7 @@ function renderContab(){
     const dataFmt = m.data ? new Date(m.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const descFmt = m.descrizione || m.desc || '—';
     const saldoProg = saldoMap[m.id] !== undefined ? fmt(saldoMap[m.id]) : '—';
-    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1268,7 +1283,8 @@ async function aggiornaOrdine(){
 async function salvaMovimento(){
   const d=document.getElementById('mov-data').value,descrizione=document.getElementById('mov-desc').value.trim(),imp=parseFloat(document.getElementById('mov-importo').value)||0;
   if(!d||!descrizione||!imp)return alert('Compila data, descrizione e importo');
-  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:getCatValue('mov-cat','mov-cat-custom'),descrizione});
+  const fatturazione = document.getElementById('mov-tipo').value==='entrata' ? document.getElementById('mov-fatturazione').value : 'non_applicabile';
+  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:getCatValue('mov-cat','mov-cat-custom'),descrizione,fatturazione});
   if(!data.error) state.movimenti.unshift(data);
   closeModal('modal-movimento'); renderContab(); renderDash(); showSave();
 }
@@ -1279,13 +1295,16 @@ function editMovimento(id){
   document.getElementById('edit-mov-importo').value=m.importo;
   document.getElementById('edit-mov-desc').value=m.descrizione;
   const ts=document.getElementById('edit-mov-tipo'); for(let o of ts.options) if(o.value===m.tipo)o.selected=true;
+  toggleFatturazione('edit-mov-fatturazione-row', m.tipo);
+  const fs=document.getElementById('edit-mov-fatturazione'); for(let o of fs.options) if(o.value===(m.fatturazione||'non_applicabile'))o.selected=true;
   populateCatSelect('edit-mov-cat', m.cat||'');
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
   openModal('modal-edit-movimento');
 }
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value};
+  const fatturazione = document.getElementById('edit-mov-tipo').value==='entrata' ? document.getElementById('edit-mov-fatturazione').value : 'non_applicabile';
+  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
@@ -1695,7 +1714,17 @@ function sendChat(){
     }).finally(()=>{document.getElementById('send-btn').disabled=false;msgs.scrollTop=msgs.scrollHeight;});
 }
 
-// ── CATEGORIE DINAMICHE ───────────────────────────────────────────────────
+function toggleFatturazione(rowId, tipo){
+  const row = document.getElementById(rowId);
+  if(row) row.style.display = tipo==='entrata' ? 'block' : 'none';
+}
+
+const FATT_BADGE = {
+  fatturato: '<span class="badge" style="background:var(--green-light);color:var(--green)">✅ Fatturato</span>',
+  da_fatturare: '<span class="badge" style="background:var(--orange-light);color:var(--orange)">⏳ Da fatturare</span>',
+  acconto: '<span class="badge" style="background:var(--blue-light);color:var(--blue)">🔄 Acconto</span>',
+  non_applicabile: '',
+};
 const CAT_DEFAULT = ['Vendita prodotti','Bonifico cliente','Versamento contante','Fornitore','Utenze','Mutuo','Tasse/imposte','Commissioni bancarie','Assegno'];
 
 function loadCat(){
