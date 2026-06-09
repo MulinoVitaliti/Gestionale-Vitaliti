@@ -73,6 +73,19 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS attivita (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL DEFAULT 'chiamata',
+        titolo TEXT NOT NULL,
+        note TEXT,
+        data_scadenza DATE,
+        collegata_tipo TEXT,
+        collegata_id INTEGER,
+        collegata_nome TEXT,
+        completata BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS utenti (
         id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
@@ -316,17 +329,17 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, desc } = req.body;
+  const { data, tipo, importo, cat, descrizione } = req.body;
   try {
-    const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione) VALUES ($1,$2,$3,$4,$5) RETURNING *', [data, tipo, importo, cat, desc]);
+    const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione) VALUES ($1,$2,$3,$4,$5) RETURNING *', [data, tipo, importo, cat, descrizione]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, desc } = req.body;
+  const { data, tipo, importo, cat, descrizione } = req.body;
   try {
-    await pool.query('UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5 WHERE id=$6', [data, tipo, importo, cat, desc, req.params.id]);
+    await pool.query('UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5 WHERE id=$6', [data, tipo, importo, cat, descrizione, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -334,6 +347,43 @@ app.put('/api/movimenti/:id', async (req, res) => {
 app.delete('/api/movimenti/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM movimenti WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── ATTIVITÀ API ──────────────────────────────────────────────────────────
+app.get('/api/attivita', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM attivita ORDER BY data_scadenza ASC NULLS LAST, created_at DESC');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/attivita', async (req, res) => {
+  const { tipo, titolo, note, data_scadenza, collegata_tipo, collegata_id, collegata_nome, completata } = req.body;
+  try {
+    const r = await pool.query(
+      'INSERT INTO attivita (tipo,titolo,note,data_scadenza,collegata_tipo,collegata_id,collegata_nome,completata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [tipo, titolo, note, data_scadenza||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, completata||false]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/attivita/:id', async (req, res) => {
+  const { tipo, titolo, note, data_scadenza, collegata_tipo, collegata_id, collegata_nome, completata } = req.body;
+  try {
+    await pool.query(
+      'UPDATE attivita SET tipo=$1,titolo=$2,note=$3,data_scadenza=$4,collegata_tipo=$5,collegata_id=$6,collegata_nome=$7,completata=$8 WHERE id=$9',
+      [tipo, titolo, note, data_scadenza||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, completata||false, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/attivita/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM attivita WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
