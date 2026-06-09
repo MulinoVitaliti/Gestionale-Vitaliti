@@ -116,7 +116,10 @@ tbody tr:hover{background:var(--surface-2)}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
 .add-col-btn{width:235px;flex-shrink:0;border:2px dashed var(--border);border-radius:var(--rl);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;background:transparent;height:56px;font-family:var(--font)}
 .add-col-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
-.email-layout{display:flex;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-sm);height:calc(100vh - 130px);overflow:hidden}
+.fmt-btn{padding:4px 7px;border:1px solid transparent;border-radius:4px;background:transparent;cursor:pointer;font-size:13px;color:var(--text);font-family:var(--font);transition:all .15s;display:inline-flex;align-items:center}
+.fmt-btn:hover{background:var(--border);border-color:var(--border-strong)}
+#email-body-editor:empty:before{content:attr(placeholder);color:var(--text-3);pointer-events:none}
+.email-layout{display:flex;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-sm);height:calc(100vh - 90px);overflow:hidden}
 .email-sidebar{width:190px;flex-shrink:0;border-right:1px solid var(--border);padding:10px 7px;background:var(--surface-2)}
 .email-sidebar-btn{width:100%;padding:8px 12px;border-radius:var(--r);background:var(--brand);border:none;color:#fff;font-size:13px;font-weight:600;font-family:var(--font);cursor:pointer;display:flex;align-items:center;gap:6px;margin-bottom:12px;justify-content:center}
 .email-nav-item{display:flex;align-items:center;gap:7px;padding:7px 9px;border-radius:var(--r);cursor:pointer;font-size:12px;font-weight:500;color:var(--text-2);transition:all .15s}
@@ -381,23 +384,36 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
     </div>
     <div class="page" id="page-email">
-      <div class="page-header"><div class="page-title">Email</div></div>
       <div class="email-layout">
+        <!-- Sidebar sinistra -->
         <div class="email-sidebar">
-          <button class="email-sidebar-btn" onclick="openModal('modal-email')"><i class="ti ti-pencil"></i>Nuova email</button>
-          <div class="email-nav-item active" onclick="switchEmailNav('inbox',this)"><i class="ti ti-inbox"></i>In arrivo<span class="email-count" id="inbox-count" style="display:none">0</span></div>
-          <div class="email-nav-item" onclick="switchEmailNav('inviati',this)"><i class="ti ti-send"></i>Inviati</div>
+          <button class="email-sidebar-btn" onclick="apriComposer()"><i class="ti ti-pencil"></i>Nuova email</button>
+          <div class="email-nav-item active" id="enav-inbox" onclick="switchEmailNav('inbox',this)"><i class="ti ti-inbox"></i>In arrivo<span class="email-count" id="inbox-count" style="display:none">0</span></div>
+          <div class="email-nav-item" id="enav-sent" onclick="switchEmailNav('sent',this)"><i class="ti ti-send"></i>Inviati</div>
+          <div class="email-nav-item" id="enav-drafts" onclick="switchEmailNav('drafts',this)"><i class="ti ti-file-text"></i>Bozze<span class="email-count" id="drafts-count" style="display:none">0</span></div>
+          <div class="email-nav-item" id="enav-spam" onclick="switchEmailNav('spam',this)"><i class="ti ti-alert-circle"></i>Spam</div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
+            <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Template</div>
+            <div class="email-nav-item" onclick="apriGestisciTemplate()"><i class="ti ti-template"></i>I miei template</div>
+          </div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
             <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Account</div>
             <div id="gmail-status-sidebar" style="padding:6px 9px;font-size:12px;color:var(--text-2)">Non connesso</div>
             <div style="padding:0 9px"><button class="btn btn-sm btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="window.location.href='/auth/login'" id="btn-connect-gmail"><i class="ti ti-brand-google"></i>Connetti Gmail</button></div>
           </div>
         </div>
+        <!-- Lista email -->
         <div class="email-list-panel">
-          <div class="email-list-header"><span id="email-list-title">In arrivo</span><button class="btn btn-sm" onclick="caricaEmail()"><i class="ti ti-refresh"></i></button></div>
+          <div class="email-list-header">
+            <span id="email-list-title">In arrivo</span>
+            <button class="btn btn-sm" onclick="caricaEmail()"><i class="ti ti-refresh"></i></button>
+          </div>
           <div id="email-list"><div class="empty-state" style="padding:28px"><i class="ti ti-mail"></i><p>Connetti Gmail per vedere le email</p></div></div>
         </div>
-        <div class="email-detail" id="email-detail"><div class="email-empty"><i class="ti ti-mail-opened"></i><p>Seleziona un'email per leggerla</p></div></div>
+        <!-- Dettaglio email -->
+        <div class="email-detail" id="email-detail">
+          <div class="email-empty"><i class="ti ti-mail-opened"></i><p>Seleziona un'email per leggerla</p></div>
+        </div>
       </div>
     </div>
     <div class="page" id="page-automazioni">
@@ -541,14 +557,110 @@ tbody tr:hover{background:var(--surface-2)}
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
-<div class="modal-overlay" id="modal-email">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Nuova email</div><button class="btn btn-icon" onclick="closeModal('modal-email')"><i class="ti ti-x"></i></button></div>
-  <div class="modal-body">
-    <div class="form-group"><label class="form-label">Destinatario *</label><input type="text" id="email-to" placeholder="email@cliente.it"></div>
-    <div class="form-group"><label class="form-label">Oggetto *</label><input type="text" id="email-subject"></div>
-    <div class="form-group"><label class="form-label">Messaggio *</label><textarea id="email-body" style="min-height:140px"></textarea></div>
-    <div style="display:flex;gap:8px;justify-content:space-between"><button class="btn" onclick="generaEmailModal()"><i class="ti ti-wand"></i>Genera con AI</button><div style="display:flex;gap:8px"><button class="btn" onclick="closeModal('modal-email')">Annulla</button><button class="btn btn-primary" onclick="inviaEmail()"><i class="ti ti-send"></i>Invia</button></div></div>
-  </div></div>
+<!-- Composer email -->
+<div class="modal-overlay" id="modal-email" style="align-items:flex-end;justify-content:flex-end;padding:20px">
+  <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;margin:0;border-radius:var(--rl)">
+    <div class="modal-header" style="background:var(--brand);color:#fff;border-radius:var(--rl) var(--rl) 0 0">
+      <div class="modal-title" style="color:#fff" id="composer-title">Nuova email</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-icon" onclick="salvaBozza()" title="Salva bozza" style="color:#fff;border-color:rgba(255,255,255,0.3)"><i class="ti ti-device-floppy"></i></button>
+        <button class="btn btn-icon" onclick="closeModal('modal-email')" style="color:#fff;border-color:rgba(255,255,255,0.3)"><i class="ti ti-x"></i></button>
+      </div>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <input type="hidden" id="composer-draft-id">
+      <!-- Campi destinatario -->
+      <div style="border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--text-2);width:30px;flex-shrink:0">A</span>
+        <input type="text" id="email-to" placeholder="destinatario@esempio.it" style="flex:1;border:none;outline:none;font-size:13px;font-family:var(--font)">
+      </div>
+      <div style="border-bottom:1px solid var(--border);padding:10px 16px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:12px;color:var(--text-2);width:30px;flex-shrink:0">Ogg.</span>
+        <input type="text" id="email-subject" placeholder="Oggetto" style="flex:1;border:none;outline:none;font-size:13px;font-family:var(--font)">
+      </div>
+      <!-- Toolbar formattazione -->
+      <div style="border-bottom:1px solid var(--border);padding:6px 12px;display:flex;align-items:center;gap:2px;flex-wrap:wrap;background:var(--surface-2)">
+        <select id="font-size-sel" onchange="execFmt('fontSize',this.value)" style="padding:3px 6px;border:1px solid var(--border);border-radius:4px;font-size:12px;font-family:var(--font);margin-right:4px">
+          <option value="2">Piccolo</option>
+          <option value="3" selected>Normale</option>
+          <option value="4">Grande</option>
+          <option value="5">Molto grande</option>
+        </select>
+        <button class="fmt-btn" onclick="execFmt('bold')" title="Grassetto"><b>B</b></button>
+        <button class="fmt-btn" onclick="execFmt('italic')" title="Corsivo"><i>I</i></button>
+        <button class="fmt-btn" onclick="execFmt('underline')" title="Sottolineato"><u>U</u></button>
+        <div style="width:1px;height:18px;background:var(--border);margin:0 4px"></div>
+        <button class="fmt-btn" onclick="execFmt('justifyLeft')" title="Allinea sinistra"><i class="ti ti-align-left"></i></button>
+        <button class="fmt-btn" onclick="execFmt('justifyCenter')" title="Centra"><i class="ti ti-align-center"></i></button>
+        <button class="fmt-btn" onclick="execFmt('justifyRight')" title="Allinea destra"><i class="ti ti-align-right"></i></button>
+        <div style="width:1px;height:18px;background:var(--border);margin:0 4px"></div>
+        <button class="fmt-btn" onclick="execFmt('insertUnorderedList')" title="Elenco puntato"><i class="ti ti-list"></i></button>
+        <button class="fmt-btn" onclick="execFmt('insertOrderedList')" title="Elenco numerato"><i class="ti ti-list-numbers"></i></button>
+        <div style="width:1px;height:18px;background:var(--border);margin:0 4px"></div>
+        <label class="fmt-btn" title="Colore testo" style="position:relative;cursor:pointer">
+          <i class="ti ti-letter-a" style="color:var(--brand)"></i>
+          <input type="color" id="color-picker" onchange="execFmt('foreColor',this.value)" style="position:absolute;opacity:0;width:0;height:0">
+        </label>
+        <div style="width:1px;height:18px;background:var(--border);margin:0 4px"></div>
+        <button class="fmt-btn" onclick="apriTemplateSelector()" title="Usa template"><i class="ti ti-template"></i></button>
+        <button class="fmt-btn" onclick="generaEmailModal()" title="Genera con AI"><i class="ti ti-wand" style="color:var(--gold)"></i></button>
+      </div>
+      <!-- Body editor -->
+      <div id="email-body-editor" contenteditable="true" style="min-height:200px;max-height:300px;overflow-y:auto;padding:14px 16px;font-size:13px;font-family:var(--font);line-height:1.7;outline:none" placeholder="Scrivi il messaggio..."></div>
+      <!-- Allegati -->
+      <div style="border-top:1px solid var(--border);padding:8px 16px;background:var(--surface-2)">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <label class="btn btn-sm" style="cursor:pointer"><i class="ti ti-paperclip"></i>Allega file<input type="file" id="email-attachments" multiple style="display:none" onchange="mostraAllegati()"></label>
+          <div id="allegati-list" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+        </div>
+      </div>
+      <!-- Footer -->
+      <div style="border-top:1px solid var(--border);padding:10px 16px;display:flex;justify-content:space-between;align-items:center">
+        <div style="font-size:11px;color:var(--text-3)" id="composer-status"></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="closeModal('modal-email')">Annulla</button>
+          <button class="btn btn-primary" onclick="inviaEmail()" id="btn-invia"><i class="ti ti-send"></i>Invia</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Template manager -->
+<div class="modal-overlay" id="modal-template">
+  <div class="modal" style="width:600px">
+    <div class="modal-header"><div class="modal-title">I miei template email</div><button class="btn btn-icon" onclick="closeModal('modal-template')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div style="display:flex;gap:8px;margin-bottom:14px">
+        <button class="btn btn-primary" onclick="nuovoTemplate()"><i class="ti ti-plus"></i>Nuovo template</button>
+      </div>
+      <div id="template-list-modal" style="display:grid;gap:8px"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Editor template -->
+<div class="modal-overlay" id="modal-template-edit">
+  <div class="modal" style="width:620px">
+    <div class="modal-header"><div class="modal-title" id="template-edit-title">Nuovo template</div><button class="btn btn-icon" onclick="closeModal('modal-template-edit')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="tpl-id">
+      <div class="form-group"><label class="form-label">Nome template *</label><input type="text" id="tpl-nome" placeholder="Es. Presentazione Mulino Vitaliti"></div>
+      <div class="form-group"><label class="form-label">Oggetto email</label><input type="text" id="tpl-oggetto" placeholder="Es. Presentazione Mulino Vitaliti Antonio"></div>
+      <div class="form-group"><label class="form-label">Testo email</label><textarea id="tpl-body" style="min-height:200px;line-height:1.7" placeholder="Scrivi il testo del template..."></textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-template-edit')">Annulla</button><button class="btn btn-primary" onclick="salvaTemplate()"><i class="ti ti-check"></i>Salva template</button></div>
+    </div>
+  </div>
+</div>
+
+<!-- Selettore template nel composer -->
+<div class="modal-overlay" id="modal-template-sel">
+  <div class="modal" style="width:480px">
+    <div class="modal-header"><div class="modal-title">Scegli template</div><button class="btn btn-icon" onclick="closeModal('modal-template-sel')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div id="template-sel-list" style="display:grid;gap:8px"></div>
+    </div>
+  </div>
 </div>
 <div class="modal-overlay" id="modal-utente">
   <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi utente</div><button class="btn btn-icon" onclick="closeModal('modal-utente')"><i class="ti ti-x"></i></button></div>
@@ -689,6 +801,8 @@ async function loadAllData() {
     state.movimenti = movimenti.error ? [] : movimenti;
     state.attivita = attivita.error ? [] : attivita;
     aggiornaAttBadge();
+    await loadTemplates();
+    aggiornaContatoreBozze();
   } catch(e){ console.warn('API non disponibile, uso dati locali'); }
 }
 
@@ -1156,17 +1270,138 @@ async function checkGmailStatus(){
       if(btn) btn.style.display='none';
       caricaEmail();
     }
+    await loadTemplates();
+    aggiornaContatoreBozze();
   }catch(e){}
 }
+// ── EMAIL ─────────────────────────────────────────────────────────────────
 let emailFolder = 'inbox';
+const FOLDER_LABELS = {inbox:'In arrivo',sent:'Inviati',drafts:'Bozze',spam:'Spam'};
+const FOLDER_MAP = {inbox:'INBOX',sent:'SENT',drafts:'DRAFT',spam:'SPAM'};
+
+function apriComposer(opts={}){
+  document.getElementById('composer-draft-id').value = opts.draftId||'';
+  document.getElementById('email-to').value = opts.to||'';
+  document.getElementById('email-subject').value = opts.subject||'';
+  document.getElementById('email-body-editor').innerHTML = opts.body||'';
+  document.getElementById('allegati-list').innerHTML='';
+  document.getElementById('composer-status').textContent='';
+  document.getElementById('composer-title').textContent = opts.title||'Nuova email';
+  openModal('modal-email');
+  setTimeout(()=>document.getElementById('email-to').focus(),100);
+}
+
+function execFmt(cmd, val=null){
+  document.getElementById('email-body-editor').focus();
+  document.execCommand(cmd, false, val);
+}
+
+function mostraAllegati(){
+  const files=document.getElementById('email-attachments').files;
+  const list=document.getElementById('allegati-list'); list.innerHTML='';
+  Array.from(files).forEach(f=>{
+    const tag=document.createElement('span');
+    tag.style.cssText='display:inline-flex;align-items:center;gap:4px;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:12px';
+    tag.innerHTML=`<i class="ti ti-paperclip" style="font-size:11px"></i>${f.name} <span style="color:var(--text-3)">(${(f.size/1024).toFixed(0)}KB)</span>`;
+    list.appendChild(tag);
+  });
+}
+
+async function inviaEmail(){
+  const to=document.getElementById('email-to').value.trim();
+  const subject=document.getElementById('email-subject').value.trim();
+  const body=document.getElementById('email-body-editor').innerHTML.trim();
+  if(!to||!subject||!body){alert('Compila destinatario, oggetto e messaggio');return;}
+  const btn=document.getElementById('btn-invia');
+  btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Invio...';
+  document.getElementById('composer-status').textContent='Invio in corso...';
+  try{
+    // Gestisci allegati
+    const files=document.getElementById('email-attachments').files;
+    let attachments=[];
+    if(files.length){
+      attachments = await Promise.all(Array.from(files).map(f=>new Promise((res,rej)=>{
+        const r=new FileReader(); r.onload=e=>res({name:f.name,type:f.type,data:e.target.result.split(',')[1]});
+        r.onerror=rej; r.readAsDataURL(f);
+      })));
+    }
+    const resp=await fetch('/api/gmail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,body,attachments,isHtml:true})});
+    const data=await resp.json();
+    if(data.success){
+      closeModal('modal-email');
+      document.getElementById('composer-status').textContent='';
+      // Elimina bozza se esisteva
+      const draftId=document.getElementById('composer-draft-id').value;
+      if(draftId) await eliminaBozzaDB(draftId);
+      showSave();
+    } else {
+      document.getElementById('composer-status').textContent='Errore: '+(data.error||'invio fallito');
+    }
+  }catch(e){document.getElementById('composer-status').textContent='Errore di connessione';}
+  btn.disabled=false; btn.innerHTML='<i class="ti ti-send"></i>Invia';
+}
+
+async function salvaBozza(){
+  const to=document.getElementById('email-to').value;
+  const subject=document.getElementById('email-subject').value;
+  const body=document.getElementById('email-body-editor').innerHTML;
+  const draftId=document.getElementById('composer-draft-id').value;
+  const bozza={to,subject,body,data:new Date().toISOString()};
+  if(draftId){
+    await api.put('/api/bozze/'+draftId, bozza);
+  } else {
+    const r=await api.post('/api/bozze', bozza);
+    if(r.id) document.getElementById('composer-draft-id').value=r.id;
+  }
+  document.getElementById('composer-status').textContent='Bozza salvata ✓';
+  setTimeout(()=>document.getElementById('composer-status').textContent='',2000);
+  aggiornaContatoreBozze();
+}
+
+async function eliminaBozzaDB(id){
+  await api.del('/api/bozze/'+id);
+  aggiornaContatoreBozze();
+}
+
+async function aggiornaContatoreBozze(){
+  try{
+    const r=await api.get('/api/bozze');
+    const cnt=document.getElementById('drafts-count');
+    if(cnt){cnt.textContent=r.length||0;cnt.style.display=r.length?'':'none';}
+  }catch(e){}
+}
+
+function switchEmailNav(tab,el){
+  document.querySelectorAll('.email-nav-item').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  emailFolder=tab;
+  document.getElementById('email-list-title').textContent=FOLDER_LABELS[tab]||tab;
+  document.getElementById('email-detail').innerHTML='<div class="email-empty"><i class="ti ti-mail-opened"></i><p>Seleziona un\'email per leggerla</p></div>';
+  caricaEmail();
+}
+
 function caricaEmail(){
   const list=document.getElementById('email-list'); if(!list)return;
   list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-loader"></i><p>Caricamento...</p></div>';
+  if(emailFolder==='drafts'){
+    api.get('/api/bozze').then(data=>{
+      if(!data.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-file-text"></i><p>Nessuna bozza</p></div>';return;}
+      list.innerHTML=data.map((b,i)=>`
+        <div class="email-item" onclick="apriComposer({draftId:${b.id},to:'${(b.to||'').replace(/'/g,"\\'")}',subject:'${(b.subject||'').replace(/'/g,"\\'")}',body:${JSON.stringify(b.body||'')},title:'Modifica bozza'})">
+          <div class="email-item-top"><div class="email-item-from" style="color:var(--text-2);font-style:italic">${b.to||'(nessun destinatario)'}</div><div class="email-item-date">${new Date(b.data||Date.now()).toLocaleDateString('it-IT')}</div></div>
+          <div class="email-item-subject">${b.subject||'(nessun oggetto)'}</div>
+          <div class="email-item-preview" style="color:var(--orange)">Bozza</div>
+        </div>`).join('');
+      window._emailCache=data;
+    });
+    return;
+  }
   fetch('/api/gmail/inbox?folder='+emailFolder).then(r=>r.json()).then(data=>{
     if(data.error){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-alert-circle"></i><p>${data.error}</p></div>`;return;}
-    if(!data.emails||!data.emails.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-inbox"></i><p>Nessuna email</p></div>';return;}
+    if(!data.emails||!data.emails.length){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-inbox"></i><p>Nessuna email</p></div>`;return;}
     const unread=data.emails.filter(e=>e.unread).length;
-    const cnt=document.getElementById('inbox-count'); if(cnt){cnt.textContent=unread;cnt.style.display=unread&&emailFolder==='inbox'?'':'none';}
+    const cnt=document.getElementById('inbox-count');
+    if(cnt){cnt.textContent=unread;cnt.style.display=unread&&emailFolder==='inbox'?'':'none';}
     list.innerHTML=data.emails.map((e,i)=>`
       <div class="email-item ${e.unread?'unread':''}" onclick="mostraEmail(${i})" id="eitem-${i}">
         <div class="email-item-top">
@@ -1179,42 +1414,128 @@ function caricaEmail(){
     window._emailCache=data.emails;
   }).catch(()=>{list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-wifi-off"></i><p>Errore caricamento</p></div>';});
 }
+
 function mostraEmail(idx){
   document.querySelectorAll('.email-item').forEach(el=>el.classList.remove('active'));
-  const el=document.getElementById('eitem-'+idx); if(el) el.classList.add('active');
+  const el=document.getElementById('eitem-'+idx); if(el)el.classList.add('active');
   const e=(window._emailCache||[])[idx]; if(!e)return;
+  const fromField=emailFolder==='sent'?`<strong>A:</strong> ${e.to||''}`:`<strong>Da:</strong> ${e.from||''}`;
   document.getElementById('email-detail').innerHTML=`
     <div style="border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:14px">
-      <div style="font-size:16px;font-weight:700;margin-bottom:8px">${e.subject||'(nessun oggetto)'}</div>
-      <div style="font-size:12px;color:var(--text-2);margin-bottom:2px"><strong>Da:</strong> ${e.from||''}</div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:10px">${e.subject||'(nessun oggetto)'}</div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:3px">${fromField}</div>
       <div style="font-size:12px;color:var(--text-2)"><strong>Data:</strong> ${new Date(e.date||Date.now()).toLocaleString('it-IT')}</div>
     </div>
-    <div style="font-size:13px;line-height:1.7;white-space:pre-wrap">${e.snippet||''}</div>
-    <div style="margin-top:14px"><button class="btn btn-sm" onclick="document.getElementById('email-to').value='${(e.from||'').replace(/'/g,'')}';openModal('modal-email')"><i class="ti ti-arrow-back-up"></i>Rispondi</button></div>`;
+    <div style="font-size:13px;line-height:1.8;white-space:pre-wrap;flex:1">${e.snippet||''}</div>
+    <div style="margin-top:16px;display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--border)">
+      <button class="btn btn-sm btn-primary" onclick="apriComposer({to:'${(e.from||'').replace(/'/g,"\\'")}',subject:'Re: ${(e.subject||'').replace(/'/g,"\\'")}',title:'Rispondi'})"><i class="ti ti-arrow-back-up"></i>Rispondi</button>
+      <button class="btn btn-sm" onclick="apriComposer({to:'',subject:'Fwd: ${(e.subject||'').replace(/'/g,"\\'")}',body:'<br><br>---------- Messaggio inoltrato ----------<br>${(e.snippet||'').replace(/'/g,"\\'")}',title:'Inoltra'})"><i class="ti ti-arrow-forward-up"></i>Inoltra</button>
+    </div>`;
 }
-function switchEmailNav(tab,el){
-  document.querySelectorAll('.email-nav-item').forEach(t=>t.classList.remove('active')); el.classList.add('active');
-  emailFolder = tab==='inbox' ? 'inbox' : 'sent';
-  document.getElementById('email-list-title').textContent=tab==='inbox'?'In arrivo':'Inviati';
-  caricaEmail();
+
+// ── TEMPLATE ──────────────────────────────────────────────────────────────
+let templates = [];
+
+async function loadTemplates(){
+  try{ const r=await api.get('/api/template'); templates=r.error?[]:r; }catch(e){templates=[];}
 }
-function inviaEmail(){
-  const to=document.getElementById('email-to').value.trim(),subject=document.getElementById('email-subject').value.trim(),body=document.getElementById('email-body').value.trim();
-  if(!to||!subject||!body){alert('Compila tutti i campi');return;}
-  const btn=document.querySelector('#modal-email .btn-primary'); btn.disabled=true; btn.textContent='Invio...';
-  fetch('/api/gmail/send',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({to,subject,body})})
-    .then(r=>r.json()).then(data=>{
-      if(data.success){closeModal('modal-email');alert('Email inviata!');['email-to','email-subject','email-body'].forEach(id=>document.getElementById(id).value='');}
-      else alert('Errore: '+(data.error||'invio fallito'));
-    }).catch(()=>alert('Errore di connessione'))
-    .finally(()=>{btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i> Invia';});
+
+function apriGestisciTemplate(){
+  renderTemplateList();
+  openModal('modal-template');
 }
-function generaEmailModal(){
-  const btn=document.querySelector('#modal-email .btn'); btn.disabled=true;
-  fetch('/api/gmail/genera',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:document.getElementById('email-subject').value||'presentazione',cliente:document.getElementById('email-to').value||'cliente',prodotto:'semola rimacinata',note:''})})
-    .then(r=>r.json()).then(data=>{if(data.testo)document.getElementById('email-body').value=data.testo;})
-    .catch(()=>alert('Errore AI'))
-    .finally(()=>{btn.disabled=false;btn.innerHTML='<i class="ti ti-wand"></i> Genera con AI';});
+
+function renderTemplateList(){
+  const cont=document.getElementById('template-list-modal'); cont.innerHTML='';
+  if(!templates.length){cont.innerHTML='<div class="empty-state"><p>Nessun template. Creane uno!</p></div>';return;}
+  templates.forEach(t=>{
+    const div=document.createElement('div');
+    div.style.cssText='background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;display:flex;align-items:center;gap:10px';
+    div.innerHTML=`
+      <div style="flex:1">
+        <div style="font-weight:600;font-size:13px;margin-bottom:2px">${t.nome}</div>
+        <div style="font-size:11px;color:var(--text-2)">${t.oggetto||'(nessun oggetto)'}</div>
+      </div>
+      <div style="display:flex;gap:6px">
+        <button class="btn btn-sm" onclick="editTemplate(${t.id})"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-danger btn-sm" onclick="eliminaTemplate(${t.id})"><i class="ti ti-trash"></i></button>
+      </div>`;
+    cont.appendChild(div);
+  });
+}
+
+function nuovoTemplate(){
+  document.getElementById('tpl-id').value='';
+  document.getElementById('tpl-nome').value='';
+  document.getElementById('tpl-oggetto').value='';
+  document.getElementById('tpl-body').value='';
+  document.getElementById('template-edit-title').textContent='Nuovo template';
+  openModal('modal-template-edit');
+}
+
+function editTemplate(id){
+  const t=templates.find(x=>x.id===id); if(!t)return;
+  document.getElementById('tpl-id').value=t.id;
+  document.getElementById('tpl-nome').value=t.nome;
+  document.getElementById('tpl-oggetto').value=t.oggetto||'';
+  document.getElementById('tpl-body').value=t.body||'';
+  document.getElementById('template-edit-title').textContent='Modifica template';
+  openModal('modal-template-edit');
+}
+
+async function salvaTemplate(){
+  const nome=document.getElementById('tpl-nome').value.trim();
+  if(!nome){alert('Inserisci il nome del template');return;}
+  const body={nome,oggetto:document.getElementById('tpl-oggetto').value,body:document.getElementById('tpl-body').value};
+  const id=document.getElementById('tpl-id').value;
+  if(id){
+    await api.put('/api/template/'+id,body);
+    const t=templates.find(x=>x.id===parseInt(id)); if(t)Object.assign(t,body);
+  } else {
+    const r=await api.post('/api/template',body);
+    if(!r.error) templates.push(r);
+  }
+  closeModal('modal-template-edit');
+  renderTemplateList();
+  showSave();
+}
+
+async function eliminaTemplate(id){
+  if(!confirm('Eliminare questo template?'))return;
+  await api.del('/api/template/'+id);
+  templates=templates.filter(t=>t.id!==id);
+  renderTemplateList();
+  showSave();
+}
+
+function apriTemplateSelector(){
+  const cont=document.getElementById('template-sel-list'); cont.innerHTML='';
+  if(!templates.length){cont.innerHTML='<div class="empty-state"><p>Nessun template salvato.<br>Creane uno dalla sezione "I miei template".</p></div>';openModal('modal-template-sel');return;}
+  templates.forEach(t=>{
+    const div=document.createElement('div');
+    div.style.cssText='background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;cursor:pointer;transition:all .15s';
+    div.innerHTML=`<div style="font-weight:600;font-size:13px;margin-bottom:3px">${t.nome}</div><div style="font-size:11px;color:var(--text-2)">${t.oggetto||''}</div>`;
+    div.onmouseenter=()=>div.style.borderColor='var(--brand)';
+    div.onmouseleave=()=>div.style.borderColor='var(--border)';
+    div.onclick=()=>{
+      if(t.oggetto&&!document.getElementById('email-subject').value) document.getElementById('email-subject').value=t.oggetto;
+      document.getElementById('email-body-editor').innerHTML=t.body||'';
+      closeModal('modal-template-sel');
+    };
+    cont.appendChild(div);
+  });
+  openModal('modal-template-sel');
+}
+
+async function generaEmailModal(){
+  const subj=document.getElementById('email-subject').value||'presentazione';
+  const to=document.getElementById('email-to').value||'cliente';
+  const btn=document.querySelector('.fmt-btn [class*="wand"]')?.closest('.fmt-btn');
+  try{
+    const resp=await fetch('/api/gmail/genera',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({tipo:subj,cliente:to,prodotto:'semola rimacinata',note:''})});
+    const data=await resp.json();
+    if(data.testo) document.getElementById('email-body-editor').innerHTML=data.testo.replace(/\n/g,'<br>');
+  }catch(e){alert('Errore AI');}
 }
 function generaEmail(){
   const btn=document.querySelector('[onclick="generaEmail()"]'); btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Generazione...';
