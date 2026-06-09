@@ -418,9 +418,29 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URI
 );
 
+// Carica token dal DB all'avvio
+async function loadGmailTokens() {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS impostazioni (chiave TEXT PRIMARY KEY, valore TEXT)`);
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='gmail_tokens'`);
+    if (r.rows.length) {
+      gmailTokens = JSON.parse(r.rows[0].valore);
+      oauth2Client.setCredentials(gmailTokens);
+      console.log('✅ Token Gmail caricati dal database');
+    }
+  } catch(e) { console.log('ℹ️ Nessun token Gmail salvato'); }
+}
+
+async function saveGmailTokens(tokens) {
+  try {
+    await pool.query(`INSERT INTO impostazioni (chiave, valore) VALUES ('gmail_tokens', $1) ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [JSON.stringify(tokens)]);
+  } catch(e) { console.error('Errore salvataggio token:', e.message); }
+}
+
 app.get('/auth/login', (req, res) => {
   const url = oauth2Client.generateAuthUrl({
     access_type: 'offline',
+    prompt: 'consent',
     scope: ['https://www.googleapis.com/auth/gmail.modify', 'https://www.googleapis.com/auth/gmail.send']
   });
   res.redirect(url);
@@ -431,6 +451,7 @@ app.get('/auth/callback', async (req, res) => {
     const { tokens } = await oauth2Client.getToken(req.query.code);
     gmailTokens = tokens;
     oauth2Client.setCredentials(tokens);
+    await saveGmailTokens(tokens);
     res.redirect('/?gmail=connected');
   } catch (err) { res.status(500).send('Errore OAuth: ' + err.message); }
 });
@@ -490,6 +511,7 @@ app.post('/api/gmail/genera', async (req, res) => {
 
 // ── START ─────────────────────────────────────────────────────────────────
 const PORT = process.env.PORT || 3000;
-initDB().then(() => {
+initDB().then(async () => {
+  await loadGmailTokens();
   app.listen(PORT, () => console.log(`✅ Server avviato su porta ${PORT}`));
 });
