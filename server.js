@@ -481,13 +481,98 @@ app.get('/api/gmail/inbox', async (req, res) => {
 
 app.post('/api/gmail/send', async (req, res) => {
   if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
-  const { to, subject, body } = req.body;
+  const { to, subject, body, attachments, isHtml } = req.body;
   try {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const msg = [`To: ${to}`, `Subject: ${subject}`, 'Content-Type: text/plain; charset=utf-8', '', body].join('\n');
-    const encoded = Buffer.from(msg).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    let messageParts = [];
+    const boundary = 'boundary_' + Date.now();
+    if (attachments && attachments.length) {
+      // Multipart message
+      messageParts.push(`To: ${to}`);
+      messageParts.push(`Subject: ${subject}`);
+      messageParts.push(`MIME-Version: 1.0`);
+      messageParts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+      messageParts.push('');
+      messageParts.push(`--${boundary}`);
+      messageParts.push(`Content-Type: text/html; charset=utf-8`);
+      messageParts.push('');
+      messageParts.push(body);
+      attachments.forEach(att => {
+        messageParts.push(`--${boundary}`);
+        messageParts.push(`Content-Type: ${att.type}; name="${att.name}"`);
+        messageParts.push(`Content-Transfer-Encoding: base64`);
+        messageParts.push(`Content-Disposition: attachment; filename="${att.name}"`);
+        messageParts.push('');
+        messageParts.push(att.data);
+      });
+      messageParts.push(`--${boundary}--`);
+    } else {
+      messageParts = [`To: ${to}`, `Subject: ${subject}`, `Content-Type: text/${isHtml?'html':'plain'}; charset=utf-8`, '', body];
+    }
+    const msg = messageParts.join('\n');
+    const encoded = Buffer.from(msg).toString('base64').replace(/\+/g,'-').replace(/\//g,'_');
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } });
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── BOZZE API ─────────────────────────────────────────────────────────────
+app.get('/api/bozze', async (req, res) => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS bozze (id SERIAL PRIMARY KEY, "to" TEXT, subject TEXT, body TEXT, data TIMESTAMP DEFAULT NOW())`);
+    const r = await pool.query('SELECT * FROM bozze ORDER BY data DESC');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.post('/api/bozze', async (req, res) => {
+  const { to, subject, body } = req.body;
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS bozze (id SERIAL PRIMARY KEY, "to" TEXT, subject TEXT, body TEXT, data TIMESTAMP DEFAULT NOW())`);
+    const r = await pool.query('INSERT INTO bozze ("to",subject,body) VALUES ($1,$2,$3) RETURNING *', [to, subject, body]);
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.put('/api/bozze/:id', async (req, res) => {
+  const { to, subject, body } = req.body;
+  try {
+    await pool.query('UPDATE bozze SET "to"=$1,subject=$2,body=$3,data=NOW() WHERE id=$4', [to, subject, body, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.delete('/api/bozze/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM bozze WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── TEMPLATE API ──────────────────────────────────────────────────────────
+app.get('/api/template', async (req, res) => {
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS template_email (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, oggetto TEXT, body TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+    const r = await pool.query('SELECT * FROM template_email ORDER BY nome');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.post('/api/template', async (req, res) => {
+  const { nome, oggetto, body } = req.body;
+  try {
+    await pool.query(`CREATE TABLE IF NOT EXISTS template_email (id SERIAL PRIMARY KEY, nome TEXT NOT NULL, oggetto TEXT, body TEXT, created_at TIMESTAMP DEFAULT NOW())`);
+    const r = await pool.query('INSERT INTO template_email (nome,oggetto,body) VALUES ($1,$2,$3) RETURNING *', [nome, oggetto, body]);
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.put('/api/template/:id', async (req, res) => {
+  const { nome, oggetto, body } = req.body;
+  try {
+    await pool.query('UPDATE template_email SET nome=$1,oggetto=$2,body=$3 WHERE id=$4', [nome, oggetto, body, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+app.delete('/api/template/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM template_email WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
