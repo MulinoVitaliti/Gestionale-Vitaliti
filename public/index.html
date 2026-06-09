@@ -190,6 +190,23 @@ tbody tr:hover{background:var(--surface-2)}
 .stat-bar{height:7px;background:var(--surface-2);border-radius:4px;overflow:hidden}
 .stat-bar-fill{height:100%;background:var(--brand);border-radius:4px;transition:width .5s ease}
 .stat-bar-fill.green{background:var(--green)}
+/* ── ATTIVITÀ ── */
+.att-item{display:flex;align-items:flex-start;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)}
+.att-item:last-child{border-bottom:none}
+.att-icon{width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0;margin-top:1px}
+.att-icon.chiamata{background:#EEF3FF;color:var(--blue)}
+.att-icon.email{background:var(--orange-light);color:var(--orange)}
+.att-icon.nota{background:var(--gold-light);color:var(--gold)}
+.att-icon.ordine{background:var(--green-light);color:var(--green)}
+.att-body{flex:1;min-width:0}
+.att-title{font-size:13px;font-weight:600;margin-bottom:2px}
+.att-note{font-size:11px;color:var(--text-2);margin-bottom:3px}
+.att-date{font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;display:inline-flex;align-items:center;gap:3px}
+.att-date.oggi{background:var(--green-light);color:var(--green)}
+.att-date.scaduta{background:var(--red-light);color:var(--red)}
+.att-date.futura{background:var(--surface-2);color:var(--text-3)}
+.att-actions{display:flex;gap:4px;flex-shrink:0}
+.nav-badge{background:var(--red);color:#fff;font-size:9px;font-weight:700;padding:1px 5px;border-radius:10px;margin-left:auto}
 .empty-state{text-align:center;padding:36px 20px;color:var(--text-3)}
 .empty-state i{font-size:34px;margin-bottom:9px;opacity:0.3;display:block}
 .empty-state p{font-size:13px}
@@ -277,7 +294,7 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="s-section">Principale</div>
     <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
-    <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i><span>Pipeline vendite</span></div>
+    <div class="nav-item" onclick="showPage('attivita')" id="nav-attivita"><i class="ti ti-checkbox"></i><span>Attività</span><span class="nav-badge" id="att-badge" style="display:none">0</span></div>
     <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
     <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
     <div class="s-section">Finanza &amp; Comm.</div>
@@ -305,6 +322,20 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-layout-kanban" style="color:var(--brand)"></i>Pipeline recente</div></div><div class="card-body" id="dash-pipeline"></div></div>
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-clipboard-list" style="color:var(--brand)"></i>Ultimi ordini</div></div><div class="card-body" id="dash-ordini"></div></div>
       </div>
+    </div>
+    <!-- ATTIVITÀ -->
+    <div class="page" id="page-attivita">
+      <div class="page-header">
+        <div class="page-title">Attività</div>
+        <button class="btn btn-primary" onclick="openModalAttivita()"><i class="ti ti-plus"></i>Nuova attività</button>
+      </div>
+      <div class="pills">
+        <div class="pill active" onclick="filterAttivita('tutte',this)">Tutte</div>
+        <div class="pill" onclick="filterAttivita('oggi',this)">🟢 Oggi</div>
+        <div class="pill" onclick="filterAttivita('scadute',this)">🔴 Scadute</div>
+        <div class="pill" onclick="filterAttivita('future',this)">⚪ Future</div>
+      </div>
+      <div style="display:grid;gap:8px" id="att-list-page"></div>
     </div>
     <div class="page" id="page-pipeline">
       <div class="page-header">
@@ -527,15 +558,47 @@ tbody tr:hover{background:var(--surface-2)}
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:5px"><button class="btn" onclick="closeModal('modal-utente')">Annulla</button><button class="btn btn-primary" onclick="salvaUtente()"><i class="ti ti-check"></i>Crea utente</button></div>
   </div></div>
 </div>
+<!-- Modal Attività -->
+<div class="modal-overlay" id="modal-attivita">
+  <div class="modal"><div class="modal-header"><div class="modal-title" id="modal-att-title">Nuova attività</div><button class="btn btn-icon" onclick="closeModal('modal-attivita')"><i class="ti ti-x"></i></button></div>
+  <div class="modal-body">
+    <input type="hidden" id="att-id">
+    <input type="hidden" id="att-ref-tipo">
+    <input type="hidden" id="att-ref-id">
+    <div class="form-group"><label class="form-label">Tipo attività</label>
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="btn" id="att-btn-chiamata" onclick="setTipoAtt('chiamata')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-phone" style="font-size:18px;color:var(--blue)"></i><span style="font-size:11px">Chiamata</span></button>
+        <button class="btn" id="att-btn-email" onclick="setTipoAtt('email')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-mail" style="font-size:18px;color:var(--orange)"></i><span style="font-size:11px">Email</span></button>
+        <button class="btn" id="att-btn-nota" onclick="setTipoAtt('nota')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-note" style="font-size:18px;color:var(--gold)"></i><span style="font-size:11px">Nota</span></button>
+        <button class="btn" id="att-btn-ordine" onclick="setTipoAtt('ordine')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-package" style="font-size:18px;color:var(--green)"></i><span style="font-size:11px">Ordine</span></button>
+      </div>
+      <input type="hidden" id="att-tipo" value="chiamata">
+    </div>
+    <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" placeholder="Es. Chiamata di follow-up"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Data scadenza *</label><input type="date" id="att-data"></div>
+      <div class="form-group"><label class="form-label">Collegata a</label>
+        <select id="att-collegata">
+          <option value="">— nessuna —</option>
+          <optgroup label="Lead pipeline" id="att-opt-leads"></optgroup>
+          <optgroup label="Clienti" id="att-opt-clienti"></optgroup>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Note</label><textarea id="att-note" style="min-height:60px"></textarea></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-attivita')">Annulla</button><button class="btn btn-primary" onclick="salvaAttivita()"><i class="ti ti-check"></i>Salva</button></div>
+  </div></div>
+</div>
+
 <div class="detail-overlay" id="detail-overlay" onclick="chiudiDettaglio()"></div>
 <div class="detail-panel" id="detail-panel"></div>
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false},
+  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
@@ -611,18 +674,21 @@ const api = {
 
 async function loadAllData() {
   try {
-    const [fasi, leads, clienti, ordini, movimenti] = await Promise.all([
+    const [fasi, leads, clienti, ordini, movimenti, attivita] = await Promise.all([
       api.get('/api/fasi'),
       api.get('/api/leads'),
       api.get('/api/clienti'),
       api.get('/api/ordini'),
       api.get('/api/movimenti'),
+      api.get('/api/attivita'),
     ]);
     state.fasi = fasi.error ? state.fasi : fasi;
     state.leads = leads.error ? [] : leads;
     state.clienti = clienti.error ? [] : clienti;
     state.ordini = ordini.error ? [] : ordini;
     state.movimenti = movimenti.error ? [] : movimenti;
+    state.attivita = attivita.error ? [] : attivita;
+    aggiornaAttBadge();
   } catch(e){ console.warn('API non disponibile, uso dati locali'); }
 }
 
@@ -687,7 +753,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','automazioni','ai','utenti'].forEach(p=>{
+  ['pipeline','clienti','ordini','contabilita','email','automazioni','ai','utenti','attivita'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -700,6 +766,7 @@ function showPage(id){
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
   document.getElementById('nav-'+id).classList.add('active');
+  if(id==='attivita')renderPageAttivita();
   if(id==='pipeline')renderPipeline();
   if(id==='clienti')renderClienti();
   if(id==='ordini')renderOrdini();
@@ -770,7 +837,7 @@ function renderPipeline(){
     items.forEach(l=>{
       const c=document.createElement('div'); c.className='pl-card';
       c.style.borderLeftColor=fase.color;
-      c.innerHTML=`<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:11px;color:var(--text-3)">${l.contatto||''}</span><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div>`;
+      c.innerHTML=`<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:11px;color:var(--text-3)">${l.contatto||''}</span><div style="display:flex;gap:3px"><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
       col.appendChild(c);
     });
     board.appendChild(col);
@@ -810,8 +877,42 @@ function apriDettaglio(id){
       <tr><td style="color:var(--text-2);padding:5px 0">Indirizzo</td><td>${c.ind||'—'}</td></tr>
       <tr><td style="color:var(--text-2);padding:5px 0">Prodotti</td><td>${c.prod||'—'}</td></tr>
     </table></div></div>
+    <div class="card" style="margin-bottom:11px">
+      <div class="card-header">
+        <div class="card-title"><i class="ti ti-checkbox" style="color:var(--brand)"></i>Attività</div>
+        <button class="btn btn-sm btn-primary" onclick="openModalAttivita('cliente',${c.id},'${c.nome.replace(/'/g,"\\'")}')"><i class="ti ti-plus"></i>Aggiungi</button>
+      </div>
+      <div class="card-body" id="att-cliente-${c.id}">${renderAttivitaPerEntita('cliente',c.id)}</div>
+    </div>
     <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-clipboard-list" style="color:var(--brand)"></i>Storico ordini <span style="font-size:11px;font-weight:400;color:var(--text-3)">${ordini.length} ordini · ${fmt(tot)}</span></div></div>
     <div class="card-body">${ordini.length?ordini.map(o=>`<div class="storico-item"><div><div style="font-weight:600">${o.prodotto}</div><div style="color:var(--text-2)">${o.data} · ${o.qty} kg</div></div><div style="text-align:right"><div style="font-weight:600">${fmt(o.importo)}</div><span class="badge badge-${o.stato}">${o.stato}</span></div></div>`).join(''):'<div class="empty-state" style="padding:12px 0">Nessun ordine</div>'}</div></div>`;
+  document.getElementById('detail-overlay').classList.add('open');
+  document.getElementById('detail-panel').classList.add('open');
+}
+
+function apriDettaglioLead(id){
+  const l=state.leads.find(x=>x.id===id); if(!l)return;
+  const faseLabel=(state.fasi.find(f=>f.id===l.stato)||{}).label||l.stato;
+  document.getElementById('detail-panel').innerHTML=`
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
+      <div class="flex-row"><div class="avatar" style="width:40px;height:40px;font-size:12px">${ini(l.nome)}</div><div><div style="font-weight:700;font-size:15px">${l.nome}</div><div style="font-size:12px;color:var(--text-2)">${faseLabel}</div></div></div>
+      <button class="btn btn-icon" onclick="chiudiDettaglio()"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="card" style="margin-bottom:11px"><div class="card-header"><div class="card-title"><i class="ti ti-info-circle" style="color:var(--brand)"></i>Dati contatto</div></div>
+    <div class="card-body"><table style="width:100%;font-size:13px">
+      <tr><td style="color:var(--text-2);padding:5px 0;width:90px">Referente</td><td style="font-weight:500">${l.contatto||'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">Telefono</td><td>${l.tel||'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">Città</td><td>${l.citta||'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">Prodotto</td><td>${l.prodotto||'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">Note</td><td>${l.note||'—'}</td></tr>
+    </table></div></div>
+    <div class="card">
+      <div class="card-header">
+        <div class="card-title"><i class="ti ti-checkbox" style="color:var(--brand)"></i>Attività</div>
+        <button class="btn btn-sm btn-primary" onclick="openModalAttivita('lead',${l.id},'${l.nome.replace(/'/g,"\\'")}')"><i class="ti ti-plus"></i>Aggiungi</button>
+      </div>
+      <div class="card-body" id="att-lead-${l.id}">${renderAttivitaPerEntita('lead',l.id)}</div>
+    </div>`;
   document.getElementById('detail-overlay').classList.add('open');
   document.getElementById('detail-panel').classList.add('open');
 }
@@ -1149,6 +1250,190 @@ function sendChat(){
       eDiv.innerHTML=`<div class="msg-avatar ai" style="background:var(--red-light);color:var(--red)"><i class="ti ti-alert-circle"></i></div><div class="msg-bubble ai" style="background:var(--red-light);color:var(--red)">Errore di connessione.</div>`;
       msgs.appendChild(eDiv);
     }).finally(()=>{document.getElementById('send-btn').disabled=false;msgs.scrollTop=msgs.scrollHeight;});
+}
+
+// ── ATTIVITÀ ──────────────────────────────────────────────────────────────
+const ATT_ICONS = {chiamata:'ti-phone',email:'ti-mail',nota:'ti-note',ordine:'ti-package'};
+const ATT_LABELS = {chiamata:'Chiamata',email:'Email',nota:'Nota',ordine:'Ordine'};
+let attFilter = 'tutte';
+
+function attScadenza(data){
+  if(!data) return 'futura';
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const d = new Date(data); d.setHours(0,0,0,0);
+  if(d.getTime()===oggi.getTime()) return 'oggi';
+  if(d < oggi) return 'scaduta';
+  return 'futura';
+}
+function attDataLabel(data){
+  const s=attScadenza(data);
+  if(!data) return {cls:'futura',txt:'Nessuna data'};
+  const d=new Date(data);
+  const txt=d.toLocaleDateString('it-IT',{day:'numeric',month:'short',year:'numeric'});
+  return {cls:s,txt};
+}
+
+function renderAttItem(a, showCollegata=true){
+  const {cls,txt}=attDataLabel(a.data_scadenza||a.scadenza);
+  const icn=ATT_ICONS[a.tipo]||'ti-checkbox';
+  const collegataStr = showCollegata&&a.collegata_nome ? `<span style="font-size:11px;color:var(--text-2)"><i class="ti ti-link" style="font-size:10px"></i> ${a.collegata_nome}</span>` : '';
+  return `<div class="att-item">
+    <div class="att-icon ${a.tipo}"><i class="ti ${icn}"></i></div>
+    <div class="att-body">
+      <div class="att-title">${a.titolo||ATT_LABELS[a.tipo]}</div>
+      ${a.note?`<div class="att-note">${a.note}</div>`:''}
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span class="att-date ${cls}">
+          ${cls==='oggi'?'🟢':cls==='scaduta'?'🔴':'⚪'} ${txt}
+        </span>
+        ${collegataStr}
+      </div>
+    </div>
+    <div class="att-actions">
+      <button class="btn btn-sm btn-icon" onclick="completaAttivita(${a.id})" title="Completa"><i class="ti ti-check" style="color:var(--green)"></i></button>
+      <button class="btn btn-sm btn-icon" onclick="editAttivita(${a.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+      <button class="btn btn-sm btn-icon btn-danger" onclick="eliminaAttivita(${a.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+    </div>
+  </div>`;
+}
+
+async function loadAttivita(){
+  try{
+    const r=await api.get('/api/attivita');
+    state.attivita = r.error?[]:r;
+    aggiornaAttBadge();
+  }catch(e){state.attivita=[];}
+}
+
+function aggiornaAttBadge(){
+  const urgenti=(state.attivita||[]).filter(a=>!a.completata&&(attScadenza(a.data_scadenza||a.scadenza)==='oggi'||attScadenza(a.data_scadenza||a.scadenza)==='scaduta')).length;
+  const badge=document.getElementById('att-badge');
+  if(badge){badge.textContent=urgenti;badge.style.display=urgenti?'':'none';}
+}
+
+async function renderPageAttivita(){
+  await loadAttivita();
+  const list=document.getElementById('att-list-page'); if(!list)return;
+  let items=(state.attivita||[]).filter(a=>!a.completata);
+  if(attFilter==='oggi') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='oggi');
+  else if(attFilter==='scadute') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='scaduta');
+  else if(attFilter==='future') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='futura');
+  // Sort: scadute first, then oggi, then future
+  items.sort((a,b)=>{
+    const ord={scaduta:0,oggi:1,futura:2};
+    return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
+  });
+  if(!items.length){list.innerHTML='<div class="empty-state"><i class="ti ti-checkbox" style="font-size:34px;margin-bottom:9px;opacity:0.3;display:block"></i><p>Nessuna attività</p></div>';return;}
+  list.innerHTML=items.map(a=>`
+    <div class="card" style="padding:0 14px">${renderAttItem(a,true)}</div>
+  `).join('');
+}
+
+function filterAttivita(f,el){
+  attFilter=f;
+  document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  renderPageAttivita();
+}
+
+function openModalAttivita(refTipo='',refId='',refNome=''){
+  document.getElementById('att-id').value='';
+  document.getElementById('att-ref-tipo').value=refTipo;
+  document.getElementById('att-ref-id').value=refId;
+  document.getElementById('att-titolo').value='';
+  document.getElementById('att-note').value='';
+  document.getElementById('att-data').value=new Date().toISOString().slice(0,10);
+  document.getElementById('modal-att-title').textContent='Nuova attività';
+  setTipoAtt('chiamata');
+  // Popola select collegata
+  const optLeads=document.getElementById('att-opt-leads');
+  const optClienti=document.getElementById('att-opt-clienti');
+  optLeads.innerHTML=(state.leads||[]).map(l=>`<option value="lead_${l.id}" ${refTipo==='lead'&&refId==l.id?'selected':''}>${l.nome}</option>`).join('');
+  optClienti.innerHTML=(state.clienti||[]).map(c=>`<option value="cliente_${c.id}" ${refTipo==='cliente'&&refId==c.id?'selected':''}>${c.nome}</option>`).join('');
+  // Se viene da un lead/cliente preseleziona
+  if(refTipo&&refId){
+    document.getElementById('att-collegata').value=refTipo+'_'+refId;
+  }
+  openModal('modal-attivita');
+}
+
+function setTipoAtt(tipo){
+  document.getElementById('att-tipo').value=tipo;
+  ['chiamata','email','nota','ordine'].forEach(t=>{
+    const btn=document.getElementById('att-btn-'+t);
+    if(btn) btn.style.background=t===tipo?'var(--brand-light)':'';
+    if(btn) btn.style.borderColor=t===tipo?'var(--brand)':'';
+  });
+}
+
+async function salvaAttivita(){
+  const id=document.getElementById('att-id').value;
+  const titolo=document.getElementById('att-titolo').value.trim();
+  if(!titolo)return alert('Inserisci un titolo');
+  const collegata=document.getElementById('att-collegata').value;
+  let collegata_tipo='',collegata_id=null,collegata_nome='';
+  if(collegata){
+    const parts=collegata.split('_');
+    collegata_tipo=parts[0];
+    collegata_id=parseInt(parts[1]);
+    const ref=collegata_tipo==='lead'?(state.leads||[]).find(x=>x.id===collegata_id):(state.clienti||[]).find(x=>x.id===collegata_id);
+    if(ref) collegata_nome=ref.nome;
+  }
+  const body={tipo:document.getElementById('att-tipo').value,titolo,note:document.getElementById('att-note').value,data_scadenza:document.getElementById('att-data').value,collegata_tipo,collegata_id,collegata_nome,completata:false};
+  if(id){
+    await api.put('/api/attivita/'+id,body);
+    const idx=(state.attivita||[]).findIndex(a=>a.id===parseInt(id));
+    if(idx>=0) state.attivita[idx]=Object.assign(state.attivita[idx],body);
+  } else {
+    const data=await api.post('/api/attivita',body);
+    if(!data.error){state.attivita=state.attivita||[];state.attivita.unshift(data);}
+  }
+  closeModal('modal-attivita');
+  aggiornaAttBadge();
+  if(document.getElementById('page-attivita').classList.contains('active')) renderPageAttivita();
+  showSave();
+}
+
+async function completaAttivita(id){
+  await api.put('/api/attivita/'+id,{completata:true});
+  if(state.attivita){const a=state.attivita.find(x=>x.id===id);if(a)a.completata=true;}
+  aggiornaAttBadge();
+  if(document.getElementById('page-attivita').classList.contains('active')) renderPageAttivita();
+  showSave();
+}
+
+function editAttivita(id){
+  const a=(state.attivita||[]).find(x=>x.id===id); if(!a)return;
+  document.getElementById('att-id').value=a.id;
+  document.getElementById('att-titolo').value=a.titolo||'';
+  document.getElementById('att-note').value=a.note||'';
+  document.getElementById('att-data').value=(a.data_scadenza||a.scadenza||'').slice(0,10);
+  document.getElementById('modal-att-title').textContent='Modifica attività';
+  setTipoAtt(a.tipo||'chiamata');
+  const optLeads=document.getElementById('att-opt-leads');
+  const optClienti=document.getElementById('att-opt-clienti');
+  optLeads.innerHTML=(state.leads||[]).map(l=>`<option value="lead_${l.id}">${l.nome}</option>`).join('');
+  optClienti.innerHTML=(state.clienti||[]).map(c=>`<option value="cliente_${c.id}">${c.nome}</option>`).join('');
+  if(a.collegata_tipo&&a.collegata_id) document.getElementById('att-collegata').value=a.collegata_tipo+'_'+a.collegata_id;
+  openModal('modal-attivita');
+}
+
+async function eliminaAttivita(id){
+  if(!confirm('Eliminare attività?'))return;
+  await api.del('/api/attivita/'+id);
+  state.attivita=(state.attivita||[]).filter(a=>a.id!==id);
+  aggiornaAttBadge();
+  if(document.getElementById('page-attivita').classList.contains('active')) renderPageAttivita();
+  showSave();
+}
+
+function renderAttivitaPerEntita(tipo,id){
+  const list=(state.attivita||[]).filter(a=>a.collegata_tipo===tipo&&a.collegata_id===id&&!a.completata);
+  if(!list.length) return '<div class="empty-state" style="padding:10px 0"><p>Nessuna attività</p></div>';
+  return list.sort((a,b)=>{
+    const ord={scaduta:0,oggi:1,futura:2};
+    return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
+  }).map(a=>renderAttItem(a,false)).join('');
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
