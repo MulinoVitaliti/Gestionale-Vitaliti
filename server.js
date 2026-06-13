@@ -72,6 +72,7 @@ async function initDB() {
         descrizione TEXT,
         fatturazione TEXT DEFAULT 'non_applicabile',
         pagato BOOLEAN DEFAULT FALSE,
+        aliquota_iva INTEGER DEFAULT 4,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -331,17 +332,15 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, pagato } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva } = req.body;
   try {
-    // Prima prova con pagato, se fallisce prova senza
     try {
       const r = await pool.query(
-        'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-        [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false]
+        'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+        [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4]
       );
       res.json(r.rows[0]);
     } catch(e) {
-      // Fallback senza pagato (colonna non ancora aggiunta)
       const r = await pool.query(
         'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
         [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile']
@@ -360,11 +359,11 @@ app.put('/api/movimenti/:id/pagato', async (req, res) => {
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva } = req.body;
   try {
     await pool.query(
-      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6 WHERE id=$7',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', req.params.id]
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7 WHERE id=$8',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
