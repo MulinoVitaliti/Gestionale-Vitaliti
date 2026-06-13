@@ -718,7 +718,7 @@ tbody tr:hover{background:var(--surface-2)}
 </div>
 <!-- Composer email -->
 <div class="modal-overlay" id="modal-email" style="align-items:flex-end;justify-content:flex-end;padding:20px">
-  <div class="modal" style="width:620px;max-width:96vw;max-height:85vh;margin:0;border-radius:var(--rl)">
+  <div class="modal" style="width:780px;max-width:96vw;max-height:90vh;margin:0;border-radius:var(--rl)">
     <div class="modal-header" style="background:var(--brand);color:#fff;border-radius:var(--rl) var(--rl) 0 0">
       <div class="modal-title" style="color:#fff" id="composer-title">Nuova email</div>
       <div style="display:flex;gap:6px">
@@ -765,7 +765,7 @@ tbody tr:hover{background:var(--surface-2)}
         <button class="fmt-btn" onclick="generaEmailModal()" title="Genera con AI"><i class="ti ti-wand" style="color:var(--gold)"></i></button>
       </div>
       <!-- Body editor -->
-      <div id="email-body-editor" contenteditable="true" style="min-height:200px;max-height:300px;overflow-y:auto;padding:14px 16px;font-size:13px;font-family:var(--font);line-height:1.7;outline:none" placeholder="Scrivi il messaggio..."></div>
+      <div id="email-body-editor" contenteditable="true" style="min-height:260px;max-height:380px;overflow-y:auto;padding:16px 18px;font-size:15px;font-family:var(--font);line-height:1.7;outline:none" placeholder="Scrivi il messaggio..."></div>
       <!-- Allegati -->
       <div style="border-top:1px solid var(--border);padding:8px 16px;background:var(--surface-2)">
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
@@ -1773,22 +1773,52 @@ function caricaEmail(){
   }).catch(()=>{list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-wifi-off"></i><p>Errore caricamento</p></div>';});
 }
 
-function mostraEmail(idx){
+async function mostraEmail(idx){
   document.querySelectorAll('.email-item').forEach(el=>el.classList.remove('active'));
   const el=document.getElementById('eitem-'+idx); if(el)el.classList.add('active');
   const e=(window._emailCache||[])[idx]; if(!e)return;
   const fromField=emailFolder==='sent'?`<strong>A:</strong> ${e.to||''}`:`<strong>Da:</strong> ${e.from||''}`;
-  document.getElementById('email-detail').innerHTML=`
+  // Mostra subito snippet mentre carica
+  const det=document.getElementById('email-detail');
+  det.innerHTML=`
     <div style="border-bottom:1px solid var(--border);padding-bottom:14px;margin-bottom:14px">
       <div style="font-size:17px;font-weight:700;margin-bottom:10px">${e.subject||'(nessun oggetto)'}</div>
       <div style="font-size:12px;color:var(--text-2);margin-bottom:3px">${fromField}</div>
       <div style="font-size:12px;color:var(--text-2)"><strong>Data:</strong> ${new Date(e.date||Date.now()).toLocaleString('it-IT')}</div>
     </div>
-    <div style="font-size:13px;line-height:1.8;white-space:pre-wrap;flex:1">${e.snippet||''}</div>
+    <div id="email-body-view" style="font-size:14px;line-height:1.8;flex:1"><i class="ti ti-loader" style="animation:spin 1s linear infinite"></i> Caricamento...</div>
+    <div id="email-attachments-view" style="margin-top:10px"></div>
     <div style="margin-top:16px;display:flex;gap:8px;padding-top:14px;border-top:1px solid var(--border)">
       <button class="btn btn-sm btn-primary" onclick="apriComposer({to:'${(e.from||'').replace(/'/g,"\\'")}',subject:'Re: ${(e.subject||'').replace(/'/g,"\\'")}',title:'Rispondi'})"><i class="ti ti-arrow-back-up"></i>Rispondi</button>
       <button class="btn btn-sm" onclick="apriComposer({to:'',subject:'Fwd: ${(e.subject||'').replace(/'/g,"\\'")}',body:'<br><br>---------- Messaggio inoltrato ----------<br>${(e.snippet||'').replace(/'/g,"\\'")}',title:'Inoltra'})"><i class="ti ti-arrow-forward-up"></i>Inoltra</button>
     </div>`;
+  // Carica corpo completo e allegati
+  try{
+    const full = await api.get('/api/gmail/message/'+e.id);
+    const bodyEl=document.getElementById('email-body-view');
+    const attEl=document.getElementById('email-attachments-view');
+    if(bodyEl) bodyEl.innerHTML = full.body || e.snippet || '';
+    // Allegati
+    if(attEl && full.attachments && full.attachments.length){
+      attEl.innerHTML=`
+        <div style="border-top:1px solid var(--border);padding-top:10px">
+          <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:8px"><i class="ti ti-paperclip"></i> Allegati (${full.attachments.length})</div>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            ${full.attachments.map(a=>`
+              <a href="/api/gmail/attachment/${e.id}/${a.attachmentId}?filename=${encodeURIComponent(a.filename)}" download="${a.filename}"
+                style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);font-size:12px;text-decoration:none;color:var(--text);transition:border-color .15s"
+                onmouseover="this.style.borderColor='var(--brand)'" onmouseout="this.style.borderColor='var(--border)'">
+                <i class="ti ti-file" style="color:var(--brand)"></i>${a.filename}
+              </a>`).join('')}
+          </div>
+        </div>`;
+    } else if(attEl){
+      attEl.innerHTML='';
+    }
+  }catch(err){
+    const bodyEl=document.getElementById('email-body-view');
+    if(bodyEl) bodyEl.innerHTML=e.snippet||'';
+  }
 }
 
 // ── TEMPLATE ──────────────────────────────────────────────────────────────
