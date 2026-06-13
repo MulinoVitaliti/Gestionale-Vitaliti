@@ -462,16 +462,7 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="metrics-grid metrics-2" style="margin-bottom:18px">
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
-        <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Da fatturare</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">ancora senza fattura</div></div>
-      </div>
-      <div class="metrics-grid metrics-3" style="margin-bottom:18px">
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su entrate</div><div class="metric-value" style="color:#6366f1" id="c-iva-entrate">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su uscite</div><div class="metric-value" style="color:#6366f1" id="c-iva-uscite">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-scale"></i>IVA netta</div><div class="metric-value" style="color:#6366f1" id="c-iva-netta">€0</div><div class="metric-sub" id="c-iva-netta-sub">da versare al fisco</div></div>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
-        <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="stat-entrate"></div></div>
-        <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="stat-uscite"></div></div>
+        <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:center">Pagato</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
@@ -669,7 +660,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
     <div class="form-row">
-      <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+      <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-movimento')">Annulla</button><button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
@@ -683,7 +674,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
     <div class="form-row">
-      <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+      <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
@@ -1886,7 +1877,7 @@ function toggleFatturazione(rowId, tipo){
 
 const FATT_BADGE = {
   fatturato: '<span class="badge" style="background:var(--green-light);color:var(--green)">✅ Fatturato</span>',
-  da_fatturare: '<span class="badge" style="background:var(--orange-light);color:var(--orange)">⏳ Da fatturare</span>',
+  da_fatturare: '<span class="badge" style="background:var(--orange-light);color:var(--orange)">⚫ Black</span>',
   acconto: '<span class="badge" style="background:var(--blue-light);color:var(--blue)">🔄 Acconto</span>',
   non_applicabile: '',
 };
