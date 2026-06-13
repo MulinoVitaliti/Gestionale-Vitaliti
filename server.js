@@ -331,10 +331,23 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato } = req.body;
   try {
-    const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile']);
-    res.json(r.rows[0]);
+    // Prima prova con pagato, se fallisce prova senza
+    try {
+      const r = await pool.query(
+        'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+        [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false]
+      );
+      res.json(r.rows[0]);
+    } catch(e) {
+      // Fallback senza pagato (colonna non ancora aggiunta)
+      const r = await pool.query(
+        'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
+        [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile']
+      );
+      res.json(r.rows[0]);
+    }
   } catch (err) { res.json({ error: err.message }); }
 });
 
