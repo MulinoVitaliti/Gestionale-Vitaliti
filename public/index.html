@@ -480,13 +480,14 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--orange)" id="card-black"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:center">Pagato</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
     </div>
     <div class="page" id="page-email">
       <div class="email-layout">
         <!-- Sidebar sinistra -->
         <div class="email-sidebar">
           <button class="email-sidebar-btn" onclick="apriComposer()"><i class="ti ti-pencil"></i>Nuova email</button>
+          <button class="email-sidebar-btn" style="background:var(--surface-2);color:var(--brand);border:1px solid var(--brand);margin-top:-6px" onclick="apriInvioMultiplo()"><i class="ti ti-send"></i>Invio multiplo</button>
           <div class="email-nav-item active" id="enav-inbox" onclick="switchEmailNav('inbox',this)"><i class="ti ti-inbox"></i>In arrivo<span class="email-count" id="inbox-count" style="display:none">0</span></div>
           <div class="email-nav-item" id="enav-sent" onclick="switchEmailNav('sent',this)"><i class="ti ti-send"></i>Inviati</div>
           <div class="email-nav-item" id="enav-drafts" onclick="switchEmailNav('drafts',this)"><i class="ti ti-file-text"></i>Bozze<span class="email-count" id="drafts-count" style="display:none">0</span></div>
@@ -898,6 +899,33 @@ tbody tr:hover{background:var(--surface-2)}
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
         <button class="btn" onclick="closeModal('modal-cambia-pwd')">Annulla</button>
         <button class="btn btn-primary" onclick="salvaCambiaPwd()"><i class="ti ti-check"></i>Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal invio multiplo -->
+<div class="modal-overlay" id="modal-invio-multiplo">
+  <div class="modal" style="width:620px;max-height:85vh;overflow-y:auto">
+    <div class="modal-header"><div class="modal-title"><i class="ti ti-send"></i> Invio multiplo clienti</div><button class="btn btn-icon" onclick="closeModal('modal-invio-multiplo')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div style="font-size:13px;color:var(--text-2);margin-bottom:14px">Seleziona i clienti a cui vuoi inviare la stessa email. Verranno inclusi solo quelli con email registrata.</div>
+      <!-- Selezione clienti -->
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <button class="btn btn-sm" onclick="selezionaTuttiClienti(true)"><i class="ti ti-check-all"></i>Seleziona tutti</button>
+        <button class="btn btn-sm" onclick="selezionaTuttiClienti(false)"><i class="ti ti-x"></i>Deseleziona tutti</button>
+      </div>
+      <div id="lista-clienti-multiplo" style="max-height:200px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);margin-bottom:14px"></div>
+      <!-- Oggetto -->
+      <div class="form-group"><label class="form-label">Oggetto *</label><input type="text" id="multiplo-subject" placeholder="Oggetto dell'email"></div>
+      <!-- Corpo -->
+      <div class="form-group"><label class="form-label">Messaggio *</label>
+        <div id="multiplo-body-editor" contenteditable="true" style="min-height:150px;border:1px solid var(--border-strong);border-radius:var(--r);padding:10px;font-size:13px;font-family:var(--font);line-height:1.6;outline:none" placeholder="Scrivi il messaggio..."></div>
+      </div>
+      <div id="multiplo-status" style="font-size:13px;color:var(--text-2);margin-bottom:8px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-invio-multiplo')">Annulla</button>
+        <button class="btn btn-primary" onclick="inviaEmailMultipla()"><i class="ti ti-send"></i>Invia a selezionati</button>
       </div>
     </div>
   </div>
@@ -1355,7 +1383,7 @@ function renderContab(){
     const dataFmt = m.data ? new Date(m.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const descFmt = m.descrizione || m.desc || '—';
     const saldoProg = saldoMap[m.id] !== undefined ? fmt(saldoMap[m.id]) : '—';
-    tr.innerHTML=`<td style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tr.innerHTML=`<td style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -2078,7 +2106,49 @@ function salvaCatModificate(){
   populateCatSelect('edit-mov-cat');
   showSave();
 }
-// ── CONFERMA ELIMINAZIONE ─────────────────────────────────────────────────
+// ── INVIO EMAIL MULTIPLO ──────────────────────────────────────────────────
+function apriInvioMultiplo(){
+  const clientiConEmail = state.clienti.filter(c=>c.email&&c.email.trim());
+  const lista = document.getElementById('lista-clienti-multiplo');
+  if(!clientiConEmail.length){
+    lista.innerHTML='<div style="padding:14px;color:var(--text-2);font-size:13px;text-align:center">Nessun cliente con email registrata</div>';
+  } else {
+    lista.innerHTML = clientiConEmail.map(c=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+        <input type="checkbox" class="multiplo-check" data-email="${c.email}" data-nome="${c.nome}" style="width:16px;height:16px;accent-color:var(--brand)">
+        <div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-2)">${c.email}</div></div>
+      </label>`).join('');
+  }
+  document.getElementById('multiplo-subject').value='';
+  document.getElementById('multiplo-body-editor').innerHTML='';
+  document.getElementById('multiplo-status').textContent='';
+  openModal('modal-invio-multiplo');
+}
+
+function selezionaTuttiClienti(sel){
+  document.querySelectorAll('.multiplo-check').forEach(cb=>cb.checked=sel);
+}
+
+async function inviaEmailMultipla(){
+  const selezionati = [...document.querySelectorAll('.multiplo-check:checked')];
+  if(!selezionati.length) return alert('Seleziona almeno un cliente');
+  const subject = document.getElementById('multiplo-subject').value.trim();
+  const body = document.getElementById('multiplo-body-editor').innerHTML;
+  if(!subject||!body) return alert('Compila oggetto e messaggio');
+  const status = document.getElementById('multiplo-status');
+  let inviati=0, errori=0;
+  for(const cb of selezionati){
+    const email = cb.dataset.email;
+    const nome = cb.dataset.nome;
+    status.textContent = `Invio a ${nome}...`;
+    try{
+      const r = await api.post('/api/gmail/send',{to:email,subject,body});
+      if(r.error) errori++; else inviati++;
+    }catch(e){ errori++; }
+  }
+  status.textContent = `✅ Inviate: ${inviati}${errori>0?' | ❌ Errori: '+errori:''}`;
+  if(inviati>0) showSave();
+}
 function conferma(callback){
   openModal('modal-conferma');
   const btn = document.getElementById('conferma-si-btn');
