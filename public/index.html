@@ -30,7 +30,7 @@
   --r:8px;--rl:12px;--font:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:var(--font);font-size:14px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+html,body{height:100%;font-family:var(--font);font-size:15px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
 .login-screen{position:fixed;inset:0;background:#F8F9FA;display:flex;align-items:center;justify-content:center;z-index:1000}
 .login-screen.hidden{display:none}
 .login-wrap{display:flex;width:100%;max-width:840px;min-height:520px;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);border:1px solid var(--border)}
@@ -1304,7 +1304,7 @@ function renderContab(){
     const dataFmt = m.data ? new Date(m.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const descFmt = m.descrizione || m.desc || '—';
     const saldoProg = saldoMap[m.id] !== undefined ? fmt(saldoMap[m.id]) : '—';
-    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tr.innerHTML=`<td style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1910,8 +1910,8 @@ function toggleFatturazione(rowId, tipo){
 }
 
 const FATT_BADGE = {
-  fatturato: '<span class="badge" style="background:var(--green-light);color:var(--green)">✅ Fatturato</span>',
-  da_fatturare: '<span class="badge" style="background:var(--orange-light);color:var(--orange)">⚫ Black</span>',
+  fatturato: '<span class="badge" style="background:var(--green-light);color:var(--green)">Fatturato</span>',
+  da_fatturare: '<span class="badge" style="background:var(--orange-light);color:var(--orange)">Black</span>',
   acconto: '<span class="badge" style="background:var(--blue-light);color:var(--blue)">🔄 Acconto</span>',
   non_applicabile: '',
 };
