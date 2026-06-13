@@ -438,9 +438,9 @@ tbody tr:hover{background:var(--surface-2)}
         <div style="font-size:24px;font-weight:800;color:var(--orange)" id="banner-totale">€0</div>
       </div>
       <div class="metrics-grid metrics-3">
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Totale entrate</div><div class="metric-value green" id="c-entrate">€0</div></div>
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Totale uscite</div><div class="metric-value red" id="c-uscite">€0</div></div>
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="c-saldo">€0</div></div>
+        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Totale entrate</div><div class="metric-value green" id="c-entrate">€0</div><div class="metric-sub">al netto IVA</div></div>
+        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Totale uscite</div><div class="metric-value red" id="c-uscite">€0</div><div class="metric-sub">al netto IVA</div></div>
+        <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="c-saldo">€0</div><div class="metric-sub">al netto IVA</div></div>
       </div>
       <div class="metrics-grid metrics-2" style="margin-bottom:18px">
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
@@ -1225,8 +1225,17 @@ function renderContab(){
     run+=m.tipo==='entrata'?imp:-imp;
     saldoMap[m.id]=run;
   });
-  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  // Totali al netto IVA (importo / (1 + aliquota))
+  const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>{
+    const imp=parseFloat(m.importo)||0;
+    const aliq=(parseFloat(m.aliquota_iva)||4)/100;
+    return s + imp/(1+aliq);
+  },0);
+  const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>{
+    const imp=parseFloat(m.importo)||0;
+    const aliq=(parseFloat(m.aliquota_iva)||4)/100;
+    return s + imp/(1+aliq);
+  },0);
   document.getElementById('c-entrate').textContent=fmt(totE);
   document.getElementById('c-uscite').textContent=fmt(totU);
   const sn=totE-totU;
