@@ -462,7 +462,7 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="metrics-grid metrics-2" style="margin-bottom:18px">
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
-        <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
+        <div class="metric-card" style="border-top-color:var(--orange)" id="card-black"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
       <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:center">Pagato</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
@@ -1292,6 +1292,9 @@ function renderContab(){
   const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-fatturato').textContent=fmt(totFatt);
   document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
+  // Nascondi card Black in modalità clean
+  const cardBlack = document.getElementById('card-black');
+  if(cardBlack) cardBlack.style.display = finanzaModoClean ? 'none' : '';
   // IVA per aliquota specifica di ogni movimento
   const ivaEntrate = entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>{
     const aliq = (parseFloat(m.aliquota_iva)||4)/100;
