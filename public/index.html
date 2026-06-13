@@ -446,6 +446,11 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
         <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Da fatturare</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">ancora senza fattura</div></div>
       </div>
+      <div class="metrics-grid metrics-3" style="margin-bottom:18px">
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su entrate (4%)</div><div class="metric-value" style="color:#6366f1" id="c-iva-entrate">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su uscite (4%)</div><div class="metric-value" style="color:#6366f1" id="c-iva-uscite">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-scale"></i>IVA netta da versare</div><div class="metric-value" style="color:#6366f1" id="c-iva-netta">€0</div><div class="metric-sub">entrate − uscite IVA</div></div>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="stat-entrate"></div></div>
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="stat-uscite"></div></div>
@@ -1226,6 +1231,19 @@ function renderContab(){
   const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-fatturato').textContent=fmt(totFatt);
   document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
+  // IVA 4%
+  const ALIQUOTA = 0.04;
+  const baseFattEntrate = entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const baseFattUscite = state.movimenti.filter(m=>m.tipo==='uscita'&&m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const ivaEntrate = baseFattEntrate * ALIQUOTA;
+  const ivaUscite = baseFattUscite * ALIQUOTA;
+  const ivaNetta = ivaEntrate - ivaUscite;
+  const ivaE = document.getElementById('c-iva-entrate');
+  const ivaU = document.getElementById('c-iva-uscite');
+  const ivaN = document.getElementById('c-iva-netta');
+  if(ivaE) ivaE.textContent = fmt(ivaEntrate);
+  if(ivaU) ivaU.textContent = fmt(ivaUscite);
+  if(ivaN){ ivaN.textContent = fmt(Math.abs(ivaNetta)); ivaN.style.color = ivaNetta>=0?'#6366f1':'var(--green)'; ivaN.nextElementSibling && (ivaN.nextElementSibling.textContent = ivaNetta>=0?'IVA da versare al fisco':'IVA a credito'); }
   // Banner da pagare
   const daPagare = entrate.filter(m=>!m.pagato);
   const totDaPagare = daPagare.reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
@@ -1380,7 +1398,7 @@ async function salvaMovimento(){
   const descrizione=document.getElementById('mov-desc').value.trim();
   const imp=parseFloat(document.getElementById('mov-importo').value)||0;
   if(!d||!descrizione||!imp) return alert('Compila data, descrizione e importo');
-  const fatturazione = document.getElementById('mov-tipo').value==='entrata' ? document.getElementById('mov-fatturazione').value : 'non_applicabile';
+  const fatturazione = document.getElementById('mov-fatturazione').value || 'non_applicabile';
   try{
     const data=await api.post('/api/movimenti',{
       data:d,
@@ -1419,7 +1437,7 @@ function editMovimento(id){
 }
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
-  const fatturazione = document.getElementById('edit-mov-tipo').value==='entrata' ? document.getElementById('edit-mov-fatturazione').value : 'non_applicabile';
+  const fatturazione = document.getElementById('edit-mov-fatturazione').value || 'non_applicabile';
   const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
@@ -1832,7 +1850,7 @@ function sendChat(){
 
 function toggleFatturazione(rowId, tipo){
   const row = document.getElementById(rowId);
-  if(row) row.style.display = tipo==='entrata' ? 'block' : 'none';
+  if(row) row.style.display = 'block';
 }
 
 const FATT_BADGE = {
