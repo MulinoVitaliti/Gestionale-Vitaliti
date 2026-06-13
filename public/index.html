@@ -1933,8 +1933,7 @@ function sendChat(){
 function calcolaImportoMov(){
   const qty = parseFloat(document.getElementById('mov-qty').value)||0;
   const prezzoKg = parseFloat(document.getElementById('mov-prezzo-kg').value)||0;
-  const aliq = (parseInt(document.getElementById('mov-iva').value)||4)/100;
-  // Se qty e prezzo al kg sono inseriti, calcola imponibile
+  const aliq = (parseInt(document.getElementById('mov-iva').value)||0)/100;
   if(qty>0 && prezzoKg>0){
     document.getElementById('mov-importo-netto').value = (qty*prezzoKg).toFixed(2);
   }
@@ -1947,7 +1946,7 @@ function calcolaImportoMov(){
 function calcolaImportoEditMov(){
   const qty = parseFloat(document.getElementById('edit-mov-qty').value)||0;
   const prezzoKg = parseFloat(document.getElementById('edit-mov-prezzo-kg').value)||0;
-  const aliq = (parseInt(document.getElementById('edit-mov-iva').value)||4)/100;
+  const aliq = (parseInt(document.getElementById('edit-mov-iva').value)||0)/100;
   if(qty>0 && prezzoKg>0){
     document.getElementById('edit-mov-importo-netto').value = (qty*prezzoKg).toFixed(2);
   }
