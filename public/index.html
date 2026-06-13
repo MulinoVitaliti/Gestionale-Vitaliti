@@ -1370,12 +1370,33 @@ async function aggiornaOrdine(){
 
 // ── SALVA MOVIMENTO ───────────────────────────────────────────────────────
 async function salvaMovimento(){
-  const d=document.getElementById('mov-data').value,descrizione=document.getElementById('mov-desc').value.trim(),imp=parseFloat(document.getElementById('mov-importo').value)||0;
-  if(!d||!descrizione||!imp)return alert('Compila data, descrizione e importo');
+  const d=document.getElementById('mov-data').value;
+  const descrizione=document.getElementById('mov-desc').value.trim();
+  const imp=parseFloat(document.getElementById('mov-importo').value)||0;
+  if(!d||!descrizione||!imp) return alert('Compila data, descrizione e importo');
   const fatturazione = document.getElementById('mov-tipo').value==='entrata' ? document.getElementById('mov-fatturazione').value : 'non_applicabile';
-  const data=await api.post('/api/movimenti',{data:d,tipo:document.getElementById('mov-tipo').value,importo:imp,cat:getCatValue('mov-cat','mov-cat-custom'),descrizione,fatturazione});
-  if(!data.error) state.movimenti.unshift(data);
-  closeModal('modal-movimento'); renderContab(); renderDash(); showSave();
+  try{
+    const data=await api.post('/api/movimenti',{
+      data:d,
+      tipo:document.getElementById('mov-tipo').value,
+      importo:imp,
+      cat:getCatValue('mov-cat','mov-cat-custom'),
+      descrizione,
+      fatturazione,
+      pagato:false
+    });
+    if(data && !data.error){
+      state.movimenti.unshift(data);
+      closeModal('modal-movimento');
+      renderContab();
+      renderDash();
+      showSave();
+    } else {
+      alert('Errore: '+(data?.error||'impossibile salvare il movimento'));
+    }
+  }catch(e){
+    alert('Errore di rete: '+e.message);
+  }
 }
 function editMovimento(id){
   const m=state.movimenti.find(x=>x.id===id); if(!m)return;
