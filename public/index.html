@@ -426,6 +426,17 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="page-title">Contabilità</div>
         <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
       </div>
+      <!-- Banner da pagare -->
+      <div id="banner-da-pagare" style="display:none;background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:1px solid var(--orange);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <i class="ti ti-alert-circle" style="color:var(--orange);font-size:22px"></i>
+          <div>
+            <div style="font-weight:700;font-size:14px;color:var(--orange)">Entrate non ancora pagate</div>
+            <div style="font-size:12px;color:var(--text-2);margin-top:2px"><span id="banner-count">0</span> moviment<span id="banner-i">o</span> per un totale di <strong id="banner-importo">€0</strong></div>
+          </div>
+        </div>
+        <div style="font-size:24px;font-weight:800;color:var(--orange)" id="banner-totale">€0</div>
+      </div>
       <div class="metrics-grid metrics-3">
         <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Totale entrate</div><div class="metric-value green" id="c-entrate">€0</div></div>
         <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Totale uscite</div><div class="metric-value red" id="c-uscite">€0</div></div>
@@ -440,7 +451,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="stat-uscite"></div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:center">Pagato</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
     </div>
     <div class="page" id="page-email">
       <div class="email-layout">
@@ -1215,6 +1226,19 @@ function renderContab(){
   const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-fatturato').textContent=fmt(totFatt);
   document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
+  // Banner da pagare
+  const daPagare = entrate.filter(m=>!m.pagato);
+  const totDaPagare = daPagare.reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const banner = document.getElementById('banner-da-pagare');
+  if(daPagare.length > 0){
+    banner.style.display='flex';
+    document.getElementById('banner-count').textContent = daPagare.length;
+    document.getElementById('banner-i').textContent = daPagare.length===1 ? 'o' : 'i';
+    document.getElementById('banner-importo').textContent = fmt(totDaPagare);
+    document.getElementById('banner-totale').textContent = fmt(totDaPagare);
+  } else {
+    banner.style.display='none';
+  }
   renderBarCharts();
   const tb=document.getElementById('tbl-contab'); tb.innerHTML='';
   if(!movs.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun movimento</div></td></tr>';return;}
@@ -1223,7 +1247,7 @@ function renderContab(){
     const dataFmt = m.data ? new Date(m.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const descFmt = m.descrizione || m.desc || '—';
     const saldoProg = saldoMap[m.id] !== undefined ? fmt(saldoMap[m.id]) : '—';
-    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    tr.innerHTML=`<td style="font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:var(--${m.tipo==='entrata'?'green':'red'});white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1790,6 +1814,16 @@ const FATT_BADGE = {
   acconto: '<span class="badge" style="background:var(--blue-light);color:var(--blue)">🔄 Acconto</span>',
   non_applicabile: '',
 };
+
+async function togglePagato(id, pagato){
+  try{
+    await api.put('/api/movimenti/'+id+'/pagato', {pagato});
+    const m = state.movimenti.find(x=>x.id===id);
+    if(m) m.pagato = pagato;
+    renderContab();
+  }catch(e){ console.error(e); }
+}
+
 const CAT_DEFAULT = ['Vendita prodotti','Bonifico cliente','Versamento contante','Fornitore','Utenze','Mutuo','Tasse/imposte','Commissioni bancarie','Assegno'];
 
 function loadCat(){
