@@ -517,21 +517,32 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
     </div>
     <div class="page" id="page-automazioni">
-      <div class="page-header"><div class="page-title">Automazioni email</div></div>
-      <div style="display:grid;gap:9px;margin-bottom:22px">
-        <div class="card" style="padding:14px 16px"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:var(--r);background:var(--green-light);color:var(--green);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="ti ti-check"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:600;margin-bottom:1px">Conferma ordine</div><div style="font-size:12px;color:var(--text-2)">Email automatica al cliente quando crei un nuovo ordine</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
-        <div class="card" style="padding:14px 16px"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:var(--r);background:var(--orange-light);color:var(--orange);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="ti ti-clock"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:600;margin-bottom:1px">Follow-up campionatura</div><div style="font-size:12px;color:var(--text-2)">Promemoria dopo 7 giorni dall'invio campionatura</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
-        <div class="card" style="padding:14px 16px"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:var(--r);background:var(--red-light);color:var(--red);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="ti ti-user-x"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:600;margin-bottom:1px">Cliente inattivo</div><div style="font-size:12px;color:var(--text-2)">Email di ricontatto se un cliente non ordina da 90 giorni</div></div><div class="toggle" onclick="this.classList.toggle('on')"></div></div></div>
-        <div class="card" style="padding:14px 16px"><div style="display:flex;align-items:center;gap:12px"><div style="width:34px;height:34px;border-radius:var(--r);background:var(--blue-light);color:var(--blue);display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0"><i class="ti ti-truck"></i></div><div style="flex:1"><div style="font-size:13px;font-weight:600;margin-bottom:1px">Notifica spedizione</div><div style="font-size:12px;color:var(--text-2)">Email quando lo stato ordine passa a "Spedito"</div></div><div class="toggle on" onclick="this.classList.toggle('on')"></div></div></div>
+      <div class="page-header">
+        <div class="page-title">Automazioni</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="eseguiAutomazioniManuale()"><i class="ti ti-player-play"></i>Esegui ora</button>
+          <button class="btn btn-primary" onclick="nuovaAutomazione()"><i class="ti ti-plus"></i>Nuova automazione</button>
+        </div>
       </div>
-      <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-wand" style="color:var(--gold)"></i>Genera email con AI</div></div>
-      <div class="card-body">
-        <div class="form-row"><div class="form-group"><label class="form-label">Tipo email</label><select id="gen-tipo"><option>Conferma ordine</option><option>Follow-up campionatura</option><option>Promozione prodotto</option><option>Cliente inattivo</option><option>Presentazione aziendale</option></select></div><div class="form-group"><label class="form-label">Cliente</label><input type="text" id="gen-cliente" placeholder="Nome cliente"></div></div>
-        <div class="form-row"><div class="form-group"><label class="form-label">Prodotto</label><input type="text" id="gen-prodotto" placeholder="Es. Semola rimacinata"></div><div class="form-group"><label class="form-label">Note</label><input type="text" id="gen-note" placeholder="Es. sconto 10%"></div></div>
-        <button class="btn btn-primary" onclick="generaEmail()"><i class="ti ti-wand"></i>Genera con AI</button>
-        <div id="email-generata" style="display:none;margin-top:13px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:13px;font-size:13px;white-space:pre-wrap;line-height:1.7"></div>
-        <div id="btn-usa-email" style="display:none;margin-top:9px"><button class="btn btn-primary" onclick="usaEmailGenerata()"><i class="ti ti-send"></i>Usa questa email</button></div>
-      </div></div>
+      <!-- Info banner -->
+      <div style="background:var(--brand-light);border:1px solid var(--brand);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--brand);display:flex;align-items:center;gap:10px">
+        <i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>
+        <div>Le automazioni si attivano automaticamente ogni ora. Puoi anche avviarle manualmente con il pulsante "Esegui ora". Usa <strong>{{nome}}</strong> e <strong>{{azienda}}</strong> nel testo per inserire i dati del lead.</div>
+      </div>
+      <!-- Lista automazioni -->
+      <div id="automazioni-list" style="display:grid;gap:12px;margin-bottom:20px">
+        <div class="empty-state"><i class="ti ti-settings-automation"></i><p>Nessuna automazione. Creane una!</p></div>
+      </div>
+      <!-- Log esecuzioni -->
+      <div class="card">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-history" style="color:var(--brand)"></i>Log esecuzioni recenti</div>
+          <button class="btn btn-sm" onclick="caricaLogAutomazioni()"><i class="ti ti-refresh"></i></button>
+        </div>
+        <div class="card-body" id="automazioni-log">
+          <div class="empty-state" style="padding:12px 0"><p>Nessuna esecuzione registrata</p></div>
+        </div>
+      </div>
     </div>
     <div class="page" id="page-ai">
       <div class="page-header"><div class="page-title">Assistente AI <span>Powered by Claude</span></div><button class="btn" onclick="clearChat()"><i class="ti ti-trash"></i>Pulisci</button></div>
@@ -934,6 +945,83 @@ tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 
+<!-- Modal automazione -->
+<div class="modal-overlay" id="modal-automazione">
+  <div class="modal" style="width:620px;max-height:90vh;overflow-y:auto">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-auto-title">Nuova automazione</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-automazione')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="auto-id">
+      <!-- Nome -->
+      <div class="form-group"><label class="form-label">Nome automazione *</label>
+        <input type="text" id="auto-nome" placeholder="Es. Follow-up campionatura 10 giorni">
+      </div>
+      <!-- TRIGGER -->
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px"><i class="ti ti-bolt"></i> Trigger — Quando si attiva</div>
+        <div class="form-row">
+          <div class="form-group">
+            <label class="form-label">Fase pipeline</label>
+            <select id="auto-trigger-fase">
+              <option value="">Seleziona fase...</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label class="form-label">Giorni nella fase</label>
+            <input type="number" id="auto-trigger-giorni" value="7" min="1" max="365" placeholder="7">
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--text-2)">⚡ Si attiva quando un lead rimane nella fase selezionata per il numero di giorni indicato</div>
+      </div>
+      <!-- AZIONI -->
+      <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:14px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px"><i class="ti ti-player-play"></i> Azioni — Cosa fa</div>
+        <!-- Azione 1: Email -->
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
+          <input type="checkbox" id="auto-azione-email" checked style="width:18px;height:18px;accent-color:var(--brand)">
+          <label for="auto-azione-email" style="font-weight:600;font-size:13px">Invia email automatica</label>
+        </div>
+        <div id="auto-email-fields">
+          <div class="form-group">
+            <label class="form-label">Oggetto email</label>
+            <input type="text" id="auto-email-oggetto" placeholder="Es. Aggiornamento sulla tua campionatura">
+          </div>
+          <div class="form-group">
+            <label class="form-label">Corpo email</label>
+            <div style="margin-bottom:6px;display:flex;gap:8px;align-items:center">
+              <button class="btn btn-sm" onclick="apriTemplateSelectorPer('auto-email-corpo-editor')" style="background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-size:12px"><i class="ti ti-template"></i>Usa template</button>
+              <button class="btn btn-sm" onclick="generaCorpoAutoAI()" style="font-size:12px"><i class="ti ti-wand" style="color:var(--gold)"></i>Genera con AI</button>
+              <span style="font-size:11px;color:var(--text-3)">Usa {{nome}} per il nome del lead</span>
+            </div>
+            <div id="auto-email-corpo-editor" contenteditable="true" style="min-height:120px;border:1px solid var(--border-strong);border-radius:var(--r);padding:10px;font-size:13px;font-family:var(--font);line-height:1.6;outline:none"></div>
+          </div>
+        </div>
+        <!-- Azione 2: Sposta fase -->
+        <div style="border-top:1px solid var(--border);padding-top:12px;margin-top:4px">
+          <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+            <input type="checkbox" id="auto-azione-sposta" style="width:18px;height:18px;accent-color:var(--brand)">
+            <label for="auto-azione-sposta" style="font-weight:600;font-size:13px">Sposta lead in un'altra fase</label>
+          </div>
+          <div id="auto-sposta-fields" style="display:none">
+            <div class="form-group">
+              <label class="form-label">Sposta nella fase</label>
+              <select id="auto-sposta-fase">
+                <option value="">Seleziona fase...</option>
+              </select>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-automazione')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaAutomazione()"><i class="ti ti-check"></i>Salva automazione</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal conferma eliminazione -->
 <div class="modal-overlay" id="modal-conferma">
   <div class="modal" style="width:320px;text-align:center">
@@ -1129,6 +1217,7 @@ function showPage(id){
   document.getElementById('nav-'+id).classList.add('active');
   if(id==='attivita')renderPageAttivita();
   if(id==='statistiche')renderStatistiche();
+  if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline')renderPipeline();
   if(id==='clienti')renderClienti();
   if(id==='ordini')renderOrdini();
@@ -2190,6 +2279,185 @@ async function inviaEmailMultipla(){
   status.textContent = `✅ Inviate: ${inviati}${errori>0?' | ❌ Errori: '+errori:''}`;
   if(inviati>0) showSave();
 }
+// ── AUTOMAZIONI ───────────────────────────────────────────────────────────
+let automazioni = [];
+
+async function loadAutomazioni(){
+  try{ automazioni = await api.get('/api/automazioni'); }catch(e){ automazioni=[]; }
+}
+
+async function renderAutomazioni(){
+  await loadAutomazioni();
+  const cont = document.getElementById('automazioni-list');
+  if(!cont) return;
+  if(!automazioni.length){
+    cont.innerHTML='<div class="empty-state"><i class="ti ti-settings-automation"></i><p>Nessuna automazione. Creane una!</p></div>';
+    return;
+  }
+  cont.innerHTML = automazioni.map(a=>{
+    const fase = state.fasi?.find(f=>f.id===a.trigger_fase_id);
+    const faseDest = state.fasi?.find(f=>f.id===a.azione_sposta_fase_id);
+    return `
+    <div class="card" style="padding:16px;border-left:4px solid ${a.attiva?'var(--green)':'var(--border)'}">
+      <div style="display:flex;align-items:flex-start;gap:12px">
+        <div style="width:38px;height:38px;border-radius:var(--r);background:${a.attiva?'var(--green-light)':'var(--surface-2)'};color:${a.attiva?'var(--green)':'var(--text-3)'};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">
+          <i class="ti ti-settings-automation"></i>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:700;font-size:14px;margin-bottom:4px">${a.nome}</div>
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:8px">
+            <span style="background:var(--surface-2);border:1px solid var(--border);border-radius:4px;padding:2px 8px;margin-right:6px">
+              ⚡ Lead in <strong>"${fase?.label||a.trigger_fase_id||'—'}"</strong> da <strong>${a.trigger_giorni} giorni</strong>
+            </span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            ${a.azione_email?`<span style="font-size:11px;background:var(--blue-light);color:var(--blue);border-radius:4px;padding:2px 8px">📧 Invia email</span>`:''}
+            ${a.azione_sposta&&faseDest?`<span style="font-size:11px;background:var(--orange-light);color:var(--orange);border-radius:4px;padding:2px 8px">➡️ Sposta in "${faseDest.label}"</span>`:''}
+          </div>
+          ${a.ultima_esecuzione?`<div style="font-size:11px;color:var(--text-3);margin-top:6px">Ultima esecuzione: ${new Date(a.ultima_esecuzione).toLocaleString('it-IT')} · ${a.esecuzioni||0} volte</div>`:''}
+        </div>
+        <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
+          <div style="cursor:pointer;width:44px;height:24px;border-radius:12px;background:${a.attiva?'var(--green)':'var(--border)'};position:relative;transition:background .2s" onclick="toggleAutomazione(${a.id})">
+            <div style="position:absolute;width:18px;height:18px;background:#fff;border-radius:50%;top:3px;transition:left .2s;left:${a.attiva?'23px':'3px'}"></div>
+          </div>
+          <button class="btn btn-sm" onclick="editAutomazione(${a.id})"><i class="ti ti-pencil"></i></button>
+          <button class="btn btn-danger btn-sm" onclick="eliminaAutomazione(${a.id})"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function nuovaAutomazione(){
+  document.getElementById('auto-id').value='';
+  document.getElementById('auto-nome').value='';
+  document.getElementById('auto-trigger-giorni').value='7';
+  document.getElementById('auto-email-oggetto').value='';
+  document.getElementById('auto-email-corpo-editor').innerHTML='';
+  document.getElementById('auto-azione-email').checked=true;
+  document.getElementById('auto-azione-sposta').checked=false;
+  document.getElementById('auto-sposta-fields').style.display='none';
+  document.getElementById('modal-auto-title').textContent='Nuova automazione';
+  const opts = (state.fasi||[]).map(f=>`<option value="${f.id}">${f.label}</option>`).join('');
+  document.getElementById('auto-trigger-fase').innerHTML='<option value="">Seleziona fase...</option>'+opts;
+  document.getElementById('auto-sposta-fase').innerHTML='<option value="">Seleziona fase...</option>'+opts;
+  document.getElementById('auto-azione-sposta').onchange=function(){
+    document.getElementById('auto-sposta-fields').style.display=this.checked?'block':'none';
+  };
+  openModal('modal-automazione');
+}
+
+function editAutomazione(id){
+  const a = automazioni.find(x=>x.id===id); if(!a)return;
+  document.getElementById('auto-id').value=a.id;
+  document.getElementById('auto-nome').value=a.nome;
+  document.getElementById('auto-trigger-giorni').value=a.trigger_giorni||7;
+  document.getElementById('auto-email-oggetto').value=a.azione_email_oggetto||'';
+  document.getElementById('auto-email-corpo-editor').innerHTML=a.azione_email_corpo||'';
+  document.getElementById('auto-azione-email').checked=!!a.azione_email;
+  document.getElementById('auto-azione-sposta').checked=!!a.azione_sposta;
+  document.getElementById('auto-sposta-fields').style.display=a.azione_sposta?'block':'none';
+  document.getElementById('modal-auto-title').textContent='Modifica automazione';
+  const opts = (state.fasi||[]).map(f=>`<option value="${f.id}" ${f.id===a.trigger_fase_id?'selected':''}>${f.label}</option>`).join('');
+  document.getElementById('auto-trigger-fase').innerHTML='<option value="">Seleziona fase...</option>'+opts;
+  const opts2 = (state.fasi||[]).map(f=>`<option value="${f.id}" ${f.id===a.azione_sposta_fase_id?'selected':''}>${f.label}</option>`).join('');
+  document.getElementById('auto-sposta-fase').innerHTML='<option value="">Seleziona fase...</option>'+opts2;
+  document.getElementById('auto-azione-sposta').onchange=function(){
+    document.getElementById('auto-sposta-fields').style.display=this.checked?'block':'none';
+  };
+  openModal('modal-automazione');
+}
+
+async function salvaAutomazione(){
+  const id = document.getElementById('auto-id').value;
+  const corpo = document.getElementById('auto-email-corpo-editor').innerHTML;
+  const body = {
+    nome: document.getElementById('auto-nome').value.trim(),
+    trigger_tipo: 'giorni_in_fase',
+    trigger_fase_id: document.getElementById('auto-trigger-fase').value,
+    trigger_giorni: parseInt(document.getElementById('auto-trigger-giorni').value)||7,
+    azione_email: document.getElementById('auto-azione-email').checked,
+    azione_email_oggetto: document.getElementById('auto-email-oggetto').value,
+    azione_email_corpo: corpo,
+    azione_sposta: document.getElementById('auto-azione-sposta').checked,
+    azione_sposta_fase_id: document.getElementById('auto-sposta-fase').value||null,
+    attiva: true
+  };
+  if(!body.nome) return alert('Inserisci il nome dell\'automazione');
+  if(!body.trigger_fase_id) return alert('Seleziona la fase trigger');
+  try{
+    if(id) await api.put('/api/automazioni/'+id, body);
+    else await api.post('/api/automazioni', body);
+    closeModal('modal-automazione');
+    renderAutomazioni();
+    showSave();
+  }catch(e){ alert('Errore: '+e.message); }
+}
+
+async function toggleAutomazione(id){
+  await api.put('/api/automazioni/'+id+'/toggle', {});
+  renderAutomazioni();
+}
+
+async function eliminaAutomazione(id){
+  conferma(async()=>{
+    await api.del('/api/automazioni/'+id);
+    renderAutomazioni();
+    showSave();
+  });
+}
+
+async function eseguiAutomazioniManuale(){
+  const btn = event?.target?.closest('button');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Esecuzione...'; }
+  try{
+    const r = await api.post('/api/automazioni/esegui', {});
+    const msg = r.risultati?.length ? `✅ ${r.risultati.length} azioni eseguite` : '✅ Nessuna azione da eseguire ora';
+    alert(msg);
+    renderAutomazioni();
+    caricaLogAutomazioni();
+  }catch(e){ alert('Errore: '+e.message); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-player-play"></i>Esegui ora'; } }
+}
+
+async function caricaLogAutomazioni(){
+  try{
+    const logs = await api.get('/api/automazioni/log');
+    const cont = document.getElementById('automazioni-log');
+    if(!cont) return;
+    if(!logs.length){
+      cont.innerHTML='<div class="empty-state" style="padding:12px 0"><p>Nessuna esecuzione registrata</p></div>';
+      return;
+    }
+    cont.innerHTML=`<table><thead><tr><th>Data</th><th>Automazione</th><th>Lead</th><th>Esito</th></tr></thead><tbody>
+      ${logs.map(l=>`<tr>
+        <td style="font-size:12px;color:var(--text-2);white-space:nowrap">${new Date(l.created_at).toLocaleString('it-IT')}</td>
+        <td style="font-size:13px;font-weight:500">${l.azione||''}</td>
+        <td style="font-size:13px">${l.lead_nome||''}</td>
+        <td style="font-size:12px">${l.esito||''}</td>
+      </tr>`).join('')}
+    </tbody></table>`;
+  }catch(e){}
+}
+
+async function generaCorpoAutoAI(){
+  const nome = document.getElementById('auto-nome').value||'follow-up';
+  const faseEl = document.getElementById('auto-trigger-fase');
+  const faseLabel = faseEl.options[faseEl.selectedIndex]?.text||'';
+  const giorni = document.getElementById('auto-trigger-giorni').value||7;
+  const editor = document.getElementById('auto-email-corpo-editor');
+  editor.innerHTML='<i>Generazione in corso...</i>';
+  try{
+    const r = await api.post('/api/gmail/genera',{
+      tipo: nome,
+      cliente: '{{nome}}',
+      prodotto: 'semola rimacinata di grano duro',
+      note: `Lead in fase "${faseLabel}" da ${giorni} giorni`
+    });
+    if(r.testo) editor.innerHTML = r.testo.replace(/\n/g,'<br>');
+  }catch(e){ editor.innerHTML=''; alert('Errore generazione AI'); }
+}
+
 function conferma(callback){
   openModal('modal-conferma');
   const btn = document.getElementById('conferma-si-btn');
