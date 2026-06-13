@@ -427,7 +427,7 @@ tbody tr:hover{background:var(--surface-2)}
         <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
       </div>
       <!-- Banner da pagare -->
-      <div id="banner-da-pagare" style="display:none;background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:1px solid var(--orange);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;display:flex;align-items:center;justify-content:space-between;gap:12px">
+      <div id="banner-da-pagare" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:1px solid var(--orange);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;align-items:center;justify-content:space-between;gap:12px;display:none">
         <div style="display:flex;align-items:center;gap:10px">
           <i class="ti ti-alert-circle" style="color:var(--orange);font-size:22px"></i>
           <div>
@@ -1230,14 +1230,20 @@ function renderContab(){
   const daPagare = entrate.filter(m=>!m.pagato);
   const totDaPagare = daPagare.reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   const banner = document.getElementById('banner-da-pagare');
-  if(daPagare.length > 0){
-    banner.style.display='flex';
-    document.getElementById('banner-count').textContent = daPagare.length;
-    document.getElementById('banner-i').textContent = daPagare.length===1 ? 'o' : 'i';
-    document.getElementById('banner-importo').textContent = fmt(totDaPagare);
-    document.getElementById('banner-totale').textContent = fmt(totDaPagare);
-  } else {
-    banner.style.display='none';
+  const bannerCount = document.getElementById('banner-count');
+  const bannerI = document.getElementById('banner-i');
+  const bannerImporto = document.getElementById('banner-importo');
+  const bannerTotale = document.getElementById('banner-totale');
+  if(banner && bannerCount && bannerImporto && bannerTotale){
+    if(daPagare.length > 0){
+      banner.style.display='flex';
+      bannerCount.textContent = daPagare.length;
+      if(bannerI) bannerI.textContent = daPagare.length===1 ? 'o' : 'i';
+      bannerImporto.textContent = fmt(totDaPagare);
+      bannerTotale.textContent = fmt(totDaPagare);
+    } else {
+      banner.style.display='none';
+    }
   }
   renderBarCharts();
   const tb=document.getElementById('tbl-contab'); tb.innerHTML='';
