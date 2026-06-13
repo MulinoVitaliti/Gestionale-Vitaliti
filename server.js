@@ -33,9 +33,11 @@ async function initDB() {
         contatto TEXT,
         tel TEXT,
         citta TEXT,
+        email TEXT,
         prodotto TEXT,
         stato TEXT,
         note TEXT,
+        updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -90,6 +92,34 @@ async function initDB() {
         collegata_id INTEGER,
         collegata_nome TEXT,
         completata BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS automazioni (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        attiva BOOLEAN DEFAULT TRUE,
+        trigger_tipo TEXT NOT NULL DEFAULT 'giorni_in_fase',
+        trigger_fase_id TEXT,
+        trigger_giorni INTEGER DEFAULT 7,
+        azione_email BOOLEAN DEFAULT TRUE,
+        azione_email_template_id INTEGER,
+        azione_email_oggetto TEXT,
+        azione_email_corpo TEXT,
+        azione_sposta BOOLEAN DEFAULT FALSE,
+        azione_sposta_fase_id TEXT,
+        ultima_esecuzione TIMESTAMP,
+        esecuzioni INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS automazioni_log (
+        id SERIAL PRIMARY KEY,
+        automazione_id INTEGER,
+        lead_id INTEGER,
+        lead_nome TEXT,
+        azione TEXT,
+        esito TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -253,7 +283,7 @@ app.post('/api/leads', async (req, res) => {
 app.put('/api/leads/:id', async (req, res) => {
   const { nome, contatto, tel, citta, prodotto, stato, note } = req.body;
   try {
-    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,citta=$4,prodotto=$5,stato=$6,note=$7 WHERE id=$8', [nome, contatto, tel, citta, prodotto, stato, note, req.params.id]);
+    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,citta=$4,prodotto=$5,stato=$6,note=$7,updated_at=NOW() WHERE id=$8', [nome, contatto, tel, citta, prodotto, stato, note, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -622,7 +652,204 @@ app.post('/api/gmail/genera', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// ── START ─────────────────────────────────────────────────────────────────
+// ── GMAIL MESSAGE COMPLETO ────────────────────────────────────────────────
+app.get('/api/gmail/message/:id', async (req, res) => {
+  if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  try {
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const msg = await gmail.users.messages.get({ userId: 'me', id: req.params.id, format: 'full' });
+    const payload = msg.data.payload;
+    // Estrai body
+    function getBody(parts, mimeType) {
+      if (!parts) return '';
+      for (const p of parts) {
+        if (p.mimeType === mimeType && p.body?.data)
+          return Buffer.from(p.body.data, 'base64').toString('utf-8');
+        if (p.parts) { const r = getBody(p.parts, mimeType); if (r) return r; }
+      }
+      return '';
+    }
+    let body = '';
+    if (payload.mimeType === 'text/html' && payload.body?.data)
+      body = Buffer.from(payload.body.data, 'base64').toString('utf-8');
+    else if (payload.mimeType === 'text/plain' && payload.body?.data)
+      body = Buffer.from(payload.body.data, 'base64').toString('utf-8').replace(/\n/g, '<br>');
+    else {
+      body = getBody(payload.parts, 'text/html') || getBody(payload.parts, 'text/plain').replace(/\n/g, '<br>');
+    }
+    // Allegati
+    function getAttachments(parts) {
+      if (!parts) return [];
+      let atts = [];
+      for (const p of parts) {
+        if (p.filename && p.body?.attachmentId)
+          atts.push({ filename: p.filename, attachmentId: p.body.attachmentId, mimeType: p.mimeType });
+        if (p.parts) atts = atts.concat(getAttachments(p.parts));
+      }
+      return atts;
+    }
+    const attachments = getAttachments(payload.parts || []);
+    res.json({ body, attachments });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.get('/api/gmail/attachment/:msgId/:attId', async (req, res) => {
+  if (!gmailTokens) return res.status(401).json({ error: 'Gmail non connesso' });
+  try {
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const att = await gmail.users.messages.attachments.get({
+      userId: 'me', messageId: req.params.msgId, id: req.params.attId
+    });
+    const data = Buffer.from(att.data.data, 'base64');
+    const filename = req.query.filename || 'allegato';
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.setHeader('Content-Type', 'application/octet-stream');
+    res.send(data);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── AUTOMAZIONI ───────────────────────────────────────────────────────────
+app.get('/api/automazioni', async (req, res) => {
+  try { const r = await pool.query('SELECT * FROM automazioni ORDER BY created_at DESC'); res.json(r.rows); }
+  catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/automazioni', async (req, res) => {
+  const { nome, attiva, trigger_tipo, trigger_fase_id, trigger_giorni,
+    azione_email, azione_email_template_id, azione_email_oggetto, azione_email_corpo,
+    azione_sposta, azione_sposta_fase_id } = req.body;
+  try {
+    const r = await pool.query(
+      `INSERT INTO automazioni (nome,attiva,trigger_tipo,trigger_fase_id,trigger_giorni,
+        azione_email,azione_email_template_id,azione_email_oggetto,azione_email_corpo,
+        azione_sposta,azione_sposta_fase_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *`,
+      [nome, attiva??true, trigger_tipo||'giorni_in_fase', trigger_fase_id, trigger_giorni||7,
+       azione_email??true, azione_email_template_id||null, azione_email_oggetto, azione_email_corpo,
+       azione_sposta??false, azione_sposta_fase_id||null]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/automazioni/:id', async (req, res) => {
+  const { nome, attiva, trigger_tipo, trigger_fase_id, trigger_giorni,
+    azione_email, azione_email_template_id, azione_email_oggetto, azione_email_corpo,
+    azione_sposta, azione_sposta_fase_id } = req.body;
+  try {
+    await pool.query(
+      `UPDATE automazioni SET nome=$1,attiva=$2,trigger_tipo=$3,trigger_fase_id=$4,
+        trigger_giorni=$5,azione_email=$6,azione_email_template_id=$7,
+        azione_email_oggetto=$8,azione_email_corpo=$9,azione_sposta=$10,
+        azione_sposta_fase_id=$11 WHERE id=$12`,
+      [nome, attiva, trigger_tipo, trigger_fase_id, trigger_giorni,
+       azione_email, azione_email_template_id||null, azione_email_oggetto, azione_email_corpo,
+       azione_sposta, azione_sposta_fase_id||null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/automazioni/:id/toggle', async (req, res) => {
+  try {
+    await pool.query('UPDATE automazioni SET attiva = NOT attiva WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/automazioni/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM automazioni WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.get('/api/automazioni/log', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM automazioni_log ORDER BY created_at DESC LIMIT 50');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/automazioni/esegui', async (req, res) => {
+  try {
+    const risultati = await eseguiAutomazioni();
+    res.json({ success: true, risultati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── JOB AUTOMAZIONI ───────────────────────────────────────────────────────
+async function inviaEmailAutomazione(a, lead) {
+  if (!gmailTokens) return { ok: false, err: 'Gmail non connesso' };
+  try {
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const emailLead = lead.email || '';
+    if (!emailLead) return { ok: false, err: 'Lead senza email' };
+    // Prepara corpo sostituendo variabili
+    let corpo = a.azione_email_corpo || '';
+    corpo = corpo.replace(/\{\{nome\}\}/gi, lead.nome||'').replace(/\{\{azienda\}\}/gi, lead.azienda||'');
+    const oggetto = (a.azione_email_oggetto||'').replace(/\{\{nome\}\}/gi, lead.nome||'');
+    const raw = Buffer.from(
+      `To: ${emailLead}\r\nSubject: ${oggetto}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpo}`
+    ).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+    return { ok: true };
+  } catch (e) { return { ok: false, err: e.message }; }
+}
+
+async function eseguiAutomazioni() {
+  const risultati = [];
+  try {
+    const auto = await pool.query('SELECT * FROM automazioni WHERE attiva=true');
+    const leads = await pool.query('SELECT l.*, f.label as fase_label FROM leads l LEFT JOIN fasi f ON l.stato=f.id');
+    const fasi = await pool.query('SELECT * FROM fasi ORDER BY ordine');
+    const now = new Date();
+    for (const a of auto.rows) {
+      if (a.trigger_tipo === 'giorni_in_fase') {
+        for (const lead of leads.rows) {
+          if (lead.stato !== a.trigger_fase_id) continue;
+          const aggiornato = new Date(lead.updated_at || lead.created_at || now);
+          const giorni = Math.floor((now - aggiornato) / (1000*60*60*24));
+          if (giorni < (a.trigger_giorni||7)) continue;
+          // Controlla se già eseguita su questo lead nelle ultime 24h
+          const gia = await pool.query(
+            `SELECT id FROM automazioni_log WHERE automazione_id=$1 AND lead_id=$2 AND created_at > NOW() - INTERVAL '24 hours'`,
+            [a.id, lead.id]
+          );
+          if (gia.rows.length > 0) continue;
+          let esito = [];
+          // Azione email
+          if (a.azione_email) {
+            const r = await inviaEmailAutomazione(a, lead);
+            esito.push(r.ok ? '✅ Email inviata' : `❌ Email: ${r.err}`);
+          }
+          // Azione sposta fase
+          if (a.azione_sposta && a.azione_sposta_fase_id) {
+            await pool.query('UPDATE leads SET stato=$1, updated_at=NOW() WHERE id=$2', [a.azione_sposta_fase_id, lead.id]);
+            const nuovaFase = fasi.rows.find(f=>f.id===a.azione_sposta_fase_id);
+            esito.push(`✅ Spostato in "${nuovaFase?.label||a.azione_sposta_fase_id}"`);
+          }
+          // Log
+          await pool.query(
+            'INSERT INTO automazioni_log (automazione_id,lead_id,lead_nome,azione,esito) VALUES ($1,$2,$3,$4,$5)',
+            [a.id, lead.id, lead.nome, a.nome, esito.join(', ')]
+          );
+          await pool.query('UPDATE automazioni SET esecuzioni=esecuzioni+1, ultima_esecuzione=NOW() WHERE id=$1', [a.id]);
+          risultati.push({ automazione: a.nome, lead: lead.nome, esito: esito.join(', ') });
+        }
+      }
+    }
+  } catch (e) { console.error('Errore job automazioni:', e.message); }
+  return risultati;
+}
+
+// Job ogni ora
+setInterval(eseguiAutomazioni, 60 * 60 * 1000);
+
+
 // Fallback: serve index.html per tutte le route non-API
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
