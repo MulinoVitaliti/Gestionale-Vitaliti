@@ -392,32 +392,50 @@ tbody tr:hover{background:var(--surface-2)}
           <button class="btn" onclick="exportStatsExcel()"><i class="ti ti-file-type-xls"></i>Export Excel</button>
         </div>
       </div>
-      <!-- Metriche principali -->
-      <div class="metrics-grid metrics-3" style="margin-bottom:20px">
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Entrate totali</div><div class="metric-value green" id="s-entrate">€0</div><div class="metric-sub">anno corrente</div></div>
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Uscite totali</div><div class="metric-value red" id="s-uscite">€0</div><div class="metric-sub">anno corrente</div></div>
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="s-saldo">€0</div><div class="metric-sub">entrate − uscite</div></div>
+
+      <!-- TAB SWITCH -->
+      <div class="pills" style="margin-bottom:20px">
+        <div class="pill active" id="tab-analitica" onclick="switchStatsTab('analitica')">📊 Analitica</div>
+        <div class="pill" id="tab-grafica" onclick="switchStatsTab('grafica')">📈 Grafica</div>
       </div>
-      <!-- Grafici mensili -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
-        <div class="card">
-          <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar" style="color:var(--green)"></i>Entrate mensili</div></div>
-          <div class="card-body" id="grafico-entrate"></div>
+
+      <!-- SEZIONE ANALITICA -->
+      <div id="stats-analitica">
+        <!-- Metriche principali -->
+        <div class="metrics-grid metrics-3" style="margin-bottom:16px">
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Entrate totali</div><div class="metric-value green" id="s-entrate">€0</div><div class="metric-sub">anno corrente</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Uscite totali</div><div class="metric-value red" id="s-uscite">€0</div><div class="metric-sub">anno corrente</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="s-saldo">€0</div><div class="metric-sub">entrate − uscite</div></div>
+        </div>
+        <!-- IVA -->
+        <div class="metrics-grid metrics-3" style="margin-bottom:16px">
+          <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA entrate / debito</div><div class="metric-value" style="color:#6366f1" id="s-iva-entrate">€0</div><div class="metric-sub">IVA su fatturato</div></div>
+          <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA uscite / credito</div><div class="metric-value" style="color:#6366f1" id="s-iva-uscite">€0</div><div class="metric-sub">IVA su acquisti</div></div>
+          <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-scale"></i>IVA netta</div><div class="metric-value" style="color:#6366f1" id="s-iva-netta">€0</div><div class="metric-sub" id="s-iva-netta-sub">da versare al fisco</div></div>
+        </div>
+        <!-- Categorie -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+          <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="s-stat-entrate"></div></div>
+          <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="s-stat-uscite"></div></div>
+        </div>
+      </div>
+
+      <!-- SEZIONE GRAFICA -->
+      <div id="stats-grafica" style="display:none">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:20px">
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar" style="color:var(--green)"></i>Entrate mensili</div></div>
+            <div class="card-body" id="grafico-entrate"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar" style="color:var(--red)"></i>Uscite mensili</div></div>
+            <div class="card-body" id="grafico-uscite"></div>
+          </div>
         </div>
         <div class="card">
-          <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar" style="color:var(--red)"></i>Uscite mensili</div></div>
-          <div class="card-body" id="grafico-uscite"></div>
+          <div class="card-header"><div class="card-title"><i class="ti ti-chart-line" style="color:var(--brand)"></i>Confronto entrate vs uscite</div></div>
+          <div class="card-body" id="grafico-confronto"></div>
         </div>
-      </div>
-      <!-- Grafico confronto -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header"><div class="card-title"><i class="ti ti-chart-line" style="color:var(--brand)"></i>Confronto entrate vs uscite</div></div>
-        <div class="card-body" id="grafico-confronto"></div>
-      </div>
-      <!-- Top categorie -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
-        <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="s-stat-entrate"></div></div>
-        <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="s-stat-uscite"></div></div>
       </div>
     </div>
 
@@ -2071,7 +2089,30 @@ function verificaFinanzaPwd(){
   }
 }
 
-// ── STATISTICHE ───────────────────────────────────────────────────────────
+function switchStatsTab(tab){
+  document.getElementById('stats-analitica').style.display = tab==='analitica' ? 'block' : 'none';
+  document.getElementById('stats-grafica').style.display = tab==='grafica' ? 'block' : 'none';
+  document.getElementById('tab-analitica').className = 'pill' + (tab==='analitica'?' active':'');
+  document.getElementById('tab-grafica').className = 'pill' + (tab==='grafica'?' active':'');
+  if(tab==='grafica') renderGrafici();
+}
+
+function renderGrafici(){
+  const anno = new Date().getFullYear();
+  const movAnno = state.movimenti.filter(m=>new Date(m.data||0).getFullYear()===anno);
+  const entrateMese = Array(12).fill(0);
+  const usciteMese = Array(12).fill(0);
+  movAnno.forEach(m=>{
+    const mese = new Date(m.data||0).getMonth();
+    const imp = parseFloat(m.importo)||0;
+    if(m.tipo==='entrata') entrateMese[mese]+=imp;
+    else usciteMese[mese]+=imp;
+  });
+  const maxVal = Math.max(...entrateMese, ...usciteMese, 1);
+  renderBarChart('grafico-entrate', entrateMese, 'var(--green)', maxVal);
+  renderBarChart('grafico-uscite', usciteMese, 'var(--red)', maxVal);
+  renderConfrontoChart('grafico-confronto', entrateMese, usciteMese);
+}
 const MESI = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
 
 function renderStatistiche(){
@@ -2091,24 +2132,24 @@ function renderStatistiche(){
   se.textContent = fmt(saldo);
   se.className = 'metric-value ' + (saldo>=0?'green':'red');
 
-  // Dati mensili
-  const entrateMese = Array(12).fill(0);
-  const usciteMese = Array(12).fill(0);
-  movAnno.forEach(m=>{
-    const mese = new Date(m.data||0).getMonth();
-    const imp = parseFloat(m.importo)||0;
-    if(m.tipo==='entrata') entrateMese[mese]+=imp;
-    else usciteMese[mese]+=imp;
-  });
-
-  const maxVal = Math.max(...entrateMese, ...usciteMese, 1);
-
-  // Grafico entrate
-  renderBarChart('grafico-entrate', entrateMese, 'var(--green)', maxVal);
-  // Grafico uscite
-  renderBarChart('grafico-uscite', usciteMese, 'var(--red)', maxVal);
-  // Grafico confronto
-  renderConfrontoChart('grafico-confronto', entrateMese, usciteMese);
+  // IVA per aliquota specifica
+  const ivaE = movAnno.filter(m=>m.tipo==='entrata'&&m.fatturazione==='fatturato').reduce((s,m)=>{
+    const aliq=(parseFloat(m.aliquota_iva)||4)/100;
+    return s+(parseFloat(m.importo)||0)*aliq;
+  },0);
+  const ivaU = movAnno.filter(m=>m.tipo==='uscita'&&m.fatturazione==='fatturato').reduce((s,m)=>{
+    const aliq=(parseFloat(m.aliquota_iva)||4)/100;
+    return s+(parseFloat(m.importo)||0)*aliq;
+  },0);
+  const ivaNetta = ivaE - ivaU;
+  const sIvaE = document.getElementById('s-iva-entrate');
+  const sIvaU = document.getElementById('s-iva-uscite');
+  const sIvaN = document.getElementById('s-iva-netta');
+  const sIvaSub = document.getElementById('s-iva-netta-sub');
+  if(sIvaE) sIvaE.textContent = fmt(ivaE);
+  if(sIvaU) sIvaU.textContent = fmt(ivaU);
+  if(sIvaN){ sIvaN.textContent = fmt(Math.abs(ivaNetta)); sIvaN.style.color = ivaNetta>=0?'#6366f1':'var(--green)'; }
+  if(sIvaSub) sIvaSub.textContent = ivaNetta>=0?'da versare al fisco':'IVA a credito';
 
   // Categorie
   const eMap={}, uMap={};
