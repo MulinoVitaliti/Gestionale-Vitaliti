@@ -657,7 +657,12 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="mov-confezione"><option value="">— Nessuna —</option><option value="sacco 25kg">Sacco 25 kg</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 1kg">Sacco 1 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
+      <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoMov()"></div>
+    </div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoMov()"></div><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0" placeholder="calcolato automaticamente"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
@@ -671,7 +676,12 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal-body">
     <input type="hidden" id="edit-mov-id">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="edit-mov-confezione"><option value="">— Nessuna —</option><option value="sacco 25kg">Sacco 25 kg</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 1kg">Sacco 1 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
+      <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="edit-mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoEditMov()"></div>
+    </div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="edit-mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoEditMov()"></div><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0" placeholder="calcolato automaticamente"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
@@ -1065,6 +1075,9 @@ function openModal(id){
   }
   if(id==='modal-movimento'){
     document.getElementById('mov-data').value=new Date().toISOString().slice(0,10);
+    document.getElementById('mov-qty').value='';
+    document.getElementById('mov-prezzo-kg').value='';
+    document.getElementById('mov-confezione').value='';
     populateCatSelect('mov-cat');
     document.getElementById('mov-cat-custom').style.display='none';
   }
@@ -1428,6 +1441,9 @@ async function salvaMovimento(){
       descrizione,
       fatturazione,
       aliquota_iva: parseInt(document.getElementById('mov-iva').value)||4,
+      confezione: document.getElementById('mov-confezione').value||'',
+      qty_kg: parseFloat(document.getElementById('mov-qty').value)||null,
+      prezzo_kg: parseFloat(document.getElementById('mov-prezzo-kg').value)||null,
       pagato:false
     });
     if(data && !data.error){
@@ -1453,6 +1469,9 @@ function editMovimento(id){
   toggleFatturazione('edit-mov-fatturazione-row', m.tipo);
   const fs=document.getElementById('edit-mov-fatturazione'); for(let o of fs.options) if(o.value===(m.fatturazione||'non_applicabile'))o.selected=true;
   const iv=document.getElementById('edit-mov-iva'); for(let o of iv.options) if(parseInt(o.value)===(parseInt(m.aliquota_iva)||4))o.selected=true;
+  document.getElementById('edit-mov-confezione').value = m.confezione||'';
+  document.getElementById('edit-mov-qty').value = m.qty_kg||'';
+  document.getElementById('edit-mov-prezzo-kg').value = m.prezzo_kg||'';
   populateCatSelect('edit-mov-cat', m.cat||'');
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
   openModal('modal-edit-movimento');
@@ -1460,7 +1479,7 @@ function editMovimento(id){
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
   const fatturazione = document.getElementById('edit-mov-fatturazione').value || 'non_applicabile';
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione,aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4};
+  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione,aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4,confezione:document.getElementById('edit-mov-confezione').value||'',qty_kg:parseFloat(document.getElementById('edit-mov-qty').value)||null,prezzo_kg:parseFloat(document.getElementById('edit-mov-prezzo-kg').value)||null};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
@@ -1870,7 +1889,20 @@ function sendChat(){
     }).finally(()=>{document.getElementById('send-btn').disabled=false;msgs.scrollTop=msgs.scrollHeight;});
 }
 
-function toggleFatturazione(rowId, tipo){
+function calcolaImportoMov(){
+  const qty = parseFloat(document.getElementById('mov-qty').value)||0;
+  const prezzoKg = parseFloat(document.getElementById('mov-prezzo-kg').value)||0;
+  if(qty>0 && prezzoKg>0){
+    document.getElementById('mov-importo').value = (qty*prezzoKg).toFixed(2);
+  }
+}
+function calcolaImportoEditMov(){
+  const qty = parseFloat(document.getElementById('edit-mov-qty').value)||0;
+  const prezzoKg = parseFloat(document.getElementById('edit-mov-prezzo-kg').value)||0;
+  if(qty>0 && prezzoKg>0){
+    document.getElementById('edit-mov-importo').value = (qty*prezzoKg).toFixed(2);
+  }
+}
   const row = document.getElementById(rowId);
   if(row) row.style.display = 'block';
 }
