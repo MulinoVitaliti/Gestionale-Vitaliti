@@ -487,7 +487,6 @@ tbody tr:hover{background:var(--surface-2)}
         <!-- Sidebar sinistra -->
         <div class="email-sidebar">
           <button class="email-sidebar-btn" onclick="apriComposer()"><i class="ti ti-pencil"></i>Nuova email</button>
-          <button class="email-sidebar-btn" style="background:var(--surface-2);color:var(--brand);border:1px solid var(--brand);margin-top:-6px" onclick="apriInvioMultiplo()"><i class="ti ti-send"></i>Invio multiplo</button>
           <div class="email-nav-item active" id="enav-inbox" onclick="switchEmailNav('inbox',this)"><i class="ti ti-inbox"></i>In arrivo<span class="email-count" id="inbox-count" style="display:none">0</span></div>
           <div class="email-nav-item" id="enav-sent" onclick="switchEmailNav('sent',this)"><i class="ti ti-send"></i>Inviati</div>
           <div class="email-nav-item" id="enav-drafts" onclick="switchEmailNav('drafts',this)"><i class="ti ti-file-text"></i>Bozze<span class="email-count" id="drafts-count" style="display:none">0</span></div>
@@ -495,6 +494,7 @@ tbody tr:hover{background:var(--surface-2)}
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
             <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Template</div>
             <div class="email-nav-item" onclick="apriGestisciTemplate()"><i class="ti ti-template"></i>I miei template</div>
+            <div class="email-nav-item" onclick="apriInvioMultiplo()" style="color:var(--brand);font-weight:600"><i class="ti ti-send" style="color:var(--brand)"></i>Invio multiplo</div>
           </div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
             <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Account</div>
@@ -722,8 +722,8 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="modal-header" style="background:var(--brand);color:#fff;border-radius:var(--rl) var(--rl) 0 0">
       <div class="modal-title" style="color:#fff" id="composer-title">Nuova email</div>
       <div style="display:flex;gap:6px">
-        <button class="btn btn-icon" onclick="salvaBozza()" title="Salva bozza" style="color:#fff;border-color:rgba(255,255,255,0.3)"><i class="ti ti-device-floppy"></i></button>
-        <button class="btn btn-icon" onclick="closeModal('modal-email')" style="color:#fff;border-color:rgba(255,255,255,0.3)"><i class="ti ti-x"></i></button>
+        <button class="btn btn-sm" onclick="salvaBozza()" title="Salva bozza" style="color:#fff;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.5);font-size:12px"><i class="ti ti-device-floppy"></i>Bozza</button>
+        <button class="btn btn-icon" onclick="closeModal('modal-email')" style="color:#fff;background:rgba(255,255,255,0.2);border-color:rgba(255,255,255,0.5);font-size:16px;font-weight:700"><i class="ti ti-x"></i></button>
       </div>
     </div>
     <div class="modal-body" style="padding:0">
@@ -761,7 +761,7 @@ tbody tr:hover{background:var(--surface-2)}
           <input type="color" id="color-picker" onchange="execFmt('foreColor',this.value)" style="position:absolute;opacity:0;width:0;height:0">
         </label>
         <div style="width:1px;height:18px;background:var(--border);margin:0 4px"></div>
-        <button class="fmt-btn" onclick="apriTemplateSelector()" title="Usa template"><i class="ti ti-template"></i></button>
+        <button class="btn btn-sm" onclick="apriTemplateSelector()" title="Usa template" style="background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-size:12px;font-weight:600"><i class="ti ti-template"></i>Template</button>
         <button class="fmt-btn" onclick="generaEmailModal()" title="Genera con AI"><i class="ti ti-wand" style="color:var(--gold)"></i></button>
       </div>
       <!-- Body editor -->
@@ -920,6 +920,9 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="form-group"><label class="form-label">Oggetto *</label><input type="text" id="multiplo-subject" placeholder="Oggetto dell'email"></div>
       <!-- Corpo -->
       <div class="form-group"><label class="form-label">Messaggio *</label>
+        <div style="margin-bottom:6px">
+          <button class="btn btn-sm" onclick="apriTemplateSelectorPer('multiplo-body-editor')" style="background:var(--brand-light);color:var(--brand);border-color:var(--brand);font-size:12px;font-weight:600"><i class="ti ti-template"></i>Usa template</button>
+        </div>
         <div id="multiplo-body-editor" contenteditable="true" style="min-height:150px;border:1px solid var(--border-strong);border-radius:var(--r);padding:10px;font-size:13px;font-family:var(--font);line-height:1.6;outline:none" placeholder="Scrivi il messaggio..."></div>
       </div>
       <div id="multiplo-status" style="font-size:13px;color:var(--text-2);margin-bottom:8px"></div>
@@ -1874,8 +1877,11 @@ function apriTemplateSelector(){
     div.onmouseenter=()=>div.style.borderColor='var(--brand)';
     div.onmouseleave=()=>div.style.borderColor='var(--border)';
     div.onclick=()=>{
-      if(t.oggetto&&!document.getElementById('email-subject').value) document.getElementById('email-subject').value=t.oggetto;
-      document.getElementById('email-body-editor').innerHTML=t.body||'';
+      const targetId = window._templateTarget || 'email-body-editor';
+      if(t.oggetto&&document.getElementById('email-subject')) document.getElementById('email-subject').value=t.oggetto;
+      const editor = document.getElementById(targetId);
+      if(editor) editor.innerHTML=t.body||'';
+      window._templateTarget = null;
       closeModal('modal-template-sel');
     };
     cont.appendChild(div);
@@ -2106,6 +2112,11 @@ function salvaCatModificate(){
   populateCatSelect('edit-mov-cat');
   showSave();
 }
+function apriTemplateSelectorPer(targetId){
+  window._templateTarget = targetId;
+  apriTemplateSelector();
+}
+
 // ── INVIO EMAIL MULTIPLO ──────────────────────────────────────────────────
 function apriInvioMultiplo(){
   const clientiConEmail = state.clienti.filter(c=>c.email&&c.email.trim());
