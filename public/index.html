@@ -418,6 +418,21 @@ tbody tr:hover{background:var(--surface-2)}
           <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="s-stat-entrate"></div></div>
           <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--red)"></i>Uscite per categoria</div></div><div class="card-body" id="s-stat-uscite"></div></div>
         </div>
+        <!-- Confezioni -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-top:14px">
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-package" style="color:var(--brand)"></i>Confezioni più vendute</div></div>
+            <div class="card-body" id="s-confezioni-bar"></div>
+          </div>
+          <div class="card">
+            <div class="card-header"><div class="card-title"><i class="ti ti-chart-donut" style="color:var(--brand)"></i>% confezioni vendute</div></div>
+            <div class="card-body" id="s-confezioni-pie"></div>
+          </div>
+        </div>
+        <div class="card" style="margin-top:14px">
+          <div class="card-header"><div class="card-title"><i class="ti ti-weight" style="color:var(--brand)"></i>Kg medi per confezione</div></div>
+          <div class="card-body" id="s-confezioni-media"></div>
+        </div>
       </div>
 
       <!-- SEZIONE GRAFICA -->
@@ -658,7 +673,7 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal-body">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="mov-confezione"><option value="">— Nessuna —</option><option value="sacco 25kg">Sacco 25 kg</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 1kg">Sacco 1 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
+      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="mov-confezione"><option value="">— Nessuna —</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 10kg">Sacco 10 kg</option><option value="sacco 30kg">Sacco 30 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
       <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoMov()"></div>
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoMov()"></div><div class="form-group"><label class="form-label">Imponibile netto (€) *</label><input type="number" id="mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoMov()"></div></div>
@@ -682,7 +697,7 @@ tbody tr:hover{background:var(--surface-2)}
     <input type="hidden" id="edit-mov-id">
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="edit-mov-confezione"><option value="">— Nessuna —</option><option value="sacco 25kg">Sacco 25 kg</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 1kg">Sacco 1 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
+      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="edit-mov-confezione"><option value="">— Nessuna —</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 10kg">Sacco 10 kg</option><option value="sacco 30kg">Sacco 30 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
       <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="edit-mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoEditMov()"></div>
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="edit-mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoEditMov()"></div><div class="form-group"><label class="form-label">Imponibile netto (€) *</label><input type="number" id="edit-mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoEditMov()"></div></div>
@@ -2264,6 +2279,107 @@ function renderStatistiche(){
   }
   drawCat(eMap,'s-stat-entrate','green');
   drawCat(uMap,'s-stat-uscite','');
+
+  // ── GRAFICI CONFEZIONI ────────────────────────────────────────────────
+  const CONF_LABELS = {'sacco 5kg':'Sacco 5kg','sacco 10kg':'Sacco 10kg','sacco 30kg':'Sacco 30kg','sfuso':'Sfuso','altro':'Altro'};
+  const CONF_COLORS = {'sacco 5kg':'#A8412A','sacco 10kg':'#C9A227','sacco 30kg':'#2D7A4F','sfuso':'#6366f1','altro':'#888'};
+  const CONF_KG = {'sacco 5kg':5,'sacco 10kg':10,'sacco 30kg':30};
+
+  // Solo entrate con confezione specificata
+  const entConf = movAnno.filter(m=>m.tipo==='entrata' && m.confezione && m.confezione!=='');
+  const confMap = {};
+  entConf.forEach(m=>{
+    const c = m.confezione;
+    if(!confMap[c]) confMap[c]={count:0, qty:0, importo:0};
+    confMap[c].count++;
+    confMap[c].qty += parseFloat(m.qty_kg)||0;
+    confMap[c].importo += parseFloat(m.importo)||0;
+  });
+  const confEntries = Object.entries(confMap).sort((a,b)=>b[1].count-a[1].count);
+  const totConf = confEntries.reduce((s,[,v])=>s+v.count,0);
+
+  // Grafico barre confezioni
+  const barEl = document.getElementById('s-confezioni-bar');
+  if(barEl){
+    if(!confEntries.length){ barEl.innerHTML='<div class="empty-state" style="padding:12px 0"><p>Nessun dato</p></div>'; }
+    else {
+      const maxC = Math.max(...confEntries.map(([,v])=>v.count));
+      barEl.innerHTML = confEntries.map(([c,v])=>`
+        <div class="stat-bar-wrap">
+          <div class="stat-bar-label">
+            <span style="color:var(--text-2)">${CONF_LABELS[c]||c}</span>
+            <span style="font-weight:600">${v.count} ordini · ${v.qty>0?v.qty.toFixed(0)+' kg':''}</span>
+          </div>
+          <div class="stat-bar">
+            <div class="stat-bar-fill" style="width:${Math.round(v.count/maxC*100)}%;background:${CONF_COLORS[c]||'var(--brand)'}"></div>
+          </div>
+        </div>`).join('');
+    }
+  }
+
+  // Grafico torta % confezioni
+  const pieEl = document.getElementById('s-confezioni-pie');
+  if(pieEl){
+    if(!confEntries.length || !totConf){ pieEl.innerHTML='<div class="empty-state" style="padding:12px 0"><p>Nessun dato</p></div>'; }
+    else {
+      const size=160, cx=80, cy=80, r=65, ri=38;
+      let angle=-Math.PI/2;
+      let slices='', labels='';
+      confEntries.forEach(([c,v])=>{
+        const pct=v.count/totConf;
+        const a2=angle+pct*2*Math.PI;
+        const x1=cx+r*Math.cos(angle), y1=cy+r*Math.sin(angle);
+        const x2=cx+r*Math.cos(a2), y2=cy+r*Math.sin(a2);
+        const xi1=cx+ri*Math.cos(angle), yi1=cy+ri*Math.sin(angle);
+        const xi2=cx+ri*Math.cos(a2), yi2=cy+ri*Math.sin(a2);
+        const large=pct>0.5?1:0;
+        const col=CONF_COLORS[c]||'#888';
+        slices+=`<path d="M${xi1},${yi1} L${x1},${y1} A${r},${r} 0 ${large},1 ${x2},${y2} L${xi2},${yi2} A${ri},${ri} 0 ${large},0 ${xi1},${yi1}" fill="${col}" opacity="0.85"/>`;
+        // label al centro angolo
+        const mid=(angle+a2)/2;
+        const lx=cx+(r+ri)/2*Math.cos(mid), ly=cy+(r+ri)/2*Math.sin(mid);
+        if(pct>0.06) labels+=`<text x="${lx}" y="${ly}" text-anchor="middle" dominant-baseline="middle" font-size="9" fill="#fff" font-weight="700">${Math.round(pct*100)}%</text>`;
+        angle=a2;
+      });
+      pieEl.innerHTML=`
+        <div style="display:flex;align-items:center;gap:16px;flex-wrap:wrap">
+          <svg width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">${slices}${labels}</svg>
+          <div style="display:grid;gap:6px">
+            ${confEntries.map(([c,v])=>`
+              <div style="display:flex;align-items:center;gap:7px;font-size:12px">
+                <div style="width:12px;height:12px;border-radius:3px;background:${CONF_COLORS[c]||'#888'};flex-shrink:0"></div>
+                <span>${CONF_LABELS[c]||c}</span>
+                <span style="font-weight:700;color:var(--text)">${Math.round(v.count/totConf*100)}%</span>
+              </div>`).join('')}
+          </div>
+        </div>`;
+    }
+  }
+
+  // Kg medi per confezione
+  const mediaEl = document.getElementById('s-confezioni-media');
+  if(mediaEl){
+    const confKg = Object.entries(confMap).filter(([c])=>CONF_KG[c]);
+    if(!confKg.length){ mediaEl.innerHTML='<div class="empty-state" style="padding:12px 0"><p>Nessun dato</p></div>'; }
+    else {
+      const totKg = confKg.reduce((s,[,v])=>s+v.qty,0);
+      mediaEl.innerHTML=`
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px">
+          ${confKg.map(([c,v])=>`
+            <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:14px;text-align:center">
+              <div style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">${CONF_LABELS[c]||c}</div>
+              <div style="font-size:24px;font-weight:800;color:${CONF_COLORS[c]||'var(--brand)'}">${v.qty>0?v.qty.toFixed(0):0}<span style="font-size:12px;font-weight:400"> kg</span></div>
+              <div style="font-size:11px;color:var(--text-3);margin-top:4px">${v.count} consegne · media ${v.count>0?(v.qty/v.count).toFixed(1):0} kg</div>
+              <div style="font-size:11px;color:var(--text-3)">${totKg>0?Math.round(v.qty/totKg*100):0}% del totale</div>
+            </div>`).join('')}
+          <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:14px;text-align:center;border-top:3px solid var(--brand)">
+            <div style="font-size:11px;color:var(--text-2);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Totale</div>
+            <div style="font-size:24px;font-weight:800;color:var(--brand)">${totKg.toFixed(0)}<span style="font-size:12px;font-weight:400"> kg</span></div>
+            <div style="font-size:11px;color:var(--text-3);margin-top:4px">${confKg.reduce((s,[,v])=>s+v.count,0)} consegne totali</div>
+          </div>
+        </div>`;
+    }
+  }
 }
 
 function renderBarChart(containerId, values, color, maxVal){
