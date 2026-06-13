@@ -71,6 +71,7 @@ async function initDB() {
         cat TEXT,
         descrizione TEXT,
         fatturazione TEXT DEFAULT 'non_applicabile',
+        pagato BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -334,6 +335,14 @@ app.post('/api/movimenti', async (req, res) => {
   try {
     const r = await pool.query('INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *', [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile']);
     res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/movimenti/:id/pagato', async (req, res) => {
+  const { pagato } = req.body;
+  try {
+    await pool.query('UPDATE movimenti SET pagato=$1 WHERE id=$2', [pagato, req.params.id]);
+    res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
 
