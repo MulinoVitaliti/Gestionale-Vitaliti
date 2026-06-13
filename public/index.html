@@ -447,9 +447,9 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--orange)"><div class="metric-label"><i class="ti ti-clock"></i>Da fatturare</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">ancora senza fattura</div></div>
       </div>
       <div class="metrics-grid metrics-3" style="margin-bottom:18px">
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su entrate (4%)</div><div class="metric-value" style="color:#6366f1" id="c-iva-entrate">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su uscite (4%)</div><div class="metric-value" style="color:#6366f1" id="c-iva-uscite">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
-        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-scale"></i>IVA netta da versare</div><div class="metric-value" style="color:#6366f1" id="c-iva-netta">€0</div><div class="metric-sub">entrate − uscite IVA</div></div>
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su entrate</div><div class="metric-value" style="color:#6366f1" id="c-iva-entrate">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-receipt-tax"></i>IVA su uscite</div><div class="metric-value" style="color:#6366f1" id="c-iva-uscite">€0</div><div class="metric-sub">su movimenti fatturati</div></div>
+        <div class="metric-card" style="border-top-color:#6366f1"><div class="metric-label"><i class="ti ti-scale"></i>IVA netta</div><div class="metric-value" style="color:#6366f1" id="c-iva-netta">€0</div><div class="metric-sub" id="c-iva-netta-sub">da versare al fisco</div></div>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:18px">
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-chart-pie" style="color:var(--green)"></i>Entrate per categoria</div></div><div class="card-body" id="stat-entrate"></div></div>
@@ -650,7 +650,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
-    <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+    <div class="form-row">
+      <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-movimento')">Annulla</button><button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
@@ -661,7 +664,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Importo (€) *</label><input type="number" id="edit-mov-importo" step="0.01" min="0"></div><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
-    <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+    <div class="form-row">
+      <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">✅ Fatturato</option><option value="da_fatturare">⏳ Da fatturare</option><option value="non_applicabile">— Non applicabile</option></select></div>
+      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
+    </div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
@@ -1231,19 +1237,24 @@ function renderContab(){
   const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-fatturato').textContent=fmt(totFatt);
   document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
-  // IVA 4%
-  const ALIQUOTA = 0.04;
-  const baseFattEntrate = entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  const baseFattUscite = state.movimenti.filter(m=>m.tipo==='uscita'&&m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  const ivaEntrate = baseFattEntrate * ALIQUOTA;
-  const ivaUscite = baseFattUscite * ALIQUOTA;
+  // IVA per aliquota specifica di ogni movimento
+  const ivaEntrate = entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>{
+    const aliq = (parseFloat(m.aliquota_iva)||4)/100;
+    return s + (parseFloat(m.importo)||0) * aliq;
+  },0);
+  const ivaUscite = state.movimenti.filter(m=>m.tipo==='uscita'&&m.fatturazione==='fatturato').reduce((s,m)=>{
+    const aliq = (parseFloat(m.aliquota_iva)||4)/100;
+    return s + (parseFloat(m.importo)||0) * aliq;
+  },0);
   const ivaNetta = ivaEntrate - ivaUscite;
   const ivaE = document.getElementById('c-iva-entrate');
   const ivaU = document.getElementById('c-iva-uscite');
   const ivaN = document.getElementById('c-iva-netta');
   if(ivaE) ivaE.textContent = fmt(ivaEntrate);
   if(ivaU) ivaU.textContent = fmt(ivaUscite);
-  if(ivaN){ ivaN.textContent = fmt(Math.abs(ivaNetta)); ivaN.style.color = ivaNetta>=0?'#6366f1':'var(--green)'; ivaN.nextElementSibling && (ivaN.nextElementSibling.textContent = ivaNetta>=0?'IVA da versare al fisco':'IVA a credito'); }
+  if(ivaN){ ivaN.textContent = fmt(Math.abs(ivaNetta)); ivaN.style.color = ivaNetta>=0?'#6366f1':'var(--green)'; }
+  const ivaNsub = document.getElementById('c-iva-netta-sub');
+  if(ivaNsub) ivaNsub.textContent = ivaNetta>=0?'da versare al fisco':'IVA a credito';
   // Banner da pagare
   const daPagare = entrate.filter(m=>!m.pagato);
   const totDaPagare = daPagare.reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
@@ -1407,6 +1418,7 @@ async function salvaMovimento(){
       cat:getCatValue('mov-cat','mov-cat-custom'),
       descrizione,
       fatturazione,
+      aliquota_iva: parseInt(document.getElementById('mov-iva').value)||4,
       pagato:false
     });
     if(data && !data.error){
@@ -1431,6 +1443,7 @@ function editMovimento(id){
   const ts=document.getElementById('edit-mov-tipo'); for(let o of ts.options) if(o.value===m.tipo)o.selected=true;
   toggleFatturazione('edit-mov-fatturazione-row', m.tipo);
   const fs=document.getElementById('edit-mov-fatturazione'); for(let o of fs.options) if(o.value===(m.fatturazione||'non_applicabile'))o.selected=true;
+  const iv=document.getElementById('edit-mov-iva'); for(let o of iv.options) if(parseInt(o.value)===(parseInt(m.aliquota_iva)||4))o.selected=true;
   populateCatSelect('edit-mov-cat', m.cat||'');
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
   openModal('modal-edit-movimento');
@@ -1438,7 +1451,7 @@ function editMovimento(id){
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
   const fatturazione = document.getElementById('edit-mov-fatturazione').value || 'non_applicabile';
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione};
+  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione,aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4};
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
