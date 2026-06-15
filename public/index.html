@@ -835,8 +835,8 @@ tbody tr:hover{background:var(--surface-2)}
 <div class="modal-overlay" id="modal-utente">
   <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi utente</div><button class="btn btn-icon" onclick="closeModal('modal-utente')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
-    <div class="form-row"><div class="form-group"><label class="form-label">Nome completo *</label><input type="text" id="u-nome"></div><div class="form-group"><label class="form-label">Username *</label><input type="text" id="u-user"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Password *</label><input type="password" id="u-pass"></div><div class="form-group"><label class="form-label">Ruolo</label><select id="u-role"><option value="commerciale">Commerciale</option><option value="contabile">Contabile</option><option value="magazzino">Magazzino</option><option value="admin">Admin</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Nome completo *</label><input type="text" id="u-nome" autocomplete="off"></div><div class="form-group"><label class="form-label">Username *</label><input type="text" id="u-user" autocomplete="off"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Password *</label><input type="password" id="u-pass" autocomplete="new-password"></div><div class="form-group"><label class="form-label">Ruolo</label><select id="u-role"><option value="commerciale">Commerciale</option><option value="contabile">Contabile</option><option value="magazzino">Magazzino</option><option value="admin">Admin</option></select></div></div>
     <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:5px"><button class="btn" onclick="closeModal('modal-utente')">Annulla</button><button class="btn btn-primary" onclick="salvaUtente()"><i class="ti ti-check"></i>Crea utente</button></div>
   </div></div>
 </div>
@@ -879,7 +879,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="modal-body">
       <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">Inserisci la password per accedere alla sezione finanziaria.</div>
       <div class="form-group"><label class="form-label">Password</label>
-        <div style="position:relative"><input type="password" class="login-input" id="finanza-pwd-input" placeholder="••••••••" onkeydown="if(event.key==='Enter')verificaFinanzaPwd()" style="padding-right:38px"><i class="ti ti-eye" id="tog-fp" onclick="togglePass('finanza-pwd-input','tog-fp')" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
+        <div style="position:relative"><input type="password" class="login-input" id="finanza-pwd-input" autocomplete="new-password" placeholder="••••••••" onkeydown="if(event.key==='Enter')verificaFinanzaPwd()" style="padding-right:38px"><i class="ti ti-eye" id="tog-fp" onclick="togglePass('finanza-pwd-input','tog-fp')" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
       </div>
       <div class="login-error" id="finanza-pwd-error"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
@@ -897,13 +897,13 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="modal-body">
       <input type="hidden" id="cambia-pwd-sezione">
       <div class="form-group"><label class="form-label">Password attuale</label>
-        <div style="position:relative"><input type="password" id="cambia-pwd-attuale" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-attuale',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
+        <div style="position:relative"><input type="password" id="cambia-pwd-attuale" autocomplete="new-password" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-attuale',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
       </div>
       <div class="form-group"><label class="form-label">Nuova password</label>
-        <div style="position:relative"><input type="password" id="cambia-pwd-nuova" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-nuova',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
+        <div style="position:relative"><input type="password" id="cambia-pwd-nuova" autocomplete="new-password" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-nuova',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
       </div>
       <div class="form-group"><label class="form-label">Conferma nuova password</label>
-        <div style="position:relative"><input type="password" id="cambia-pwd-conferma" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)" onkeydown="if(event.key==='Enter')salvaCambiaPwd()"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-conferma',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
+        <div style="position:relative"><input type="password" id="cambia-pwd-conferma" autocomplete="new-password" placeholder="••••••••" style="width:100%;padding:8px 38px 8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)" onkeydown="if(event.key==='Enter')salvaCambiaPwd()"><i class="ti ti-eye" onclick="togglePass('cambia-pwd-conferma',this)" style="position:absolute;right:11px;top:50%;transform:translateY(-50%);cursor:pointer;color:var(--text-3);font-size:15px"></i></div>
       </div>
       <div class="login-error" id="cambia-pwd-error"></div>
       <div class="login-success" id="cambia-pwd-ok"></div>
