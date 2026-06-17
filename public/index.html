@@ -125,6 +125,10 @@ tbody tr:hover{background:var(--surface-2)}
 .pl-card-name{font-size:13px;font-weight:600;margin-bottom:3px}
 .pl-card-sub{font-size:11px;color:var(--text-2);margin-bottom:6px}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
+.tag-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-bottom:6px}
+.tag-cliente{background:var(--green-light);color:var(--green)}
+.tag-potenziale{background:var(--orange-light);color:var(--orange)}
+.tag-non_interessato{background:var(--red-light);color:var(--red)}
 .add-col-btn{width:235px;flex-shrink:0;border:2px dashed var(--border);border-radius:var(--rl);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;background:transparent;height:56px;font-family:var(--font)}
 .add-col-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
 .task-col{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rl);padding:11px;min-height:200px}
@@ -525,7 +529,7 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="metrics-grid metrics-3">
         <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-up-circle"></i>Totale entrate</div><div class="metric-value green" id="c-entrate">€0</div></div>
         <div class="metric-card"><div class="metric-label"><i class="ti ti-arrow-down-circle"></i>Totale uscite</div><div class="metric-value red" id="c-uscite">€0</div></div>
-        <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="c-saldo">€0</div></div>
+        <div class="metric-card"><div class="metric-label"><i class="ti ti-scale"></i>Saldo netto</div><div class="metric-value" id="c-saldo">€0</div><div class="metric-sub">al netto IVA</div></div>
       </div>
       <div class="metrics-grid metrics-2" style="margin-bottom:18px">
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
@@ -671,7 +675,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Nome / Ragione sociale *</label><input type="text" id="lead-nome" placeholder="Es. Panificio Rossi"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="lead-contatto"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="lead-tel"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="lead-citta"></div></div>
     <div class="form-group"><label class="form-label">Prodotto di interesse</label><select id="lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div>
-    <div class="form-group"><label class="form-label">Fase pipeline</label><select id="lead-stato"></select></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="lead-note"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-lead')">Annulla</button><button class="btn btn-primary" onclick="salvaLead()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
@@ -683,7 +687,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Nome *</label><input type="text" id="edit-lead-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-lead-contatto"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-lead-tel"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-lead-citta"></div></div>
     <div class="form-group"><label class="form-label">Prodotto</label><select id="edit-lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div>
-    <div class="form-group"><label class="form-label">Fase pipeline</label><select id="edit-lead-stato"></select></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="edit-lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="edit-lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-lead-note"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-lead')">Annulla</button><button class="btn btn-primary" onclick="aggiornaLead()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
@@ -714,7 +718,12 @@ tbody tr:hover{background:var(--surface-2)}
 <div class="modal-overlay" id="modal-ordine">
   <div class="modal"><div class="modal-header"><div class="modal-title">Nuovo ordine</div><button class="btn btn-icon" onclick="closeModal('modal-ordine')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
-    <div class="form-row"><div class="form-group"><label class="form-label">Cliente *</label><select id="ord-cliente"><option value="">— seleziona —</option></select></div><div class="form-group"><label class="form-label">Prodotto</label><select id="ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Cliente *</label><select id="ord-cliente" onchange="onOrdClienteChange('ord-cliente','ord-cliente-nuovo-wrap')"><option value="">— seleziona —</option></select>
+      <div id="ord-cliente-nuovo-wrap" style="display:none;margin-top:7px">
+        <input type="text" id="ord-cliente-nuovo" placeholder="Nome del nuovo cliente" style="width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)">
+        <div style="font-size:11px;color:var(--text-2);margin-top:4px">Il cliente verrà creato automaticamente in anagrafica al salvataggio</div>
+      </div>
+    </div><div class="form-group"><label class="form-label">Prodotto</label><select id="ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="ord-qty" min="0"></div><div class="form-group"><label class="form-label">Importo (€)</label><input type="number" id="ord-importo" step="0.01"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div><div class="form-group"><label class="form-label">Stato</label><select id="ord-stato"><option value="aperto">Aperto</option><option value="spedito">Spedito</option><option value="consegnato">Consegnato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="ord-note"></textarea></div>
@@ -725,7 +734,12 @@ tbody tr:hover{background:var(--surface-2)}
   <div class="modal"><div class="modal-header"><div class="modal-title">Modifica ordine</div><button class="btn btn-icon" onclick="closeModal('modal-edit-ordine')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <input type="hidden" id="edit-ord-id">
-    <div class="form-row"><div class="form-group"><label class="form-label">Cliente</label><select id="edit-ord-cliente"></select></div><div class="form-group"><label class="form-label">Prodotto</label><select id="edit-ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Cliente</label><select id="edit-ord-cliente" onchange="onOrdClienteChange('edit-ord-cliente','edit-ord-cliente-nuovo-wrap')"></select>
+      <div id="edit-ord-cliente-nuovo-wrap" style="display:none;margin-top:7px">
+        <input type="text" id="edit-ord-cliente-nuovo" placeholder="Nome del nuovo cliente" style="width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)">
+        <div style="font-size:11px;color:var(--text-2);margin-top:4px">Il cliente verrà creato automaticamente in anagrafica al salvataggio</div>
+      </div>
+    </div><div class="form-group"><label class="form-label">Prodotto</label><select id="edit-ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="edit-ord-qty" min="0"></div><div class="form-group"><label class="form-label">Importo (€)</label><input type="number" id="edit-ord-importo" step="0.01"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Data</label><input type="date" id="edit-ord-data"></div><div class="form-group"><label class="form-label">Stato</label><select id="edit-ord-stato"><option value="aperto">Aperto</option><option value="spedito">Spedito</option><option value="consegnato">Consegnato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-ord-note"></textarea></div>
@@ -1357,6 +1371,9 @@ function openModal(id){
   if(id==='modal-ordine'){
     const s=document.getElementById('ord-cliente'); s.innerHTML='<option value="">— seleziona —</option>';
     state.clienti.forEach(c=>{const o=document.createElement('option');o.value=c.nome;o.textContent=c.nome;s.appendChild(o);});
+    const optNuovo=document.createElement('option'); optNuovo.value='__nuovo__'; optNuovo.textContent='+ Nuovo cliente...'; s.appendChild(optNuovo);
+    document.getElementById('ord-cliente-nuovo-wrap').style.display='none';
+    document.getElementById('ord-cliente-nuovo').value='';
     document.getElementById('ord-data').value=new Date().toISOString().slice(0,10);
   }
   if(id==='modal-movimento'){
@@ -1436,7 +1453,9 @@ function renderPipeline(){
     items.forEach(l=>{
       const c=document.createElement('div'); c.className='pl-card';
       c.style.borderLeftColor=fase.color;
-      c.innerHTML=`<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:11px;color:var(--text-3)">${l.contatto||''}</span><div style="display:flex;gap:3px"><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
+      const tagLabels = {cliente:'🟢 Cliente', potenziale:'🟡 Potenziale', non_interessato:'🔴 Non interessato'};
+      const tagHtml = l.tag && tagLabels[l.tag] ? `<div class="tag-badge tag-${l.tag}">${tagLabels[l.tag]}</div>` : '';
+      c.innerHTML=`${tagHtml}<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:11px;color:var(--text-3)">${l.contatto||''}</span><div style="display:flex;gap:3px"><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
       col.appendChild(c);
     });
     board.appendChild(col);
@@ -1492,9 +1511,11 @@ function apriDettaglio(id){
 function apriDettaglioLead(id){
   const l=state.leads.find(x=>x.id===id); if(!l)return;
   const faseLabel=(state.fasi.find(f=>f.id===l.stato)||{}).label||l.stato;
+  const tagLabelsDet = {cliente:'🟢 Cliente', potenziale:'🟡 Potenziale cliente', non_interessato:'🔴 Non interessato'};
+  const tagHtmlDet = l.tag && tagLabelsDet[l.tag] ? `<span class="tag-badge tag-${l.tag}" style="margin-left:8px">${tagLabelsDet[l.tag]}</span>` : '';
   document.getElementById('detail-panel').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div class="flex-row"><div class="avatar" style="width:40px;height:40px;font-size:12px">${ini(l.nome)}</div><div><div style="font-weight:700;font-size:15px">${l.nome}</div><div style="font-size:12px;color:var(--text-2)">${faseLabel}</div></div></div>
+      <div class="flex-row"><div class="avatar" style="width:40px;height:40px;font-size:12px">${ini(l.nome)}</div><div><div style="font-weight:700;font-size:15px">${l.nome}${tagHtmlDet}</div><div style="font-size:12px;color:var(--text-2)">${faseLabel}</div></div></div>
       <button class="btn btn-icon" onclick="chiudiDettaglio()"><i class="ti ti-x"></i></button>
     </div>
     <div class="card" style="margin-bottom:11px"><div class="card-header"><div class="card-title"><i class="ti ti-info-circle" style="color:var(--brand)"></i>Dati contatto</div></div>
@@ -1552,7 +1573,18 @@ function renderContab(){
   const totU=tuttiMov.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('c-entrate').textContent=fmt(totE);
   document.getElementById('c-uscite').textContent=fmt(totU);
-  const sn=totE-totU;
+  // Saldo netto = entrate al netto IVA - uscite al netto IVA (esclude l'IVA dal calcolo)
+  const totENetto = tuttiMov.filter(m=>m.tipo==='entrata').reduce((s,m)=>{
+    const imp=parseFloat(m.importo)||0;
+    const aliq=(parseFloat(m.aliquota_iva)||0)/100;
+    return s + (imp/(1+aliq));
+  },0);
+  const totUNetto = tuttiMov.filter(m=>m.tipo==='uscita').reduce((s,m)=>{
+    const imp=parseFloat(m.importo)||0;
+    const aliq=(parseFloat(m.aliquota_iva)||0)/100;
+    return s + (imp/(1+aliq));
+  },0);
+  const sn=totENetto-totUNetto;
   const cse=document.getElementById('c-saldo'); cse.textContent=fmt(sn); cse.className='metric-value '+(sn>=0?'green':'red');
   // Fatturazione
   const entrate=state.movimenti.filter(m=>m.tipo==='entrata');
@@ -1659,10 +1691,11 @@ function renderDash(){
 // ── SALVA LEAD ────────────────────────────────────────────────────────────
 async function salvaLead(){
   const nome=document.getElementById('lead-nome').value.trim(); if(!nome)return alert('Inserisci il nome');
-  const data=await api.post('/api/leads',{nome,contatto:document.getElementById('lead-contatto').value,tel:document.getElementById('lead-tel').value,citta:document.getElementById('lead-citta').value,prodotto:document.getElementById('lead-prodotto').value,stato:document.getElementById('lead-stato').value,note:document.getElementById('lead-note').value});
+  const data=await api.post('/api/leads',{nome,contatto:document.getElementById('lead-contatto').value,tel:document.getElementById('lead-tel').value,citta:document.getElementById('lead-citta').value,prodotto:document.getElementById('lead-prodotto').value,stato:document.getElementById('lead-stato').value,note:document.getElementById('lead-note').value,tag:document.getElementById('lead-tag').value||null});
   if(!data.error) state.leads.unshift(data);
   closeModal('modal-lead'); renderPipeline(); renderDash(); showSave();
   ['lead-nome','lead-contatto','lead-tel','lead-citta','lead-note'].forEach(id=>document.getElementById(id).value='');
+  document.getElementById('lead-tag').value='';
 }
 function editLead(id){
   const l=state.leads.find(x=>x.id===id); if(!l)return;
@@ -1675,11 +1708,12 @@ function editLead(id){
   document.getElementById('edit-lead-note').value=l.note||'';
   const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
   const ss=document.getElementById('edit-lead-stato'); for(let o of ss.options) if(o.value===l.stato)o.selected=true;
+  document.getElementById('edit-lead-tag').value=l.tag||'';
   openModal('modal-edit-lead');
 }
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,stato:document.getElementById('edit-lead-stato').value,note:document.getElementById('edit-lead-note').value};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,stato:document.getElementById('edit-lead-stato').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
   await api.put('/api/leads/'+id, body);
   const l=state.leads.find(x=>x.id===id); if(l)Object.assign(l,body);
   closeModal('modal-edit-lead'); renderPipeline(); renderDash(); showSave();
@@ -1708,16 +1742,30 @@ async function aggiornaCliente(){
 
 // ── SALVA ORDINE ──────────────────────────────────────────────────────────
 async function salvaOrdine(){
-  const cl=document.getElementById('ord-cliente').value; if(!cl)return alert('Seleziona un cliente');
+  let cl=document.getElementById('ord-cliente').value;
+  if(!cl) return alert('Seleziona un cliente');
+  if(cl==='__nuovo__'){
+    cl=document.getElementById('ord-cliente-nuovo').value.trim();
+    if(!cl) return alert('Inserisci il nome del nuovo cliente');
+    await creaClienteVeloce(cl);
+  }
   const data=await api.post('/api/ordini',{cliente:cl,prodotto:document.getElementById('ord-prodotto').value,qty:parseFloat(document.getElementById('ord-qty').value)||0,importo:parseFloat(document.getElementById('ord-importo').value)||0,data:document.getElementById('ord-data').value,stato:document.getElementById('ord-stato').value,note:document.getElementById('ord-note').value});
   if(!data.error) state.ordini.unshift(data);
-  closeModal('modal-ordine'); renderOrdini(); renderDash(); showSave();
+  closeModal('modal-ordine'); renderOrdini(); renderDash(); renderClienti(); showSave();
 }
 function editOrdine(id){
   const o=state.ordini.find(x=>x.id===id); if(!o)return;
   document.getElementById('edit-ord-id').value=o.id;
   const sel=document.getElementById('edit-ord-cliente'); sel.innerHTML='';
-  state.clienti.forEach(c=>{const opt=document.createElement('option');opt.value=c.nome;opt.textContent=c.nome;if(c.nome===o.cliente)opt.selected=true;sel.appendChild(opt);});
+  let clienteTrovato=false;
+  state.clienti.forEach(c=>{const opt=document.createElement('option');opt.value=c.nome;opt.textContent=c.nome;if(c.nome===o.cliente){opt.selected=true;clienteTrovato=true;}sel.appendChild(opt);});
+  // Se il cliente dell'ordine non è in anagrafica, aggiungilo come opzione selezionata
+  if(!clienteTrovato && o.cliente){
+    const opt=document.createElement('option'); opt.value=o.cliente; opt.textContent=o.cliente+' (non in anagrafica)'; opt.selected=true; sel.appendChild(opt);
+  }
+  const optNuovo=document.createElement('option'); optNuovo.value='__nuovo__'; optNuovo.textContent='+ Nuovo cliente...'; sel.appendChild(optNuovo);
+  document.getElementById('edit-ord-cliente-nuovo-wrap').style.display='none';
+  document.getElementById('edit-ord-cliente-nuovo').value='';
   const ps=document.getElementById('edit-ord-prodotto'); for(let op of ps.options) if(op.value===o.prodotto)op.selected=true;
   document.getElementById('edit-ord-qty').value=o.qty;
   document.getElementById('edit-ord-importo').value=o.importo;
@@ -1728,10 +1776,32 @@ function editOrdine(id){
 }
 async function aggiornaOrdine(){
   const id=parseInt(document.getElementById('edit-ord-id').value);
-  const body={cliente:document.getElementById('edit-ord-cliente').value,prodotto:document.getElementById('edit-ord-prodotto').value,qty:parseFloat(document.getElementById('edit-ord-qty').value)||0,importo:parseFloat(document.getElementById('edit-ord-importo').value)||0,data:document.getElementById('edit-ord-data').value,stato:document.getElementById('edit-ord-stato').value,note:document.getElementById('edit-ord-note').value};
+  let cliente=document.getElementById('edit-ord-cliente').value;
+  if(cliente==='__nuovo__'){
+    cliente=document.getElementById('edit-ord-cliente-nuovo').value.trim();
+    if(!cliente) return alert('Inserisci il nome del nuovo cliente');
+    await creaClienteVeloce(cliente);
+  }
+  const body={cliente,prodotto:document.getElementById('edit-ord-prodotto').value,qty:parseFloat(document.getElementById('edit-ord-qty').value)||0,importo:parseFloat(document.getElementById('edit-ord-importo').value)||0,data:document.getElementById('edit-ord-data').value,stato:document.getElementById('edit-ord-stato').value,note:document.getElementById('edit-ord-note').value};
   await api.put('/api/ordini/'+id,body);
   const o=state.ordini.find(x=>x.id===id); if(o)Object.assign(o,body);
-  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); showSave();
+  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); renderClienti(); showSave();
+}
+
+function onOrdClienteChange(selectId, wrapId){
+  const sel=document.getElementById(selectId);
+  const wrap=document.getElementById(wrapId);
+  if(!wrap) return;
+  wrap.style.display = sel.value==='__nuovo__' ? 'block' : 'none';
+}
+
+async function creaClienteVeloce(nome){
+  try{
+    const nuovo = await api.post('/api/clienti', {nome, ref:'', tel:'', email:'', citta:'', ind:'', prod:'', note:''});
+    if(nuovo && !nuovo.error){
+      state.clienti.push(nuovo);
+    }
+  }catch(e){ console.error('Errore creazione cliente veloce', e); }
 }
 
 // ── SALVA MOVIMENTO ───────────────────────────────────────────────────────
