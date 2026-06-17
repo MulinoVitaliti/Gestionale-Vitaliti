@@ -480,7 +480,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--orange)" id="card-black"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
       <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th style="text-align:right">Saldo</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th>Metodo pagamento</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
     </div>
     <div class="page" id="page-email">
       <div class="email-layout">
@@ -681,49 +681,96 @@ tbody tr:hover{background:var(--surface-2)}
   </div></div>
 </div>
 <div class="modal-overlay" id="modal-movimento">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
+  <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;overflow-y:auto"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
-    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="mov-confezione"><option value="">— Nessuna —</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 10kg">Sacco 10 kg</option><option value="sacco 30kg">Sacco 30 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
-      <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoMov()"></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="mov-tipo" onchange="toggleFatturazione('mov-fatturazione-row',this.value); toggleProdottiSection('mov')"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
+
+    <!-- Pagamento subito visibile -->
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div class="form-row" style="margin-bottom:0">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Pagato?</label>
+          <div style="display:flex;gap:14px;align-items:center;height:36px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="mov-pagato-radio" value="si" onchange="toggleMetodoPagamentoVisibility('mov')" checked> Sì</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="mov-pagato-radio" value="no" onchange="toggleMetodoPagamentoVisibility('mov')"> No</label>
+          </div>
+        </div>
+        <div class="form-group" id="mov-metodo-pagamento-wrap" style="margin-bottom:0">
+          <label class="form-label">Metodo di pagamento</label>
+          <select id="mov-metodo-pagamento"><option value="">— Seleziona —</option><option value="Contanti">Contanti</option><option value="Bonifico">Bonifico</option><option value="Assegno">Assegno</option><option value="Carta">Carta</option><option value="Altro">Altro</option></select>
+        </div>
+      </div>
     </div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoMov()"></div><div class="form-group"><label class="form-label">Imponibile netto (€) *</label><input type="number" id="mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoMov()"></div></div>
+
+    <!-- Prodotti multipli -->
+    <div id="mov-prodotti-section">
+      <label class="form-label" style="margin-bottom:7px;display:block">Prodotti</label>
+      <div id="mov-prodotti-list"></div>
+      <button type="button" class="btn btn-sm" onclick="aggiungiRigaProdotto('mov')" style="margin-top:4px;margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+    </div>
+
     <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
+    <!-- Fallback per uscite senza prodotti, o importo manuale -->
+    <div class="form-group" id="mov-importo-netto-manuale-wrap" style="display:none">
+      <label class="form-label">Imponibile netto (€) *</label><input type="number" id="mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoMov()">
+    </div>
     <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-size:13px;color:var(--text-2)">Importo con IVA (registrato)</span>
       <span id="mov-importo-preview" style="font-size:18px;font-weight:700;color:var(--brand)">€0,00</span>
     </div>
     <input type="hidden" id="mov-importo">
+    <input type="hidden" id="mov-importo-netto-auto" value="0">
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-movimento')">Annulla</button><button class="btn btn-primary" onclick="salvaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
 <div class="modal-overlay" id="modal-edit-movimento">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Modifica movimento</div><button class="btn btn-icon" onclick="closeModal('modal-edit-movimento')"><i class="ti ti-x"></i></button></div>
+  <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;overflow-y:auto"><div class="modal-header"><div class="modal-title">Modifica movimento</div><button class="btn btn-icon" onclick="closeModal('modal-edit-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <input type="hidden" id="edit-mov-id">
-    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value)"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
-    <div class="form-row">
-      <div class="form-group"><label class="form-label">Tipologia confezione</label><select id="edit-mov-confezione"><option value="">— Nessuna —</option><option value="sacco 5kg">Sacco 5 kg</option><option value="sacco 10kg">Sacco 10 kg</option><option value="sacco 30kg">Sacco 30 kg</option><option value="sfuso">Sfuso</option><option value="altro">Altro</option></select></div>
-      <div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="edit-mov-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImportoEditMov()"></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Data *</label><input type="date" id="edit-mov-data"></div><div class="form-group"><label class="form-label">Tipo</label><select id="edit-mov-tipo" onchange="toggleFatturazione('edit-mov-fatturazione-row',this.value); toggleProdottiSection('edit-mov')"><option value="entrata">Entrata</option><option value="uscita">Uscita</option></select></div></div>
+
+    <!-- Pagamento subito visibile -->
+    <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px">
+      <div class="form-row" style="margin-bottom:0">
+        <div class="form-group" style="margin-bottom:0"><label class="form-label">Pagato?</label>
+          <div style="display:flex;gap:14px;align-items:center;height:36px">
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="edit-mov-pagato-radio" value="si" onchange="toggleMetodoPagamentoVisibility('edit-mov')"> Sì</label>
+            <label style="display:flex;align-items:center;gap:6px;cursor:pointer;font-size:13px"><input type="radio" name="edit-mov-pagato-radio" value="no" onchange="toggleMetodoPagamentoVisibility('edit-mov')"> No</label>
+          </div>
+        </div>
+        <div class="form-group" id="edit-mov-metodo-pagamento-wrap" style="margin-bottom:0">
+          <label class="form-label">Metodo di pagamento</label>
+          <select id="edit-mov-metodo-pagamento"><option value="">— Seleziona —</option><option value="Contanti">Contanti</option><option value="Bonifico">Bonifico</option><option value="Assegno">Assegno</option><option value="Carta">Carta</option><option value="Altro">Altro</option></select>
+        </div>
+      </div>
     </div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Prezzo al kg (€)</label><input type="number" id="edit-mov-prezzo-kg" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImportoEditMov()"></div><div class="form-group"><label class="form-label">Imponibile netto (€) *</label><input type="number" id="edit-mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoEditMov()"></div></div>
+
+    <!-- Prodotti multipli -->
+    <div id="edit-mov-prodotti-section">
+      <label class="form-label" style="margin-bottom:7px;display:block">Prodotti</label>
+      <div id="edit-mov-prodotti-list"></div>
+      <button type="button" class="btn btn-sm" onclick="aggiungiRigaProdotto('edit-mov')" style="margin-top:4px;margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+    </div>
+
     <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva" onchange="calcolaImportoEditMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
+    <div class="form-group" id="edit-mov-importo-netto-manuale-wrap" style="display:none">
+      <label class="form-label">Imponibile netto (€) *</label><input type="number" id="edit-mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoEditMov()">
+    </div>
     <div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 14px;display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
       <span style="font-size:13px;color:var(--text-2)">Importo con IVA (registrato)</span>
       <span id="edit-mov-importo-preview" style="font-size:18px;font-weight:700;color:var(--brand)">€0,00</span>
     </div>
     <input type="hidden" id="edit-mov-importo">
+    <input type="hidden" id="edit-mov-importo-netto-auto" value="0">
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-movimento')">Annulla</button><button class="btn btn-primary" onclick="aggiornaMovimento()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
@@ -1235,12 +1282,18 @@ function openModal(id){
   }
   if(id==='modal-movimento'){
     document.getElementById('mov-data').value=new Date().toISOString().slice(0,10);
-    document.getElementById('mov-qty').value='';
-    document.getElementById('mov-prezzo-kg').value='';
-    document.getElementById('mov-confezione').value='';
+    document.getElementById('mov-tipo').value='entrata';
     document.getElementById('mov-importo-netto').value='';
     document.getElementById('mov-importo').value='';
     document.getElementById('mov-importo-preview').textContent='€0,00';
+    document.getElementById('mov-desc').value='';
+    document.getElementById('mov-metodo-pagamento').value='';
+    const pagatoSiRadio = document.querySelector('input[name="mov-pagato-radio"][value="si"]');
+    if(pagatoSiRadio) pagatoSiRadio.checked=true;
+    toggleMetodoPagamentoVisibility('mov');
+    document.getElementById('mov-prodotti-list').innerHTML='';
+    aggiungiRigaProdotto('mov');
+    toggleProdottiSection('mov');
     populateCatSelect('mov-cat');
     document.getElementById('mov-cat-custom').style.display='none';
   }
@@ -1402,6 +1455,7 @@ function filterOrdini(f,el){state.ordiniFilter=f;document.querySelectorAll('.tab
 
 // ── CONTABILITÀ ───────────────────────────────────────────────────────────
 function renderContab(){
+  if(!document.getElementById('c-entrate')) return; // non siamo nella pagina contabilità
   const parseData = m => new Date(m.data||0).getTime();
   // In modalità clean nascondi i movimenti Black
   const tuttiMov = finanzaModoClean
@@ -1474,9 +1528,12 @@ function renderContab(){
     const tr=document.createElement('tr');
     const dataFmt = m.data ? new Date(m.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const descFmt = m.descrizione || m.desc || '—';
-    const saldoProg = saldoMap[m.id] !== undefined ? fmt(saldoMap[m.id]) : '—';
+    const numProdotti = (m.prodotti && Array.isArray(m.prodotti)) ? m.prodotti.length : 0;
+    const descConBadge = numProdotti>1 ? `${descFmt} <span style="font-size:10px;background:var(--brand-light);color:var(--brand);border-radius:4px;padding:1px 6px;margin-left:4px;font-weight:600">${numProdotti} prodotti</span>` : descFmt;
     const importoColor = m.tipo==='entrata' ? (!m.pagato ? 'var(--red)' : 'var(--green)') : 'var(--red)';
-    tr.innerHTML=`<td style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descFmt}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:${importoColor};white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="text-align:right;font-size:11px;color:var(--text-3);font-family:var(--font-mono);white-space:nowrap">${saldoProg}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
+    const metodoOpts = ['','Contanti','Bonifico','Assegno','Carta','Altro'];
+    const metodoSelectHtml = `<select onchange="aggiornaMetodoPagamento(${m.id},this.value)" style="font-size:12px;padding:4px 6px;border-radius:6px;border:1px solid var(--border-strong);background:#fff;font-family:var(--font);color:var(--text);cursor:pointer">${metodoOpts.map(o=>`<option value="${o}" ${o===(m.metodo_pagamento||'')?'selected':''}>${o||'— Seleziona —'}</option>`).join('')}</select>`;
+    tr.innerHTML=`<td style="font-size:13px;color:var(--text);font-weight:600;white-space:nowrap">${dataFmt}</td><td style="font-weight:500">${descConBadge}</td><td style="text-align:center">${m.tipo==='entrata'?`<input type="checkbox" ${m.pagato?'checked':''} onchange="togglePagato(${m.id},this.checked)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)">`:''}</td><td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td><td><span class="badge badge-${m.tipo}">${m.tipo}</span></td><td style="font-weight:600;text-align:right;color:${importoColor};white-space:nowrap">${m.tipo==='entrata'?'+':'-'}${fmt(m.importo)}</td><td>${m.tipo==='entrata'?(FATT_BADGE[m.fatturazione||'non_applicabile']||''):''}</td><td style="white-space:nowrap">${metodoSelectHtml}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editMovimento(${m.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaMov(${m.id})"><i class="ti ti-trash"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1502,6 +1559,7 @@ function filterContab(f,el){state.contabFilter=f;document.querySelectorAll('.pil
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────
 function renderDash(){
+  if(!document.getElementById('m-clienti')) return;
   const today=new Date();
   document.getElementById('dash-date').textContent=today.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('m-clienti').textContent=state.clienti.length;
@@ -1604,6 +1662,10 @@ async function salvaMovimento(){
   const imp=parseFloat(document.getElementById('mov-importo').value)||0;
   if(!d||!descrizione||!imp) return alert('Compila data, descrizione e imponibile netto');
   const fatturazione = document.getElementById('mov-fatturazione').value || 'non_applicabile';
+  const pagatoRadio = document.querySelector('input[name="mov-pagato-radio"]:checked');
+  const pagato = pagatoRadio ? pagatoRadio.value==='si' : false;
+  const metodoPagamento = document.getElementById('mov-metodo-pagamento').value || '';
+  const prodotti = leggiRigheProdotto('mov');
   try{
     const data=await api.post('/api/movimenti',{
       data:d,
@@ -1613,10 +1675,12 @@ async function salvaMovimento(){
       descrizione,
       fatturazione,
       aliquota_iva: parseInt(document.getElementById('mov-iva').value)||4,
-      confezione: document.getElementById('mov-confezione').value||'',
-      qty_kg: parseFloat(document.getElementById('mov-qty').value)||null,
-      prezzo_kg: parseFloat(document.getElementById('mov-prezzo-kg').value)||null,
-      pagato:false
+      prodotti: prodotti.length ? prodotti : null,
+      confezione: prodotti.length===1 ? prodotti[0].confezione : '',
+      qty_kg: prodotti.length===1 ? prodotti[0].qty : null,
+      prezzo_kg: prodotti.length===1 ? prodotti[0].prezzo : null,
+      pagato,
+      metodo_pagamento: metodoPagamento
     });
     if(data && !data.error){
       state.movimenti.unshift(data);
@@ -1631,6 +1695,7 @@ async function salvaMovimento(){
     alert('Errore di rete: '+e.message);
   }
 }
+
 function editMovimento(id){
   const m=state.movimenti.find(x=>x.id===id); if(!m)return;
   document.getElementById('edit-mov-id').value=m.id;
@@ -1639,12 +1704,29 @@ function editMovimento(id){
   document.getElementById('edit-mov-desc').value=m.descrizione;
   const ts=document.getElementById('edit-mov-tipo'); for(let o of ts.options) if(o.value===m.tipo)o.selected=true;
   toggleFatturazione('edit-mov-fatturazione-row', m.tipo);
+  toggleProdottiSection('edit-mov');
   const fs=document.getElementById('edit-mov-fatturazione'); for(let o of fs.options) if(o.value===(m.fatturazione||'non_applicabile'))o.selected=true;
   const iv=document.getElementById('edit-mov-iva'); for(let o of iv.options) if(parseInt(o.value)===(parseInt(m.aliquota_iva)||4))o.selected=true;
-  document.getElementById('edit-mov-confezione').value = m.confezione||'';
-  document.getElementById('edit-mov-qty').value = m.qty_kg||'';
-  document.getElementById('edit-mov-prezzo-kg').value = m.prezzo_kg||'';
-  // Calcola imponibile netto dall'importo ivato
+
+  // Pagato radio + metodo
+  const radios = document.querySelectorAll('input[name="edit-mov-pagato-radio"]');
+  radios.forEach(r=>r.checked = (r.value==='si')===!!m.pagato);
+  document.getElementById('edit-mov-metodo-pagamento').value = m.metodo_pagamento||'';
+  toggleMetodoPagamentoVisibility('edit-mov');
+
+  // Prodotti: usa array prodotti se presente, altrimenti singola riga legacy
+  const prodottiList = document.getElementById('edit-mov-prodotti-list');
+  prodottiList.innerHTML='';
+  const prodottiArr = (m.prodotti && Array.isArray(m.prodotti) && m.prodotti.length) ? m.prodotti
+    : (m.confezione || m.qty_kg || m.prezzo_kg) ? [{confezione:m.confezione||'', qty:m.qty_kg||'', prezzo:m.prezzo_kg||''}]
+    : [];
+  if(prodottiArr.length){
+    prodottiArr.forEach(p=>aggiungiRigaProdotto('edit-mov', p));
+  } else {
+    aggiungiRigaProdotto('edit-mov');
+  }
+
+  // Calcola imponibile netto dall'importo ivato (fallback manuale)
   const aliq = (parseInt(m.aliquota_iva)||4)/100;
   const netto = aliq>0 ? (parseFloat(m.importo)||0)/(1+aliq) : parseFloat(m.importo)||0;
   document.getElementById('edit-mov-importo-netto').value = netto.toFixed(2);
@@ -1652,16 +1734,122 @@ function editMovimento(id){
   document.getElementById('edit-mov-importo-preview').textContent = fmt(parseFloat(m.importo)||0);
   populateCatSelect('edit-mov-cat', m.cat||'');
   const cs=document.getElementById('edit-mov-cat'); for(let o of cs.options) if(o.value===m.cat)o.selected=true;
+
+  calcolaImportoEditMov();
   openModal('modal-edit-movimento');
 }
+
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
   const fatturazione = document.getElementById('edit-mov-fatturazione').value || 'non_applicabile';
-  const body={data:document.getElementById('edit-mov-data').value,tipo:document.getElementById('edit-mov-tipo').value,importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),descrizione:document.getElementById('edit-mov-desc').value,fatturazione,aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4,confezione:document.getElementById('edit-mov-confezione').value||'',qty_kg:parseFloat(document.getElementById('edit-mov-qty').value)||null,prezzo_kg:parseFloat(document.getElementById('edit-mov-prezzo-kg').value)||null};
+  const pagatoRadio = document.querySelector('input[name="edit-mov-pagato-radio"]:checked');
+  const pagato = pagatoRadio ? pagatoRadio.value==='si' : false;
+  const metodoPagamento = document.getElementById('edit-mov-metodo-pagamento').value || '';
+  const prodotti = leggiRigheProdotto('edit-mov');
+  const body={
+    data:document.getElementById('edit-mov-data').value,
+    tipo:document.getElementById('edit-mov-tipo').value,
+    importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,
+    cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),
+    descrizione:document.getElementById('edit-mov-desc').value,
+    fatturazione,
+    aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4,
+    prodotti: prodotti.length ? prodotti : null,
+    confezione: prodotti.length===1 ? prodotti[0].confezione : '',
+    qty_kg: prodotti.length===1 ? prodotti[0].qty : null,
+    prezzo_kg: prodotti.length===1 ? prodotti[0].prezzo : null,
+    pagato,
+    metodo_pagamento: metodoPagamento
+  };
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
   closeModal('modal-edit-movimento'); renderContab(); renderDash(); showSave();
 }
+
+// ── MULTI-PRODOTTO ────────────────────────────────────────────────────────
+let _prodottoRigaCounter = 0;
+
+function toggleProdottiSection(prefix){
+  const tipo = document.getElementById(prefix+'-tipo').value;
+  const section = document.getElementById(prefix+'-prodotti-section');
+  const manualeWrap = document.getElementById(prefix+'-importo-netto-manuale-wrap');
+  if(tipo==='entrata'){
+    section.style.display='block';
+    manualeWrap.style.display='none';
+  } else {
+    section.style.display='none';
+    manualeWrap.style.display='block';
+  }
+  if(prefix==='mov') calcolaImportoMov(); else calcolaImportoEditMov();
+}
+
+function toggleMetodoPagamentoVisibility(prefix){
+  const radio = document.querySelector(`input[name="${prefix}-pagato-radio"]:checked`);
+  const wrap = document.getElementById(prefix+'-metodo-pagamento-wrap');
+  if(!wrap) return;
+  wrap.style.display = (radio && radio.value==='si') ? 'block' : 'none';
+}
+
+function aggiungiRigaProdotto(prefix, valori){
+  valori = valori || {confezione:'', qty:'', prezzo:''};
+  const rigaId = prefix+'-prod-'+(_prodottoRigaCounter++);
+  const lista = document.getElementById(prefix+'-prodotti-list');
+  const riga = document.createElement('div');
+  riga.id = rigaId;
+  riga.className = 'prodotto-riga';
+  riga.style.cssText='display:flex;gap:8px;align-items:flex-end;margin-bottom:8px;padding:10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)';
+  riga.innerHTML = `
+    <div class="form-group" style="margin-bottom:0;flex:1.3">
+      <label class="form-label" style="font-size:11px">Confezione</label>
+      <select class="prod-confezione" onchange="calcolaImporto${prefix==='mov'?'Mov':'EditMov'}()">
+        <option value="">— Nessuna —</option>
+        <option value="sacco 5kg">Sacco 5 kg</option>
+        <option value="sacco 10kg">Sacco 10 kg</option>
+        <option value="sacco 30kg">Sacco 30 kg</option>
+        <option value="sfuso">Sfuso</option>
+        <option value="altro">Altro</option>
+      </select>
+    </div>
+    <div class="form-group" style="margin-bottom:0;flex:0.8">
+      <label class="form-label" style="font-size:11px">Quantità (kg)</label>
+      <input type="number" class="prod-qty" step="0.1" min="0" placeholder="es. 100" oninput="calcolaImporto${prefix==='mov'?'Mov':'EditMov'}()">
+    </div>
+    <div class="form-group" style="margin-bottom:0;flex:0.8">
+      <label class="form-label" style="font-size:11px">Prezzo/kg (€)</label>
+      <input type="number" class="prod-prezzo" step="0.001" min="0" placeholder="es. 0.55" oninput="calcolaImporto${prefix==='mov'?'Mov':'EditMov'}()">
+    </div>
+    <button type="button" class="btn btn-icon btn-danger btn-sm" onclick="rimuoviRigaProdotto('${rigaId}','${prefix}')" title="Rimuovi" style="flex-shrink:0;margin-bottom:1px"><i class="ti ti-trash"></i></button>
+  `;
+  lista.appendChild(riga);
+  riga.querySelector('.prod-confezione').value = valori.confezione||'';
+  riga.querySelector('.prod-qty').value = valori.qty||'';
+  riga.querySelector('.prod-prezzo').value = valori.prezzo||'';
+}
+
+function rimuoviRigaProdotto(rigaId, prefix){
+  const el = document.getElementById(rigaId);
+  if(el) el.remove();
+  if(prefix==='mov') calcolaImportoMov(); else calcolaImportoEditMov();
+}
+
+function leggiRigheProdotto(prefix){
+  const righe = document.querySelectorAll(`#${prefix}-prodotti-list .prodotto-riga`);
+  const out=[];
+  righe.forEach(r=>{
+    const confezione = r.querySelector('.prod-confezione')?.value||'';
+    const qty = parseFloat(r.querySelector('.prod-qty')?.value)||0;
+    const prezzo = parseFloat(r.querySelector('.prod-prezzo')?.value)||0;
+    if(confezione||qty||prezzo) out.push({confezione, qty, prezzo, subtotale: +(qty*prezzo).toFixed(2)});
+  });
+  return out;
+}
+
+function sommaProdotti(prefix){
+  const righe = leggiRigheProdotto(prefix);
+  return righe.reduce((s,r)=>s+(r.qty*r.prezzo),0);
+}
+
+
 
 // ── UTENTI ────────────────────────────────────────────────────────────────
 async function renderUtenti(){
@@ -2103,26 +2291,28 @@ function sendChat(){
 }
 
 function calcolaImportoMov(){
-  const qty = parseFloat(document.getElementById('mov-qty').value)||0;
-  const prezzoKg = parseFloat(document.getElementById('mov-prezzo-kg').value)||0;
   const aliq = (parseInt(document.getElementById('mov-iva').value)||0)/100;
-  if(qty>0 && prezzoKg>0){
-    document.getElementById('mov-importo-netto').value = (qty*prezzoKg).toFixed(2);
+  const tipo = document.getElementById('mov-tipo').value;
+  let netto;
+  if(tipo==='entrata'){
+    netto = sommaProdotti('mov');
+  } else {
+    netto = parseFloat(document.getElementById('mov-importo-netto').value)||0;
   }
-  const netto = parseFloat(document.getElementById('mov-importo-netto').value)||0;
   const ivato = netto * (1 + aliq);
   document.getElementById('mov-importo').value = ivato.toFixed(2);
   document.getElementById('mov-importo-preview').textContent = fmt(ivato);
 }
 
 function calcolaImportoEditMov(){
-  const qty = parseFloat(document.getElementById('edit-mov-qty').value)||0;
-  const prezzoKg = parseFloat(document.getElementById('edit-mov-prezzo-kg').value)||0;
   const aliq = (parseInt(document.getElementById('edit-mov-iva').value)||0)/100;
-  if(qty>0 && prezzoKg>0){
-    document.getElementById('edit-mov-importo-netto').value = (qty*prezzoKg).toFixed(2);
+  const tipo = document.getElementById('edit-mov-tipo').value;
+  let netto;
+  if(tipo==='entrata'){
+    netto = sommaProdotti('edit-mov');
+  } else {
+    netto = parseFloat(document.getElementById('edit-mov-importo-netto').value)||0;
   }
-  const netto = parseFloat(document.getElementById('edit-mov-importo-netto').value)||0;
   const ivato = netto * (1 + aliq);
   document.getElementById('edit-mov-importo').value = ivato.toFixed(2);
   document.getElementById('edit-mov-importo-preview').textContent = fmt(ivato);
@@ -2146,6 +2336,15 @@ async function togglePagato(id, pagato){
     const m = state.movimenti.find(x=>x.id===id);
     if(m) m.pagato = pagato;
     renderContab();
+  }catch(e){ console.error(e); }
+}
+
+async function aggiornaMetodoPagamento(id, metodo){
+  try{
+    await api.put('/api/movimenti/'+id+'/metodo-pagamento', {metodo_pagamento: metodo});
+    const m = state.movimenti.find(x=>x.id===id);
+    if(m) m.metodo_pagamento = metodo;
+    showSave();
   }catch(e){ console.error(e); }
 }
 
