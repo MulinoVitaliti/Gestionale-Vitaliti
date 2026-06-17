@@ -127,6 +127,18 @@ tbody tr:hover{background:var(--surface-2)}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
 .add-col-btn{width:235px;flex-shrink:0;border:2px dashed var(--border);border-radius:var(--rl);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;background:transparent;height:56px;font-family:var(--font)}
 .add-col-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
+.task-col{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rl);padding:11px;min-height:200px}
+.task-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+.task-col-count{background:#fff;border:1px solid var(--border);border-radius:20px;padding:1px 7px;font-size:11px;font-weight:600;color:var(--text-2)}
+.task-col-body{min-height:80px}
+.task-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:11px;margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:grab;transition:all .15s}
+.task-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
+.task-card.dragging{opacity:0.4}
+.task-card-title{font-size:13px;font-weight:600;margin-bottom:5px;line-height:1.3}
+.task-card-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-2)}
+.task-priority-alta{border-left:3px solid var(--red)}
+.task-priority-media{border-left:3px solid var(--orange)}
+.task-priority-bassa{border-left:3px solid var(--green)}
 .ac-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
 .ac-item:last-child{border-bottom:none}
 .ac-item:hover{background:var(--brand-light)}
@@ -310,6 +322,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section-items" id="sec-principale">
       <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
       <div class="nav-item" onclick="showPage('attivita')" id="nav-attivita"><i class="ti ti-checkbox"></i><span>Attività</span><span class="nav-badge" id="att-badge" style="display:none">0</span></div>
+      <div class="nav-item" onclick="showPage('task')" id="nav-task"><i class="ti ti-list-check"></i><span>Task</span><span class="nav-badge" id="task-badge" style="display:none">0</span></div>
       <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i><span>Pipeline vendite</span></div>
       <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
@@ -338,9 +351,16 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card"><div class="metric-label"><i class="ti ti-users"></i>Clienti attivi</div><div class="metric-value" id="m-clienti">0</div><div class="metric-sub">in anagrafica</div></div>
         <div class="metric-card"><div class="metric-label"><i class="ti ti-clipboard-list"></i>Ordini aperti</div><div class="metric-value" id="m-ordini">0</div><div class="metric-sub">in lavorazione</div></div>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-layout-kanban" style="color:var(--brand)"></i>Pipeline recente</div></div><div class="card-body" id="dash-pipeline"></div></div>
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-clipboard-list" style="color:var(--brand)"></i>Ultimi ordini</div></div><div class="card-body" id="dash-ordini"></div></div>
+      </div>
+      <div class="card" style="cursor:pointer" onclick="showPage('task')">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task</div>
+          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
+        </div>
+        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
       </div>
     </div>
     <!-- ATTIVITÀ -->
@@ -356,6 +376,38 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="pill" onclick="filterAttivita('future',this)">⚪ Future</div>
       </div>
       <div style="display:grid;gap:8px" id="att-list-page"></div>
+    </div>
+    <!-- TASK -->
+    <div class="page" id="page-task">
+      <div class="page-header">
+        <div class="page-title">Task</div>
+        <button class="btn btn-primary" onclick="apriModalTask()"><i class="ti ti-plus"></i>Nuova task</button>
+      </div>
+      <div class="pills">
+        <div class="pill active" onclick="filterTask('tutte',this)">Tutte</div>
+        <div class="pill" onclick="filterTask('mie',this)">👤 Le mie</div>
+        <div class="pill" onclick="filterTask('assegnate',this)">📤 Assegnate da me</div>
+      </div>
+      <div id="task-board" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px">
+        <div class="task-col" data-stato="da_fare">
+          <div class="task-col-header" style="border-top:3px solid var(--text-3)">
+            <span>Da fare</span><span class="task-col-count" id="task-count-da_fare">0</span>
+          </div>
+          <div class="task-col-body" id="task-list-da_fare" ondrop="dropTask(event,'da_fare')" ondragover="event.preventDefault()"></div>
+        </div>
+        <div class="task-col" data-stato="in_corso">
+          <div class="task-col-header" style="border-top:3px solid var(--orange)">
+            <span>In corso</span><span class="task-col-count" id="task-count-in_corso">0</span>
+          </div>
+          <div class="task-col-body" id="task-list-in_corso" ondrop="dropTask(event,'in_corso')" ondragover="event.preventDefault()"></div>
+        </div>
+        <div class="task-col" data-stato="fatto">
+          <div class="task-col-header" style="border-top:3px solid var(--green)">
+            <span>Fatto</span><span class="task-col-count" id="task-count-fatto">0</span>
+          </div>
+          <div class="task-col-body" id="task-list-fatto" ondrop="dropTask(event,'fatto')" ondragover="event.preventDefault()"></div>
+        </div>
+      </div>
     </div>
     <div class="page" id="page-pipeline">
       <div class="page-header">
@@ -1069,6 +1121,27 @@ tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 
+<!-- Modal Task -->
+<div class="modal-overlay" id="modal-task">
+  <div class="modal" style="width:480px">
+    <div class="modal-header"><div class="modal-title" id="modal-task-title">Nuova task</div><button class="btn btn-icon" onclick="closeModal('modal-task')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="task-id">
+      <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="task-titolo" placeholder="Es. Chiamare fornitore semola"></div>
+      <div class="form-group"><label class="form-label">Descrizione</label><textarea id="task-descrizione" rows="3" style="width:100%;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font);resize:vertical"></textarea></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Assegnata a *</label><select id="task-assegnata-a"></select></div>
+        <div class="form-group"><label class="form-label">Priorità</label><select id="task-priorita"><option value="bassa">🟢 Bassa</option><option value="media" selected>🟠 Media</option><option value="alta">🔴 Alta</option></select></div>
+      </div>
+      <div class="form-group"><label class="form-label">Scadenza</label><input type="date" id="task-scadenza"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:5px">
+        <button class="btn" onclick="closeModal('modal-task')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaTask()"><i class="ti ti-check"></i>Salva</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal conferma eliminazione -->
 <div class="modal-overlay" id="modal-conferma">
   <div class="modal" style="width:320px;text-align:center">
@@ -1089,14 +1162,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false},
+  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task'};
 
 let currentUser = null;
 let usersDB = [
@@ -1168,13 +1241,14 @@ const api = {
 
 async function loadAllData() {
   try {
-    const [fasi, leads, clienti, ordini, movimenti, attivita] = await Promise.all([
+    const [fasi, leads, clienti, ordini, movimenti, attivita, tasks] = await Promise.all([
       api.get('/api/fasi'),
       api.get('/api/leads'),
       api.get('/api/clienti'),
       api.get('/api/ordini'),
       api.get('/api/movimenti'),
       api.get('/api/attivita'),
+      api.get('/api/tasks'),
     ]);
     state.fasi = fasi.error ? state.fasi : fasi;
     state.leads = leads.error ? [] : leads;
@@ -1182,7 +1256,11 @@ async function loadAllData() {
     state.ordini = ordini.error ? [] : ordini;
     state.movimenti = movimenti.error ? [] : movimenti;
     state.attivita = attivita.error ? [] : attivita;
+    state.tasks = tasks.error ? [] : tasks;
     aggiornaAttBadge();
+    aggiornaTaskBadge();
+    renderDashTask();
+    await caricaUtentiPerTask();
     await loadTemplates();
     aggiornaContatoreBozze();
   } catch(e){ console.warn('API non disponibile, uso dati locali'); }
@@ -1249,7 +1327,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','automazioni','ai','utenti','attivita','statistiche','impostazioni'].forEach(p=>{
+  ['pipeline','clienti','ordini','contabilita','email','automazioni','ai','utenti','attivita','statistiche','impostazioni','task'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -1263,6 +1341,7 @@ function showPage(id){
   document.getElementById('page-'+id).classList.add('active');
   document.getElementById('nav-'+id).classList.add('active');
   if(id==='attivita')renderPageAttivita();
+  if(id==='task')renderTaskBoard();
   if(id==='statistiche')renderStatistiche();
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline')renderPipeline();
@@ -3296,6 +3375,197 @@ function renderAttivitaPerEntita(tipo,id){
     const ord={scaduta:0,oggi:1,futura:2};
     return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
   }).map(a=>renderAttItem(a,false)).join('');
+}
+
+// ── TASK ──────────────────────────────────────────────────────────────────
+let taskFilterCorrente = 'tutte';
+
+async function loadTasks(){
+  try{ state.tasks = await api.get('/api/tasks'); }catch(e){ state.tasks=[]; }
+}
+
+function aggiornaTaskBadge(){
+  const badge = document.getElementById('task-badge');
+  if(!badge || !currentUser) return;
+  const mieAperte = (state.tasks||[]).filter(t=>t.assegnata_a===currentUser.username && t.stato!=='fatto');
+  if(mieAperte.length){
+    badge.textContent = mieAperte.length;
+    badge.style.display = 'inline-flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+function popolaSelectAssegnatari(){
+  const sel = document.getElementById('task-assegnata-a');
+  if(!sel) return;
+  const opts = (state.utentiList||[]).map(u=>`<option value="${u.username}">${u.nome}</option>`).join('');
+  sel.innerHTML = opts || `<option value="${currentUser?.username||''}">${currentUser?.nome||'Me stesso'}</option>`;
+}
+
+async function caricaUtentiPerTask(){
+  try{
+    const utenti = await api.get('/api/utenti');
+    // Ogni utente non-admin può assegnare solo a sé stesso o a Giovanni (admin)
+    if(currentUser && currentUser.ruolo!=='admin'){
+      const adminUser = utenti.find(u=>u.ruolo==='admin');
+      state.utentiList = [
+        {username: currentUser.username, nome: currentUser.nome + ' (io)'},
+        ...(adminUser ? [{username: adminUser.username, nome: adminUser.nome}] : [])
+      ];
+    } else {
+      state.utentiList = utenti.map(u=>({username:u.username, nome:u.nome}));
+    }
+  }catch(e){ state.utentiList = [{username:currentUser?.username, nome:currentUser?.nome||'Me stesso'}]; }
+  popolaSelectAssegnatari();
+}
+
+function apriModalTask(taskEsistente){
+  document.getElementById('modal-task-title').textContent = taskEsistente ? 'Modifica task' : 'Nuova task';
+  document.getElementById('task-id').value = taskEsistente?.id || '';
+  document.getElementById('task-titolo').value = taskEsistente?.titolo || '';
+  document.getElementById('task-descrizione').value = taskEsistente?.descrizione || '';
+  document.getElementById('task-scadenza').value = (taskEsistente?.scadenza||'').slice(0,10);
+  document.getElementById('task-priorita').value = taskEsistente?.priorita || 'media';
+  caricaUtentiPerTask().then(()=>{
+    if(taskEsistente?.assegnata_a){
+      const sel = document.getElementById('task-assegnata-a');
+      sel.value = taskEsistente.assegnata_a;
+    }
+  });
+  openModal('modal-task');
+}
+
+async function salvaTask(){
+  const id = document.getElementById('task-id').value;
+  const titolo = document.getElementById('task-titolo').value.trim();
+  if(!titolo) return alert('Inserisci il titolo della task');
+  const body = {
+    titolo,
+    descrizione: document.getElementById('task-descrizione').value.trim(),
+    assegnata_a: document.getElementById('task-assegnata-a').value,
+    assegnata_da: currentUser.username,
+    priorita: document.getElementById('task-priorita').value,
+    scadenza: document.getElementById('task-scadenza').value || null,
+    stato: id ? undefined : 'da_fare'
+  };
+  try{
+    if(id){
+      await api.put('/api/tasks/'+id, body);
+      const t = state.tasks.find(x=>x.id===parseInt(id));
+      if(t) Object.assign(t, body);
+    } else {
+      const nuova = await api.post('/api/tasks', body);
+      state.tasks.unshift(nuova);
+    }
+    closeModal('modal-task');
+    renderTaskBoard();
+    renderDashTask();
+    aggiornaTaskBadge();
+    showSave();
+  }catch(e){ alert('Errore: '+e.message); }
+}
+
+function filterTask(tipo, el){
+  taskFilterCorrente = tipo;
+  document.querySelectorAll('#page-task .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderTaskBoard();
+}
+
+function taskFiltrate(){
+  let list = state.tasks || [];
+  if(taskFilterCorrente==='mie') list = list.filter(t=>t.assegnata_a===currentUser?.username);
+  else if(taskFilterCorrente==='assegnate') list = list.filter(t=>t.assegnata_da===currentUser?.username && t.assegnata_a!==currentUser?.username);
+  return list;
+}
+
+const PRIORITA_LABEL = {alta:'🔴 Alta', media:'🟠 Media', bassa:'🟢 Bassa'};
+
+function renderTaskCard(t){
+  const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
+  const isScaduta = t.scadenza && new Date(t.scadenza) < new Date(new Date().toDateString()) && t.stato!=='fatto';
+  const assegnatario = (state.utentiList||[]).find(u=>u.username===t.assegnata_a);
+  const nomeAssegnatario = assegnatario?.nome?.replace(' (io)','') || t.assegnata_a;
+  return `
+    <div class="task-card task-priority-${t.priorita||'media'}" draggable="true" id="task-card-${t.id}"
+      ondragstart="dragTaskStart(event,${t.id})" ondragend="dragTaskEnd(event)"
+      onclick="apriModalTask(${JSON.stringify(t).replace(/"/g,'&quot;')})">
+      <div class="task-card-title">${t.titolo}</div>
+      ${t.descrizione?`<div style="font-size:11px;color:var(--text-2);margin-bottom:6px;line-height:1.4">${t.descrizione.slice(0,80)}${t.descrizione.length>80?'...':''}</div>`:''}
+      <div class="task-card-meta">
+        <span style="display:flex;align-items:center;gap:4px"><i class="ti ti-user" style="font-size:13px"></i>${nomeAssegnatario}</span>
+        ${scadenzaFmt?`<span style="color:${isScaduta?'var(--red)':'var(--text-2)'};font-weight:${isScaduta?'700':'400'}">${isScaduta?'⚠️ ':''}${scadenzaFmt}</span>`:''}
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-top:6px">
+        <button class="btn btn-icon btn-sm btn-danger" onclick="event.stopPropagation();eliminaTask(${t.id})" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:12px"></i></button>
+      </div>
+    </div>`;
+}
+
+function renderTaskBoard(){
+  if(!document.getElementById('task-list-da_fare')) return;
+  const list = taskFiltrate();
+  ['da_fare','in_corso','fatto'].forEach(stato=>{
+    const items = list.filter(t=>(t.stato||'da_fare')===stato);
+    document.getElementById('task-list-'+stato).innerHTML = items.length
+      ? items.map(renderTaskCard).join('')
+      : '<div class="empty-state" style="padding:14px 0"><p style="font-size:12px">Nessuna task</p></div>';
+    document.getElementById('task-count-'+stato).textContent = items.length;
+  });
+}
+
+function renderDashTask(){
+  const cont = document.getElementById('dash-task');
+  if(!cont || !currentUser) return;
+  const mie = (state.tasks||[]).filter(t=>t.assegnata_a===currentUser.username && t.stato!=='fatto')
+    .sort((a,b)=>{
+      const da = a.scadenza ? new Date(a.scadenza) : new Date('2099-01-01');
+      const db = b.scadenza ? new Date(b.scadenza) : new Date('2099-01-01');
+      return da-db;
+    }).slice(0,4);
+  if(!mie.length){
+    cont.innerHTML = '<div class="empty-state" style="padding:10px 0"><p>Nessuna task da fare 🎉</p></div>';
+    return;
+  }
+  cont.innerHTML = mie.map(t=>{
+    const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
+    const isScaduta = t.scadenza && new Date(t.scadenza) < new Date(new Date().toDateString());
+    return `
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="width:8px;height:8px;border-radius:50%;background:${t.priorita==='alta'?'var(--red)':t.priorita==='bassa'?'var(--green)':'var(--orange)'};flex-shrink:0"></span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titolo}</div>
+        </div>
+        ${scadenzaFmt?`<span style="font-size:11px;color:${isScaduta?'var(--red)':'var(--text-2)'};flex-shrink:0">${scadenzaFmt}</span>`:''}
+      </div>`;
+  }).join('');
+}
+
+let _dragTaskId = null;
+function dragTaskStart(e, id){ _dragTaskId = id; e.target.classList.add('dragging'); }
+function dragTaskEnd(e){ e.target.classList.remove('dragging'); }
+
+async function dropTask(e, nuovoStato){
+  e.preventDefault();
+  if(!_dragTaskId) return;
+  const t = state.tasks.find(x=>x.id===_dragTaskId);
+  if(!t || t.stato===nuovoStato){ _dragTaskId=null; return; }
+  t.stato = nuovoStato;
+  renderTaskBoard();
+  try{ await api.put('/api/tasks/'+_dragTaskId, {stato:nuovoStato}); showSave(); }catch(err){}
+  _dragTaskId = null;
+}
+
+async function eliminaTask(id){
+  conferma(async()=>{
+    await api.del('/api/tasks/'+id);
+    state.tasks = (state.tasks||[]).filter(t=>t.id!==id);
+    renderTaskBoard();
+    renderDashTask();
+    aggiornaTaskBadge();
+    showSave();
+  });
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────
