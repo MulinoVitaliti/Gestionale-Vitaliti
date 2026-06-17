@@ -37,6 +37,7 @@ async function initDB() {
         prodotto TEXT,
         stato TEXT,
         note TEXT,
+        tag TEXT,
         updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -288,17 +289,17 @@ app.get('/api/leads', async (req, res) => {
 });
 
 app.post('/api/leads', async (req, res) => {
-  const { nome, contatto, tel, citta, prodotto, stato, note } = req.body;
+  const { nome, contatto, tel, citta, prodotto, stato, note, tag } = req.body;
   try {
-    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,citta,prodotto,stato,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [nome, contatto, tel, citta, prodotto, stato, note]);
+    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,citta,prodotto,stato,note,tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [nome, contatto, tel, citta, prodotto, stato, note, tag||null]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/leads/:id', async (req, res) => {
-  const { nome, contatto, tel, citta, prodotto, stato, note } = req.body;
+  const { nome, contatto, tel, citta, prodotto, stato, note, tag } = req.body;
   try {
-    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,citta=$4,prodotto=$5,stato=$6,note=$7,updated_at=NOW() WHERE id=$8', [nome, contatto, tel, citta, prodotto, stato, note, req.params.id]);
+    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,citta=$4,prodotto=$5,stato=$6,note=$7,tag=$8,updated_at=NOW() WHERE id=$9', [nome, contatto, tel, citta, prodotto, stato, note, tag||null, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
