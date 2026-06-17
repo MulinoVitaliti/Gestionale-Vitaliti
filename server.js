@@ -79,6 +79,8 @@ async function initDB() {
         confezione TEXT,
         qty_kg NUMERIC,
         prezzo_kg NUMERIC,
+        metodo_pagamento TEXT,
+        prodotti JSONB,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -366,11 +368,11 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null]
+      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
@@ -384,12 +386,20 @@ app.put('/api/movimenti/:id/pagato', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+app.put('/api/movimenti/:id/metodo-pagamento', async (req, res) => {
+  const { metodo_pagamento } = req.body;
+  try {
+    await pool.query('UPDATE movimenti SET metodo_pagamento=$1 WHERE id=$2', [metodo_pagamento||null, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato } = req.body;
   try {
     await pool.query(
-      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10 WHERE id=$11',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, req.params.id]
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13 WHERE id=$14',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
