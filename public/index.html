@@ -1418,9 +1418,16 @@ function renderFasiList(){
     const div=document.createElement('div');
     div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)';
     const canDel=!state.leads.some(l=>l.stato===f.id);
-    div.innerHTML=`<div style="width:9px;height:9px;border-radius:50%;background:${f.color};flex-shrink:0"></div><input type="text" value="${f.label}" style="flex:1;border:none;background:transparent;font-size:13px;font-family:var(--font);color:var(--text);outline:none" onchange="rinominaFase('${f.id}',this.value)"><button class="btn btn-danger btn-sm btn-icon" onclick="eliminaFase('${f.id}')" ${canDel?'':'disabled title="Ci sono contatti in questa fase"'}><i class="ti ti-trash"></i></button>`;
+    const inputId='fase-input-'+f.id;
+    div.innerHTML=`<div style="width:9px;height:9px;border-radius:50%;background:${f.color};flex-shrink:0"></div><input type="text" id="${inputId}" value="${f.label}" style="flex:1;border:none;background:transparent;font-size:13px;font-family:var(--font);color:var(--text);outline:none" onkeydown="if(event.key==='Enter'){salvaNomeFase('${f.id}','${inputId}')}"><button class="btn btn-primary btn-sm" onclick="salvaNomeFase('${f.id}','${inputId}')" title="Salva nome"><i class="ti ti-check"></i></button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminaFase('${f.id}')" ${canDel?'':'disabled title="Ci sono contatti in questa fase"'}><i class="ti ti-trash"></i></button>`;
     cont.appendChild(div);
   });
+}
+async function salvaNomeFase(id, inputId){
+  const nome = document.getElementById(inputId).value.trim();
+  if(!nome) return alert('Il nome della fase non può essere vuoto');
+  await rinominaFase(id, nome);
+  showSave();
 }
 async function aggiungiFase(){
   const nome=document.getElementById('nuova-fase-nome').value.trim(); if(!nome)return;
@@ -1433,7 +1440,8 @@ async function aggiungiFase(){
 }
 async function rinominaFase(id,nome){
   await api.put('/api/fasi/'+id,{label:nome,color:(state.fasi.find(x=>x.id===id)||{}).color});
-  const f=state.fasi.find(x=>x.id===id); if(f)f.label=nome; showSave();
+  const f=state.fasi.find(x=>x.id===id); if(f)f.label=nome;
+  renderPipeline();
 }
 async function eliminaFase(id){
   if(state.leads.some(l=>l.stato===id)){alert('Sposta prima i contatti da questa fase.');return;}
