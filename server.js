@@ -125,6 +125,19 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS tasks (
+        id SERIAL PRIMARY KEY,
+        titolo TEXT NOT NULL,
+        descrizione TEXT,
+        assegnata_a TEXT NOT NULL,
+        assegnata_da TEXT NOT NULL,
+        priorita TEXT DEFAULT 'media',
+        stato TEXT DEFAULT 'da_fare',
+        scadenza DATE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS utenti (
         id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
@@ -445,6 +458,51 @@ app.put('/api/attivita/:id', async (req, res) => {
 app.delete('/api/attivita/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM attivita WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── TASK API ──────────────────────────────────────────────────────────────
+app.get('/api/tasks', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM tasks ORDER BY CASE stato WHEN \'da_fare\' THEN 0 WHEN \'in_corso\' THEN 1 ELSE 2 END, scadenza ASC NULLS LAST, created_at DESC');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/tasks', async (req, res) => {
+  const { titolo, descrizione, assegnata_a, assegnata_da, priorita, stato, scadenza } = req.body;
+  try {
+    const r = await pool.query(
+      'INSERT INTO tasks (titolo,descrizione,assegnata_a,assegnata_da,priorita,stato,scadenza) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [titolo, descrizione||'', assegnata_a, assegnata_da, priorita||'media', stato||'da_fare', scadenza||null]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/tasks/:id', async (req, res) => {
+  const { titolo, descrizione, assegnata_a, priorita, stato, scadenza } = req.body;
+  try {
+    const fields = [];
+    const values = [];
+    let i = 1;
+    if (titolo !== undefined) { fields.push(`titolo=$${i++}`); values.push(titolo); }
+    if (descrizione !== undefined) { fields.push(`descrizione=$${i++}`); values.push(descrizione); }
+    if (assegnata_a !== undefined) { fields.push(`assegnata_a=$${i++}`); values.push(assegnata_a); }
+    if (priorita !== undefined) { fields.push(`priorita=$${i++}`); values.push(priorita); }
+    if (stato !== undefined) { fields.push(`stato=$${i++}`); values.push(stato); }
+    if (scadenza !== undefined) { fields.push(`scadenza=$${i++}`); values.push(scadenza||null); }
+    fields.push(`updated_at=NOW()`);
+    values.push(req.params.id);
+    await pool.query(`UPDATE tasks SET ${fields.join(',')} WHERE id=$${i}`, values);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/tasks/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM tasks WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
