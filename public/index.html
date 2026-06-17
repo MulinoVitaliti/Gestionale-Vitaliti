@@ -1661,10 +1661,11 @@ async function salvaMovimento(){
   const descrizione=document.getElementById('mov-desc').value.trim();
   const imp=parseFloat(document.getElementById('mov-importo').value)||0;
   if(!d||!descrizione||!imp) return alert('Compila data, descrizione e imponibile netto');
+  const metodoPagamento = document.getElementById('mov-metodo-pagamento').value || '';
+  if(!metodoPagamento) return alert('Seleziona il metodo di pagamento');
   const fatturazione = document.getElementById('mov-fatturazione').value || 'non_applicabile';
   const pagatoRadio = document.querySelector('input[name="mov-pagato-radio"]:checked');
   const pagato = pagatoRadio ? pagatoRadio.value==='si' : false;
-  const metodoPagamento = document.getElementById('mov-metodo-pagamento').value || '';
   const prodotti = leggiRigheProdotto('mov');
   try{
     const data=await api.post('/api/movimenti',{
@@ -1741,10 +1742,11 @@ function editMovimento(id){
 
 async function aggiornaMovimento(){
   const id=parseInt(document.getElementById('edit-mov-id').value);
+  const metodoPagamento = document.getElementById('edit-mov-metodo-pagamento').value || '';
+  if(!metodoPagamento) return alert('Seleziona il metodo di pagamento');
   const fatturazione = document.getElementById('edit-mov-fatturazione').value || 'non_applicabile';
   const pagatoRadio = document.querySelector('input[name="edit-mov-pagato-radio"]:checked');
   const pagato = pagatoRadio ? pagatoRadio.value==='si' : false;
-  const metodoPagamento = document.getElementById('edit-mov-metodo-pagamento').value || '';
   const prodotti = leggiRigheProdotto('edit-mov');
   const body={
     data:document.getElementById('edit-mov-data').value,
@@ -1784,10 +1786,10 @@ function toggleProdottiSection(prefix){
 }
 
 function toggleMetodoPagamentoVisibility(prefix){
-  const radio = document.querySelector(`input[name="${prefix}-pagato-radio"]:checked`);
+  // Il metodo di pagamento è sempre visibile, indipendentemente dalla scelta Sì/No
   const wrap = document.getElementById(prefix+'-metodo-pagamento-wrap');
   if(!wrap) return;
-  wrap.style.display = (radio && radio.value==='si') ? 'block' : 'none';
+  wrap.style.display = 'block';
 }
 
 function aggiungiRigaProdotto(prefix, valori){
