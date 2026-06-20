@@ -305,11 +305,27 @@ app.get('/api/whatsapp/chats', async (req, res) => {
     const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=50`;
     const r = await fetch(url, { headers: unipileHeaders() });
     const data = await r.json();
+    console.log('UNIPILE chats status:', r.status, 'body:', JSON.stringify(data).slice(0, 500));
+    if (!r.ok) return res.json({ error: `Unipile ${r.status}: ${data.message || data.error || JSON.stringify(data)}` });
     res.json(data);
+  } catch (err) {
+    console.error('Errore chiamata Unipile chats:', err);
+    res.json({ error: err.message });
+  }
+});
+
+// Endpoint di debug temporaneo per ispezionare la risposta grezza
+app.get('/api/whatsapp/debug', async (req, res) => {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato', dsn: UNIPILE_DSN, hasKey: !!UNIPILE_API_KEY, accountId: UNIPILE_ACCOUNT_ID });
+  try {
+    const url = `https://${UNIPILE_DSN}/api/v1/accounts`;
+    const r = await fetch(url, { headers: unipileHeaders() });
+    const data = await r.json();
+    res.json({ status: r.status, dsn: UNIPILE_DSN, accountIdConfigured: UNIPILE_ACCOUNT_ID, accounts: data });
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// Messaggi di una chat
+
 app.get('/api/whatsapp/chats/:chatId/messages', async (req, res) => {
   if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
   try {
