@@ -334,6 +334,15 @@ app.get('/api/whatsapp/chats', async (req, res) => {
       return true;
     });
 
+    // Scarta "Stato" WhatsApp e i canali/newsletter broadcast (non sono conversazioni private)
+    chats = chats.filter(c => {
+      const pid = c.provider_id || '';
+      if (pid.includes('@status')) return false;
+      if (pid.includes('@newsletter')) return false;
+      if (pid.includes('@broadcast')) return false;
+      return true;
+    });
+
     // Per ogni chat senza nome, recupera gli attendees per ottenere il nome del contatto
     const arricchite = await Promise.all(chats.map(async (c) => {
       if (c.name) return c;
