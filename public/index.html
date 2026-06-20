@@ -1762,6 +1762,7 @@ async function cercaAziendaGoogle(prefix){
       <div onclick="selezionaAziendaGoogle('${prefix}', ${i})" style="background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:9px 12px;margin-bottom:6px;cursor:pointer;transition:border-color .15s" onmouseover="this.style.borderColor='var(--brand)'" onmouseout="this.style.borderColor='var(--border)'">
         <div style="font-weight:600;font-size:13px">${r.nome}</div>
         <div style="font-size:11px;color:var(--text-2)">${r.indirizzo}</div>
+        ${r.telefono?`<div style="font-size:11px;color:var(--text-2)"><i class="ti ti-phone" style="font-size:11px"></i> ${r.telefono}</div>`:''}
       </div>`).join('');
     window['_googleResults_'+prefix] = data.risultati;
   }catch(e){
@@ -1776,6 +1777,8 @@ function selezionaAziendaGoogle(prefix, idx){
   document.getElementById(prefix+'-nome').value = r.nome || '';
   document.getElementById(prefix+'-citta').value = r.citta || '';
   document.getElementById(prefix+'-ind').value = r.indirizzo || '';
+  const telEl = document.getElementById(prefix+'-tel');
+  if(telEl && r.telefono) telEl.value = r.telefono;
   document.getElementById(prefix+'-risultati-ricerca').innerHTML = `<div style="font-size:12px;color:var(--green);padding:6px 0"><i class="ti ti-check"></i> Dati compilati da Google</div>`;
   document.getElementById(prefix+'-ricerca-azienda').value = '';
 }
