@@ -331,6 +331,7 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
+      <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp"><i class="ti ti-brand-whatsapp"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
@@ -569,6 +570,23 @@ tbody tr:hover{background:var(--surface-2)}
         <!-- Dettaglio email -->
         <div class="email-detail" id="email-detail">
           <div class="email-empty"><i class="ti ti-mail-opened"></i><p>Seleziona un'email per leggerla</p></div>
+        </div>
+      </div>
+    </div>
+    <!-- WHATSAPP -->
+    <div class="page" id="page-whatsapp">
+      <div class="email-layout">
+        <!-- Lista chat -->
+        <div class="email-sidebar" style="width:280px">
+          <button class="email-sidebar-btn" onclick="apriNuovaChatWhatsapp()"><i class="ti ti-message-plus"></i>Nuova chat</button>
+          <div style="font-size:11px;color:var(--text-2);padding:6px 4px;margin-bottom:4px">Conversazioni</div>
+          <div id="wa-chats-list" style="overflow-y:auto;flex:1">
+            <div class="empty-state" style="padding:28px"><i class="ti ti-brand-whatsapp"></i><p>Caricamento chat...</p></div>
+          </div>
+        </div>
+        <!-- Conversazione -->
+        <div class="email-detail" id="wa-conversation" style="display:flex;flex-direction:column;padding:0">
+          <div class="email-empty"><i class="ti ti-brand-whatsapp"></i><p>Seleziona una conversazione</p></div>
         </div>
       </div>
     </div>
@@ -1144,6 +1162,22 @@ tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 
+<!-- Modal Nuova Chat WhatsApp -->
+<div class="modal-overlay" id="modal-wa-nuova-chat">
+  <div class="modal" style="width:420px">
+    <div class="modal-header"><div class="modal-title"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i> Nuova chat WhatsApp</div><button class="btn btn-icon" onclick="closeModal('modal-wa-nuova-chat')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Numero di telefono *</label><input type="text" id="wa-nuovo-numero" placeholder="Es. 333 1234567 o cerca cliente"></div>
+      <div class="form-group"><label class="form-label">Oppure seleziona un cliente</label><select id="wa-nuovo-cliente" onchange="if(this.value){document.getElementById('wa-nuovo-numero').value=this.options[this.selectedIndex].dataset.tel||'';}"><option value="">— Nessuno —</option></select></div>
+      <div class="form-group"><label class="form-label">Messaggio *</label><textarea id="wa-nuovo-testo" rows="3" placeholder="Scrivi il primo messaggio..." style="width:100%;padding:9px 12px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font);resize:vertical"></textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-wa-nuova-chat')">Annulla</button>
+        <button class="btn btn-primary" onclick="inviaNuovaChatWhatsapp()"><i class="ti ti-send"></i>Invia</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Task -->
 <div class="modal-overlay" id="modal-task">
   <div class="modal" style="width:480px">
@@ -1185,14 +1219,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true},
+  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp'};
 
 let currentUser = null;
 let usersDB = [
@@ -1350,7 +1384,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','automazioni','ai','utenti','attivita','statistiche','impostazioni','task'].forEach(p=>{
+  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -1373,6 +1407,7 @@ function showPage(id){
   if(id==='contabilita')renderContab();
   if(id==='dashboard')renderDash();
   if(id==='email')checkGmailStatus();
+  if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni')renderUtenti();
 }
@@ -3509,6 +3544,152 @@ function renderAttivitaPerEntita(tipo,id){
     const ord={scaduta:0,oggi:1,futura:2};
     return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
   }).map(a=>renderAttItem(a,false)).join('');
+}
+
+// ── WHATSAPP ──────────────────────────────────────────────────────────────
+let waChats = [];
+let waChatAttiva = null;
+let waPollingInterval = null;
+
+async function loadWaChats(){
+  const cont = document.getElementById('wa-chats-list');
+  if(!cont) return;
+  try{
+    const data = await api.get('/api/whatsapp/chats');
+    if(data.error){
+      cont.innerHTML = `<div class="empty-state" style="padding:20px"><i class="ti ti-alert-circle"></i><p style="font-size:12px">${data.error}</p></div>`;
+      return;
+    }
+    waChats = data.items || data.chats || [];
+    renderWaChatsList();
+  }catch(e){
+    cont.innerHTML = '<div class="empty-state" style="padding:20px"><p style="font-size:12px">Errore di caricamento</p></div>';
+  }
+}
+
+function renderWaChatsList(){
+  const cont = document.getElementById('wa-chats-list');
+  if(!cont) return;
+  if(!waChats.length){
+    cont.innerHTML = '<div class="empty-state" style="padding:20px"><i class="ti ti-brand-whatsapp"></i><p style="font-size:12px">Nessuna conversazione</p></div>';
+    return;
+  }
+  cont.innerHTML = waChats.map((c,i)=>{
+    const nome = c.name || c.attendee_name || c.title || 'Sconosciuto';
+    const ultimoMsg = c.last_message?.text || c.lastMessage?.text || '';
+    const ora = c.timestamp ? new Date(c.timestamp).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '';
+    return `
+      <div class="email-item" onclick="apriChatWhatsapp(${i})" id="wa-chat-item-${i}" style="cursor:pointer">
+        <div style="display:flex;align-items:center;gap:9px">
+          <div class="avatar" style="width:34px;height:34px;font-size:11px;background:#25D366">${ini(nome)}</div>
+          <div style="flex:1;min-width:0">
+            <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${nome}</div>
+            <div style="font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${ultimoMsg}</div>
+          </div>
+          ${ora?`<span style="font-size:10px;color:var(--text-3);flex-shrink:0">${ora}</span>`:''}
+        </div>
+      </div>`;
+  }).join('');
+}
+
+async function apriChatWhatsapp(idx){
+  document.querySelectorAll('#wa-chats-list .email-item').forEach(el=>el.classList.remove('active'));
+  const el = document.getElementById('wa-chat-item-'+idx); if(el) el.classList.add('active');
+  const chat = waChats[idx]; if(!chat) return;
+  waChatAttiva = chat;
+  const chatId = chat.id || chat.chat_id;
+  const nome = chat.name || chat.attendee_name || chat.title || 'Sconosciuto';
+  const cont = document.getElementById('wa-conversation');
+  cont.innerHTML = `
+    <div style="padding:14px 18px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <div class="avatar" style="width:36px;height:36px;font-size:12px;background:#25D366">${ini(nome)}</div>
+      <div style="font-weight:700;font-size:14px">${nome}</div>
+    </div>
+    <div id="wa-messages" style="flex:1;overflow-y:auto;padding:16px 18px;display:flex;flex-direction:column;gap:8px;background:#f7f5f2">
+      <div style="text-align:center;color:var(--text-2);font-size:12px"><i class="ti ti-loader"></i> Caricamento messaggi...</div>
+    </div>
+    <div style="padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+      <input type="text" id="wa-input-msg" placeholder="Scrivi un messaggio..." style="flex:1" onkeydown="if(event.key==='Enter'){event.preventDefault();inviaMessaggioWhatsapp('${chatId}')}">
+      <button class="btn btn-primary" onclick="inviaMessaggioWhatsapp('${chatId}')"><i class="ti ti-send"></i></button>
+    </div>`;
+  await caricaMessaggiWhatsapp(chatId);
+  // Polling per nuovi messaggi ogni 8 secondi mentre la chat è aperta
+  if(waPollingInterval) clearInterval(waPollingInterval);
+  waPollingInterval = setInterval(()=>caricaMessaggiWhatsapp(chatId, true), 8000);
+}
+
+async function caricaMessaggiWhatsapp(chatId, silenzioso){
+  const cont = document.getElementById('wa-messages');
+  if(!cont) return;
+  try{
+    const data = await api.get('/api/whatsapp/chats/'+chatId+'/messages');
+    if(data.error){
+      if(!silenzioso) cont.innerHTML = `<div style="text-align:center;color:var(--red);font-size:12px">${data.error}</div>`;
+      return;
+    }
+    const msgs = (data.items || data.messages || []).slice().reverse();
+    if(!msgs.length){
+      cont.innerHTML = '<div style="text-align:center;color:var(--text-2);font-size:12px">Nessun messaggio</div>';
+      return;
+    }
+    cont.innerHTML = msgs.map(m=>{
+      const mio = m.is_sender || m.sender_id === waChatAttiva?.account_id;
+      const testo = m.text || m.body || '';
+      const ora = m.timestamp ? new Date(m.timestamp).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '';
+      return `
+        <div style="display:flex;justify-content:${mio?'flex-end':'flex-start'}">
+          <div style="max-width:70%;background:${mio?'#dcf8c6':'#fff'};border-radius:10px;padding:7px 11px;box-shadow:0 1px 1px rgba(0,0,0,.08)">
+            <div style="font-size:13px;white-space:pre-wrap;word-break:break-word">${testo}</div>
+            <div style="font-size:10px;color:var(--text-3);text-align:right;margin-top:2px">${ora}</div>
+          </div>
+        </div>`;
+    }).join('');
+    if(!silenzioso) cont.scrollTop = cont.scrollHeight;
+  }catch(e){
+    if(!silenzioso) cont.innerHTML = '<div style="text-align:center;color:var(--red);font-size:12px">Errore di caricamento</div>';
+  }
+}
+
+async function inviaMessaggioWhatsapp(chatId){
+  const input = document.getElementById('wa-input-msg');
+  const testo = input.value.trim();
+  if(!testo) return;
+  input.value='';
+  input.disabled = true;
+  try{
+    await api.post('/api/whatsapp/chats/'+chatId+'/messages', {text: testo});
+    await caricaMessaggiWhatsapp(chatId);
+    showSave();
+  }catch(e){
+    alert('Errore invio messaggio');
+  }finally{
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function apriNuovaChatWhatsapp(){
+  document.getElementById('wa-nuovo-numero').value='';
+  document.getElementById('wa-nuovo-testo').value='';
+  const sel = document.getElementById('wa-nuovo-cliente');
+  sel.innerHTML = '<option value="">— Nessuno —</option>' + (state.clienti||[]).filter(c=>c.tel).map(c=>`<option value="${c.id}" data-tel="${c.tel}">${c.nome} (${c.tel})</option>`).join('');
+  openModal('modal-wa-nuova-chat');
+}
+
+async function inviaNuovaChatWhatsapp(){
+  const telefono = document.getElementById('wa-nuovo-numero').value.trim();
+  const testo = document.getElementById('wa-nuovo-testo').value.trim();
+  if(!telefono) return alert('Inserisci un numero di telefono');
+  if(!testo) return alert('Scrivi un messaggio');
+  try{
+    const data = await api.post('/api/whatsapp/start-chat', {telefono, testo});
+    if(data.error) return alert('Errore: '+data.error);
+    closeModal('modal-wa-nuova-chat');
+    showSave();
+    await loadWaChats();
+  }catch(e){
+    alert('Errore di rete');
+  }
 }
 
 // ── TASK ──────────────────────────────────────────────────────────────────
