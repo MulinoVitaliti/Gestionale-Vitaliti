@@ -305,13 +305,47 @@ app.get('/api/whatsapp/chats', async (req, res) => {
     const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=50`;
     const r = await fetch(url, { headers: unipileHeaders() });
     const data = await r.json();
-    console.log('UNIPILE chats status:', r.status, 'body:', JSON.stringify(data).slice(0, 500));
     if (!r.ok) return res.json({ error: `Unipile ${r.status}: ${data.message || data.error || JSON.stringify(data)}` });
+
+    const chats = data.items || data.chats || [];
+    // Per ogni chat senza nome, recupera gli attendees per ottenere il nome del contatto
+    const arricchite = await Promise.all(chats.map(async (c) => {
+      if (c.name) return c;
+      try {
+        const attUrl = `https://${UNIPILE_DSN}/api/v1/chats/${c.id}/attendees`;
+        const attR = await fetch(attUrl, { headers: unipileHeaders() });
+        const attData = await attR.json();
+        const attendees = attData.items || attData.attendees || [];
+        // Prendi il primo attendee che non sia l'account collegato stesso
+        const altro = attendees.find(a => !a.is_self && (a.name || a.provider_id));
+        if (altro) {
+          c.name = altro.name || altro.provider_id || c.name;
+        }
+      } catch (e) { /* ignora, manteniamo il nome originale */ }
+      return c;
+    }));
+
+    data.items = arricchite;
     res.json(data);
   } catch (err) {
     console.error('Errore chiamata Unipile chats:', err);
     res.json({ error: err.message });
   }
+});
+
+// Endpoint di debug temporaneo per ispezionare la risposta grezza di una chat singola
+app.get('/api/whatsapp/debug-chat/:chatId', async (req, res) => {
+  try {
+    const chatUrl = `https://${UNIPILE_DSN}/api/v1/chats/${req.params.chatId}`;
+    const attUrl = `https://${UNIPILE_DSN}/api/v1/chats/${req.params.chatId}/attendees`;
+    const [chatR, attR] = await Promise.all([
+      fetch(chatUrl, { headers: unipileHeaders() }),
+      fetch(attUrl, { headers: unipileHeaders() })
+    ]);
+    const chat = await chatR.json();
+    const attendees = await attR.json();
+    res.json({ chat, attendees });
+  } catch (err) { res.json({ error: err.message }); }
 });
 
 // Endpoint di debug temporaneo per ispezionare la risposta grezza
