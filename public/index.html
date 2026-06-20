@@ -1579,8 +1579,8 @@ function renderContab(){
   });
   const totE=tuttiMov.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   const totU=tuttiMov.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  document.getElementById('c-entrate').textContent=fmt(totE);
-  document.getElementById('c-uscite').textContent=fmt(totU);
+  const elEntrate=document.getElementById('c-entrate'); if(elEntrate) elEntrate.textContent=fmt(totE);
+  const elUscite=document.getElementById('c-uscite'); if(elUscite) elUscite.textContent=fmt(totU);
   // Saldo netto = entrate al netto IVA - uscite al netto IVA (esclude l'IVA dal calcolo)
   const totENetto = tuttiMov.filter(m=>m.tipo==='entrata').reduce((s,m)=>{
     const imp=parseFloat(m.importo)||0;
@@ -1593,13 +1593,13 @@ function renderContab(){
     return s + (imp/(1+aliq));
   },0);
   const sn=totENetto-totUNetto;
-  const cse=document.getElementById('c-saldo'); cse.textContent=fmt(sn); cse.className='metric-value '+(sn>=0?'green':'red');
+  const cse=document.getElementById('c-saldo'); if(cse){ cse.textContent=fmt(sn); cse.className='metric-value '+(sn>=0?'green':'red'); }
   // Fatturazione
   const entrate=state.movimenti.filter(m=>m.tipo==='entrata');
   const totFatt=entrate.filter(m=>m.fatturazione==='fatturato').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   const totDaFatt=entrate.filter(m=>m.fatturazione==='da_fatturare').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  document.getElementById('c-fatturato').textContent=fmt(totFatt);
-  document.getElementById('c-da-fatturare').textContent=fmt(totDaFatt);
+  const elFatturato=document.getElementById('c-fatturato'); if(elFatturato) elFatturato.textContent=fmt(totFatt);
+  const elDaFatturare=document.getElementById('c-da-fatturare'); if(elDaFatturare) elDaFatturare.textContent=fmt(totDaFatt);
   // Nascondi card Black in modalità clean
   const cardBlack = document.getElementById('card-black');
   if(cardBlack) cardBlack.style.display = finanzaModoClean ? 'none' : '';
@@ -1680,20 +1680,25 @@ function filterContab(f,el){state.contabFilter=f;document.querySelectorAll('.pil
 function renderDash(){
   if(!document.getElementById('m-clienti')) return;
   const today=new Date();
-  document.getElementById('dash-date').textContent=today.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
+  const elDate=document.getElementById('dash-date'); if(elDate) elDate.textContent=today.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
   document.getElementById('m-clienti').textContent=state.clienti.length;
-  document.getElementById('m-ordini').textContent=state.ordini.filter(o=>o.stato==='aperto').length;
+  const elOrdini=document.getElementById('m-ordini'); if(elOrdini) elOrdini.textContent=state.ordini.filter(o=>o.stato==='aperto').length;
   const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  document.getElementById('m-entrate').textContent=fmt(totE);
+  const elEntrate=document.getElementById('m-entrate'); if(elEntrate) elEntrate.textContent=fmt(totE);
   const sn=state.movimenti.reduce((s,m)=>s+(m.tipo==='entrata'?(parseFloat(m.importo)||0):-(parseFloat(m.importo)||0)),0);
-  const se=document.getElementById('m-saldo'); se.textContent=fmt(sn); se.className='metric-value '+(sn>=0?'green':'red');
+  const se=document.getElementById('m-saldo'); if(se){ se.textContent=fmt(sn); se.className='metric-value '+(sn>=0?'green':'red'); }
   const fMap={}; state.fasi.forEach(f=>fMap[f.id]=f.label);
   const pl=document.getElementById('dash-pipeline');
-  const recent=[...state.leads].slice(-5).reverse();
-  pl.innerHTML=recent.length?recent.map(l=>`<div class="dash-item"><span style="font-size:13px;font-weight:500">${l.nome}</span><span class="badge badge-lead" style="font-size:10px">${fMap[l.stato]||l.stato}</span></div>`).join(''):'<div class="empty-state" style="padding:10px 0"><p>Nessun contatto</p></div>';
+  if(pl){
+    const recent=[...state.leads].slice(-5).reverse();
+    pl.innerHTML=recent.length?recent.map(l=>`<div class="dash-item"><span style="font-size:13px;font-weight:500">${l.nome}</span><span class="badge badge-lead" style="font-size:10px">${fMap[l.stato]||l.stato}</span></div>`).join(''):'<div class="empty-state" style="padding:10px 0"><p>Nessun contatto</p></div>';
+  }
   const od=document.getElementById('dash-ordini');
-  const lastOrd=[...state.ordini].slice(-5).reverse();
-  od.innerHTML=lastOrd.length?lastOrd.map(o=>`<div class="dash-item"><div><div style="font-size:13px;font-weight:600">${o.cliente}</div><div style="font-size:11px;color:var(--text-3)">${o.prodotto} · ${o.qty} kg</div></div><div style="text-align:right"><div style="font-weight:600">${fmt(o.importo)}</div><span class="badge badge-${o.stato}">${o.stato}</span></div></div>`).join(''):'<div class="empty-state" style="padding:10px 0"><p>Nessun ordine</p></div>';
+  if(od){
+    const lastOrd=[...state.ordini].slice(-5).reverse();
+    od.innerHTML=lastOrd.length?lastOrd.map(o=>`<div class="dash-item"><div><div style="font-size:13px;font-weight:600">${o.cliente}</div><div style="font-size:11px;color:var(--text-3)">${o.prodotto} · ${o.qty} kg</div></div><div style="text-align:right"><div style="font-weight:600">${fmt(o.importo)}</div><span class="badge badge-${o.stato}">${o.stato}</span></div></div>`).join(''):'<div class="empty-state" style="padding:10px 0"><p>Nessun ordine</p></div>';
+  }
+  renderDashTask();
 }
 
 // ── SALVA LEAD ────────────────────────────────────────────────────────────
@@ -1843,9 +1848,9 @@ async function salvaMovimento(){
     if(data && !data.error){
       state.movimenti.unshift(data);
       closeModal('modal-movimento');
-      renderContab();
-      renderDash();
       showSave();
+      try{ renderContab(); }catch(renderErr){ console.error('Errore render contabilità:', renderErr); }
+      try{ renderDash(); }catch(renderErr){ console.error('Errore render dashboard:', renderErr); }
     } else {
       alert('Errore: '+(data?.error||'impossibile salvare il movimento'));
     }
