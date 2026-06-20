@@ -289,6 +289,81 @@ app.get('/api/leads', async (req, res) => {
 });
 
 // ── RICERCA AZIENDA (Google Places) ─────────────────────────────────────
+// ── WHATSAPP (Unipile) ───────────────────────────────────────────────────
+const UNIPILE_DSN = process.env.UNIPILE_DSN; // es: api45.unipile.com:17576
+const UNIPILE_API_KEY = process.env.UNIPILE_API_KEY;
+const UNIPILE_ACCOUNT_ID = process.env.UNIPILE_WHATSAPP_ACCOUNT_ID;
+
+function unipileHeaders(){
+  return { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' };
+}
+
+// Lista chat WhatsApp
+app.get('/api/whatsapp/chats', async (req, res) => {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
+  try {
+    const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=50`;
+    const r = await fetch(url, { headers: unipileHeaders() });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Messaggi di una chat
+app.get('/api/whatsapp/chats/:chatId/messages', async (req, res) => {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
+  try {
+    const url = `https://${UNIPILE_DSN}/api/v1/chats/${req.params.chatId}/messages`;
+    const r = await fetch(url, { headers: unipileHeaders() });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Invio messaggio in chat esistente
+app.post('/api/whatsapp/chats/:chatId/messages', async (req, res) => {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
+  try {
+    const form = new URLSearchParams();
+    form.append('text', req.body.text || '');
+    const url = `https://${UNIPILE_DSN}/api/v1/chats/${req.params.chatId}/messages`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { ...unipileHeaders(), 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString()
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Avvia nuova chat con un numero di telefono (se non esiste già)
+app.post('/api/whatsapp/start-chat', async (req, res) => {
+  if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
+  const { telefono, testo } = req.body;
+  if (!telefono) return res.json({ error: 'Numero di telefono mancante' });
+  try {
+    // Pulisce il numero (solo cifre, con prefisso internazionale)
+    let numero = telefono.replace(/[^\d+]/g, '');
+    if (!numero.startsWith('+')) numero = '+39' + numero.replace(/^0/, '');
+    const attendeeId = numero.replace('+', '') + '@s.whatsapp.net';
+
+    const form = new URLSearchParams();
+    form.append('account_id', UNIPILE_ACCOUNT_ID);
+    form.append('text', testo || '');
+    form.append('attendees_ids', attendeeId);
+
+    const url = `https://${UNIPILE_DSN}/api/v1/chats`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: { ...unipileHeaders(), 'content-type': 'application/x-www-form-urlencoded' },
+      body: form.toString()
+    });
+    const data = await r.json();
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.get('/api/places/search', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.json({ error: 'Query mancante' });
