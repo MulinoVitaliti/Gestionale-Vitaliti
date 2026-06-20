@@ -300,7 +300,7 @@ app.get('/api/places/search', async (req, res) => {
       headers: {
         'Content-Type': 'application/json',
         'X-Goog-Api-Key': apiKey,
-        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.addressComponents,places.id'
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.addressComponents,places.id,places.nationalPhoneNumber,places.internationalPhoneNumber'
       },
       body: JSON.stringify({ textQuery: query, languageCode: 'it', regionCode: 'IT' })
     });
@@ -315,6 +315,7 @@ app.get('/api/places/search', async (req, res) => {
         citta: get('locality') || get('administrative_area_level_3') || '',
         cap: get('postal_code') || '',
         provincia: get('administrative_area_level_2') || '',
+        telefono: p.nationalPhoneNumber || p.internationalPhoneNumber || '',
         place_id: p.id || ''
       };
     });
