@@ -288,6 +288,40 @@ app.get('/api/leads', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── RICERCA AZIENDA (Google Places) ─────────────────────────────────────
+app.get('/api/places/search', async (req, res) => {
+  const query = req.query.q;
+  if (!query) return res.json({ error: 'Query mancante' });
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return res.json({ error: 'Chiave API Google Places non configurata' });
+  try {
+    const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.addressComponents,places.id'
+      },
+      body: JSON.stringify({ textQuery: query, languageCode: 'it', regionCode: 'IT' })
+    });
+    const data = await response.json();
+    if (data.error) return res.json({ error: data.error.message });
+    const risultati = (data.places || []).map(p => {
+      const comp = p.addressComponents || [];
+      const get = (type) => (comp.find(c => c.types.includes(type)) || {}).longText || '';
+      return {
+        nome: p.displayName?.text || '',
+        indirizzo: p.formattedAddress || '',
+        citta: get('locality') || get('administrative_area_level_3') || '',
+        cap: get('postal_code') || '',
+        provincia: get('administrative_area_level_2') || '',
+        place_id: p.id || ''
+      };
+    });
+    res.json({ risultati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.post('/api/leads', async (req, res) => {
   const { nome, contatto, tel, citta, prodotto, stato, note, tag } = req.body;
   try {
