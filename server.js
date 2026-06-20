@@ -302,12 +302,38 @@ function unipileHeaders(){
 app.get('/api/whatsapp/chats', async (req, res) => {
   if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
   try {
-    const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=50`;
+    const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=100`;
     const r = await fetch(url, { headers: unipileHeaders() });
     const data = await r.json();
     if (!r.ok) return res.json({ error: `Unipile ${r.status}: ${data.message || data.error || JSON.stringify(data)}` });
 
-    const chats = data.items || data.chats || [];
+    let chats = data.items || data.chats || [];
+
+    // Recupera il proprio numero collegato per escluderlo dalle chat
+    let proprioNumero = null;
+    try {
+      const accUrl = `https://${UNIPILE_DSN}/api/v1/accounts/${UNIPILE_ACCOUNT_ID}`;
+      const accR = await fetch(accUrl, { headers: unipileHeaders() });
+      const accData = await accR.json();
+      proprioNumero = accData.connection_params?.im?.phone_number || null;
+    } catch (e) { /* ignora */ }
+
+    // Estrai il numero di telefono reale dal provider_id o attendee_public_identifier
+    function numeroReale(c) {
+      const candidati = [c.attendee_public_identifier, c.provider_id];
+      for (const cand of candidati) {
+        if (cand && cand.includes('@s.whatsapp.net')) return cand.split('@')[0];
+      }
+      return null;
+    }
+
+    // Scarta le chat verso il proprio numero (chat con se stessi)
+    chats = chats.filter(c => {
+      const num = numeroReale(c);
+      if (num && proprioNumero && num === proprioNumero) return false;
+      return true;
+    });
+
     // Per ogni chat senza nome, recupera gli attendees per ottenere il nome del contatto
     const arricchite = await Promise.all(chats.map(async (c) => {
       if (c.name) return c;
@@ -324,15 +350,29 @@ app.get('/api/whatsapp/chats', async (req, res) => {
       return c;
     }));
 
-    // Rimuovi eventuali duplicati per id
-    const visti = new Set();
-    const senzaDuplicati = arricchite.filter(c => {
-      if (visti.has(c.id)) return false;
-      visti.add(c.id);
-      return true;
+    // Deduplica per numero di telefono reale (stesso contatto può apparire con id @lid e id @s.whatsapp.net)
+    // Preferisce la versione con provider_id che termina in @s.whatsapp.net (più affidabile per inviare messaggi)
+    const mappaPerNumero = new Map();
+    const senzaNumero = [];
+    arricchite.forEach(c => {
+      const num = numeroReale(c);
+      if (!num) { senzaNumero.push(c); return; }
+      const esistente = mappaPerNumero.get(num);
+      if (!esistente) {
+        mappaPerNumero.set(num, c);
+      } else {
+        // Preferisci quella il cui provider_id è il numero reale (non @lid)
+        const questaEPreferita = (c.provider_id || '').includes('@s.whatsapp.net');
+        const esistenteEPreferita = (esistente.provider_id || '').includes('@s.whatsapp.net');
+        if (questaEPreferita && !esistenteEPreferita) mappaPerNumero.set(num, c);
+      }
     });
 
-    res.json({ items: senzaDuplicati });
+    const risultatoFinale = [...mappaPerNumero.values(), ...senzaNumero]
+      .sort((a, b) => new Date(b.timestamp || 0) - new Date(a.timestamp || 0))
+      .slice(0, 50);
+
+    res.json({ items: risultatoFinale });
   } catch (err) {
     console.error('Errore chiamata Unipile chats:', err);
     res.json({ error: err.message });
