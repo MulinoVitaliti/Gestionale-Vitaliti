@@ -316,7 +316,6 @@ app.get('/api/whatsapp/chats', async (req, res) => {
         const attR = await fetch(attUrl, { headers: unipileHeaders() });
         const attData = await attR.json();
         const attendees = attData.items || attData.attendees || [];
-        // Prendi il primo attendee che non sia l'account collegato stesso
         const altro = attendees.find(a => !a.is_self && (a.name || a.provider_id));
         if (altro) {
           c.name = altro.name || altro.provider_id || c.name;
@@ -325,8 +324,15 @@ app.get('/api/whatsapp/chats', async (req, res) => {
       return c;
     }));
 
-    data.items = arricchite;
-    res.json(data);
+    // Rimuovi eventuali duplicati per id
+    const visti = new Set();
+    const senzaDuplicati = arricchite.filter(c => {
+      if (visti.has(c.id)) return false;
+      visti.add(c.id);
+      return true;
+    });
+
+    res.json({ items: senzaDuplicati });
   } catch (err) {
     console.error('Errore chiamata Unipile chats:', err);
     res.json({ error: err.message });
