@@ -570,6 +570,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="pills" style="margin-bottom:14px">
           <div class="pill active" onclick="switchFicTab('fatture',this)"><i class="ti ti-file-invoice" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Fatture</div>
           <div class="pill" onclick="switchFicTab('ddt',this)"><i class="ti ti-truck" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>DDT</div>
+          <div class="pill" onclick="switchFicTab('storico',this)"><i class="ti ti-history" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Storico clienti</div>
         </div>
 
         <!-- Vista Fatture -->
@@ -602,6 +603,20 @@ tbody tr:hover{background:var(--surface-2)}
             <table>
               <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th style="text-align:right">Importo</th><th></th></tr></thead>
               <tbody id="tbl-ddt"></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Vista Storico Clienti -->
+        <div id="fic-vista-storico" style="display:none">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:14px;display:flex;align-items:center;gap:8px">
+            <i class="ti ti-info-circle"></i>
+            Cliente registrato automaticamente ogni volta che compare in una fattura o un DDT importato. Base per future funzioni di generazione documenti automatica.
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Cliente</th><th>P.IVA</th><th>Città</th><th style="text-align:center">Fatture</th><th style="text-align:center">DDT</th><th style="text-align:right">Totale fatturato</th><th>Ultimo documento</th></tr></thead>
+              <tbody id="tbl-storico-clienti"></tbody>
             </table>
           </div>
         </div>
@@ -2703,6 +2718,39 @@ function switchFicTab(tab, el){
   if(el) el.classList.add('active');
   document.getElementById('fic-vista-fatture').style.display = tab==='fatture' ? 'block' : 'none';
   document.getElementById('fic-vista-ddt').style.display = tab==='ddt' ? 'block' : 'none';
+  document.getElementById('fic-vista-storico').style.display = tab==='storico' ? 'block' : 'none';
+  if(tab==='storico') caricaStoricoClienti();
+}
+
+async function caricaStoricoClienti(){
+  const tb = document.getElementById('tbl-storico-clienti');
+  if(tb) tb.innerHTML = '<tr><td colspan="7"><div class="empty-state" style="padding:20px"><i class="ti ti-loader"></i><p>Caricamento...</p></div></td></tr>';
+  try{
+    const data = await api.get('/api/fatture/clienti-storico');
+    if(data.error){
+      if(tb) tb.innerHTML = `<tr><td colspan="7"><div class="empty-state" style="padding:20px"><p>${data.error}</p></div></td></tr>`;
+      return;
+    }
+    if(!data.length){
+      tb.innerHTML = '<tr><td colspan="7"><div class="empty-state" style="padding:20px"><i class="ti ti-users"></i><p>Nessun cliente registrato ancora. Carica le fatture o i DDT per popolare lo storico.</p></div></td></tr>';
+      return;
+    }
+    tb.innerHTML = data.map(c=>{
+      const ultimoTipo = c.ultimo_documento_tipo === 'invoice' ? 'Fattura' : c.ultimo_documento_tipo === 'delivery_note' ? 'DDT' : '—';
+      const ultimaData = c.ultimo_documento_data ? new Date(c.ultimo_documento_data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+      return `<tr>
+        <td style="font-weight:600">${c.nome}</td>
+        <td style="font-size:13px;color:var(--text-2)">${c.vat_number||'—'}</td>
+        <td style="font-size:13px;color:var(--text-2)">${c.citta||'—'}</td>
+        <td style="text-align:center">${c.num_fatture||0}</td>
+        <td style="text-align:center">${c.num_ddt||0}</td>
+        <td style="text-align:right;font-weight:600">${fmt(parseFloat(c.importo_totale_fatturato)||0)}</td>
+        <td style="font-size:12px;color:var(--text-2)">${ultimoTipo} n.${c.ultimo_documento_numero||'—'} · ${ultimaData}</td>
+      </tr>`;
+    }).join('');
+  }catch(e){
+    if(tb) tb.innerHTML = '<tr><td colspan="7"><div class="empty-state" style="padding:20px"><p>Errore di caricamento</p></div></td></tr>';
+  }
 }
 
 async function caricaDdt(){
