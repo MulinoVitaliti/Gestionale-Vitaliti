@@ -1093,10 +1093,16 @@ app.get('/api/fatture/invoices', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
   try {
     const page = req.query.page || 1;
-    let path = `/c/${ficCompanyId}/issued_documents?type=invoice&page=${page}&per_page=50&sort=-date`;
+    const params = new URLSearchParams({
+      type: 'invoice',
+      page: String(page),
+      per_page: '50',
+      sort: '-date'
+    });
     if (req.query.year) {
-      path += `&q=date%3E%3D'${req.query.year}-01-01'%3Bdate%3C%3D'${req.query.year}-12-31'`;
+      params.set('q', `date>='${req.query.year}-01-01',date<='${req.query.year}-12-31'`);
     }
+    const path = `/c/${ficCompanyId}/issued_documents?${params.toString()}`;
     const r = await ficFetch(path);
     const data = await r.json();
     if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero fatture' });
