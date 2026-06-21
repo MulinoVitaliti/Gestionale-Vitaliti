@@ -1541,10 +1541,8 @@ async function initPipelinePage(){
     _pipelinePageInizializzata = true;
   }
   renderPipelineTabs();
-  if(currentPipelineId !== 'default'){
-    await loadFasiPerPipeline(currentPipelineId);
-    await loadLeadPipelineStato(currentPipelineId);
-  }
+  await loadFasiPerPipeline(currentPipelineId);
+  await loadLeadPipelineStato(currentPipelineId);
   renderPipeline();
 }
 
@@ -1624,8 +1622,21 @@ async function salvaNuovaPipeline(){
     const nuova = await api.post('/api/pipelines', {id, nome, colore, ordine:(state.pipelines||[]).length});
     if(nuova && !nuova.error){
       state.pipelines.push(nuova);
-      // Crea una prima fase di default per la nuova pipeline così non è vuota
-      const faseDefault = await api.post('/api/fasi', {id:id+'_fase1', label:'Nuovo contatto', color:colore, ordine:0, pipeline_id:id});
+      // Crea alcune fasi di base per la nuova pipeline così non è vuota e si può lavorare subito
+      const fasiBase = [
+        {nome:'Nuovo contatto', colore},
+        {nome:'In trattativa', colore:'#C9A227'},
+        {nome:'Cliente acquisito', colore:'#2D7A4F'}
+      ];
+      let ordine = 0;
+      for(const fb of fasiBase){
+        const faseId = id+'_fase'+(ordine+1);
+        const faseCreata = await api.post('/api/fasi', {id:faseId, label:fb.nome, color:fb.colore, ordine, pipeline_id:id});
+        if(faseCreata && faseCreata.error){
+          console.error('Errore creazione fase:', faseCreata.error);
+        }
+        ordine++;
+      }
       closeModal('modal-nuova-pipeline');
       document.getElementById('np-nome').value='';
       renderPipelineTabs();
@@ -1634,7 +1645,7 @@ async function salvaNuovaPipeline(){
     } else {
       alert('Errore: '+(nuova?.error||'impossibile creare la pipeline'));
     }
-  }catch(e){ alert('Errore di rete'); }
+  }catch(e){ alert('Errore di rete: '+e.message); }
 }
 
 function renderPipeline(){
