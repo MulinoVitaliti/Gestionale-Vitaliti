@@ -944,6 +944,16 @@ async function saveGmailSpedizioniTokens(tokens) {
   } catch(e) { console.error('Errore salvataggio token spedizioni:', e.message); }
 }
 
+app.get('/auth/spedizioni/debug', (req, res) => {
+  res.json({
+    hasClientId: !!process.env.GOOGLE_CLIENT_ID,
+    hasClientSecret: !!process.env.GOOGLE_CLIENT_SECRET,
+    spedizioniRedirectUri: SPEDIZIONI_REDIRECT_URI || '(vuoto)',
+    envSpedizioniRedirectUri: process.env.SPEDIZIONI_REDIRECT_URI || '(non impostata)',
+    mainRedirectUri: process.env.REDIRECT_URI || '(non impostata)'
+  });
+});
+
 app.get('/auth/spedizioni/login', (req, res) => {
   if (!SPEDIZIONI_REDIRECT_URI) return res.status(500).send('Redirect URI spedizioni non configurato');
   const url = oauth2ClientSpedizioni.generateAuthUrl({
