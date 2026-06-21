@@ -1438,7 +1438,8 @@ function estraiDatiSpedizioneOneExpress(testoEmail) {
   const numero_tracking = get(/Numero tracci?amento:?\s*([A-Z0-9]{6,})/i);
   const pin_consegna = get(/Codice PIN conferma consegna:?\s*([A-Z0-9]{6,})/i);
   const data_consegna_prevista = get(/Consegna prevista:?\s*([^\n]+)/i);
-  const indirizzo_consegna = get(/Indirizzo di consegna:?\s*([^\n]+(?:\n[^\n]+)?)/i);
+  let indirizzo_consegna = get(/Indirizzo di consegna:?\s*\n?\s*([^\n]+(?:\n[^\n]+){0,2})/i);
+  if (indirizzo_consegna) indirizzo_consegna = indirizzo_consegna.replace(/\n+/g, ' ').replace(/\s{2,}/g, ' ').trim();
   // L'affiliato è la riga subito dopo "preso in carico dall'affiliato..." prima del codice numerico lungo
   const affiliatoMatch = testoEmail.match(/competente\.?\s*\n+\s*([^\n]+)/i);
   const affiliato = affiliatoMatch ? affiliatoMatch[1].trim() : null;
