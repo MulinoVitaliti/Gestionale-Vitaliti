@@ -1540,15 +1540,34 @@ function renderPipelineDropdownMenu(){
   const menu = document.getElementById('pl-dropdown-menu');
   if(!menu) return;
   const items = (state.pipelines||[]).map(p=>`
-    <div onclick="selezionaPipelineDaDropdown('${p.id}')" style="display:flex;align-items:center;gap:9px;padding:10px 14px;font-size:14px;cursor:pointer;${p.id===currentPipelineId?'background:var(--surface-2)':''}" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='${p.id===currentPipelineId?'var(--surface-2)':'transparent'}'">
-      <span style="width:9px;height:9px;border-radius:50%;background:${p.colore};flex-shrink:0"></span>
-      <span style="flex:1">${p.nome}</span>
-      ${p.id===currentPipelineId?'<i class="ti ti-check" style="font-size:14px;color:var(--brand)"></i>':''}
+    <div style="display:flex;align-items:center;gap:9px;padding:10px 14px;font-size:14px;cursor:pointer;${p.id===currentPipelineId?'background:var(--surface-2)':''}" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='${p.id===currentPipelineId?'var(--surface-2)':'transparent'}'">
+      <span onclick="selezionaPipelineDaDropdown('${p.id}')" style="display:flex;align-items:center;gap:9px;flex:1;min-width:0">
+        <span style="width:9px;height:9px;border-radius:50%;background:${p.colore};flex-shrink:0"></span>
+        <span style="flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.nome}</span>
+        ${p.id===currentPipelineId?'<i class="ti ti-check" style="font-size:14px;color:var(--brand);flex-shrink:0"></i>':''}
+      </span>
+      <i class="ti ti-pencil" style="font-size:14px;color:var(--text-3);flex-shrink:0;cursor:pointer" onclick="event.stopPropagation();apriRinominaPipeline('${p.id}')" title="Rinomina pipeline"></i>
     </div>`).join('');
   menu.innerHTML = items + `
     <div onclick="apriCreazioneNuovaPipeline()" style="border-top:1px solid var(--border);padding:10px 14px;font-size:14px;color:var(--brand);cursor:pointer;display:flex;align-items:center;gap:7px" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='transparent'">
       <i class="ti ti-plus" style="font-size:15px"></i>Nuova pipeline
     </div>`;
+}
+
+async function apriRinominaPipeline(pipelineId){
+  const p = (state.pipelines||[]).find(x=>x.id===pipelineId);
+  if(!p) return;
+  const nuovoNome = prompt('Rinomina pipeline:', p.nome);
+  if(nuovoNome === null) return; // annullato
+  const nomeTrim = nuovoNome.trim();
+  if(!nomeTrim || nomeTrim === p.nome) return;
+  try{
+    await api.put('/api/pipelines/'+pipelineId, {nome:nomeTrim, colore:p.colore});
+    p.nome = nomeTrim;
+    renderPipelineDropdownMenu();
+    renderPipelineDropdownButton();
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
 }
 
 async function selezionaPipelineDaDropdown(pipelineId){
