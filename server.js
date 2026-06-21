@@ -157,6 +157,28 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS fic_clienti_storico (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        vat_number TEXT,
+        tax_code TEXT,
+        indirizzo TEXT,
+        citta TEXT,
+        cap TEXT,
+        provincia TEXT,
+        email TEXT,
+        telefono TEXT,
+        num_fatture INTEGER DEFAULT 0,
+        num_ddt INTEGER DEFAULT 0,
+        importo_totale_fatturato NUMERIC DEFAULT 0,
+        ultimo_documento_tipo TEXT,
+        ultimo_documento_data DATE,
+        ultimo_documento_numero TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(nome, vat_number)
+      );
+
       CREATE TABLE IF NOT EXISTS utenti (
         id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
@@ -1090,6 +1112,61 @@ app.post('/api/fatture/set-company', async (req, res) => {
 });
 
 // Elenco fatture emesse (con filtro opzionale per anno)
+// Registra/aggiorna un cliente nello storico ogni volta che appare in una fattura o DDT
+async function registraClienteStorico(documenti, tipoDocumento) {
+  for (const doc of documenti) {
+    const e = doc.entity;
+    if (!e || !e.name) continue;
+    const importo = parseFloat(doc.amount_gross) || 0;
+    try {
+      const esistente = await pool.query(
+        'SELECT id, num_fatture, num_ddt, importo_totale_fatturato FROM fic_clienti_storico WHERE nome=$1 AND COALESCE(vat_number,\'\')=COALESCE($2,\'\')',
+        [e.name, e.vat_number || null]
+      );
+      if (esistente.rows.length) {
+        const row = esistente.rows[0];
+        const nuoveFatture = tipoDocumento === 'invoice' ? row.num_fatture + 1 : row.num_fatture;
+        const nuoviDdt = tipoDocumento === 'delivery_note' ? row.num_ddt + 1 : row.num_ddt;
+        const nuovoTotale = tipoDocumento === 'invoice' ? parseFloat(row.importo_totale_fatturato) + importo : parseFloat(row.importo_totale_fatturato);
+        await pool.query(
+          `UPDATE fic_clienti_storico SET
+            indirizzo=$1, citta=$2, cap=$3, provincia=$4, email=$5, telefono=$6,
+            num_fatture=$7, num_ddt=$8, importo_totale_fatturato=$9,
+            ultimo_documento_tipo=$10, ultimo_documento_data=$11, ultimo_documento_numero=$12,
+            updated_at=NOW()
+          WHERE id=$13`,
+          [
+            e.address_street || null, e.address_city || null, e.address_postal_code || null, e.address_province || null,
+            e.certified_email || e.email || null, e.phone || null,
+            nuoveFatture, nuoviDdt, nuovoTotale,
+            tipoDocumento, doc.date || null, String(doc.number || ''),
+            row.id
+          ]
+        );
+      } else {
+        await pool.query(
+          `INSERT INTO fic_clienti_storico
+            (nome, vat_number, tax_code, indirizzo, citta, cap, provincia, email, telefono,
+             num_fatture, num_ddt, importo_totale_fatturato, ultimo_documento_tipo, ultimo_documento_data, ultimo_documento_numero)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+           ON CONFLICT (nome, vat_number) DO NOTHING`,
+          [
+            e.name, e.vat_number || null, e.tax_code || null,
+            e.address_street || null, e.address_city || null, e.address_postal_code || null, e.address_province || null,
+            e.certified_email || e.email || null, e.phone || null,
+            tipoDocumento === 'invoice' ? 1 : 0,
+            tipoDocumento === 'delivery_note' ? 1 : 0,
+            tipoDocumento === 'invoice' ? importo : 0,
+            tipoDocumento, doc.date || null, String(doc.number || '')
+          ]
+        );
+      }
+    } catch (e2) {
+      console.error('Errore registrazione cliente storico:', e2.message);
+    }
+  }
+}
+
 app.get('/api/fatture/invoices', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
   try {
@@ -1104,6 +1181,7 @@ app.get('/api/fatture/invoices', async (req, res) => {
     const r = await ficFetch(path);
     const data = await r.json();
     if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) || 'Errore recupero fatture' });
+    if (data.data && data.data.length) registraClienteStorico(data.data, 'invoice').catch(e=>console.error(e));
     res.json(data);
   } catch (err) {
     console.error('Errore route invoices:', err);
@@ -1126,11 +1204,20 @@ app.get('/api/fatture/ddt', async (req, res) => {
     const r = await ficFetch(path);
     const data = await r.json();
     if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) || 'Errore recupero DDT' });
+    if (data.data && data.data.length) registraClienteStorico(data.data, 'delivery_note').catch(e=>console.error(e));
     res.json(data);
   } catch (err) {
     console.error('Errore route ddt:', err);
     res.json({ error: err.message });
   }
+});
+
+// Storico clienti accumulato da fatture e DDT importati
+app.get('/api/fatture/clienti-storico', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM fic_clienti_storico ORDER BY updated_at DESC');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
 });
 
 // Endpoint di debug temporaneo
