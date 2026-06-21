@@ -927,6 +927,15 @@ const oauth2ClientSpedizioni = new google.auth.OAuth2(
   SPEDIZIONI_REDIRECT_URI
 );
 
+// Restituisce { client, tokens, label } in base al parametro ?account=principale|spedizioni
+function getGmailAccount(req) {
+  const account = req.query.account || 'principale';
+  if (account === 'spedizioni') {
+    return { client: oauth2ClientSpedizioni, tokens: gmailSpedizioniTokens, label: 'spedizioni.mulinovitaliti@gmail.com' };
+  }
+  return { client: oauth2Client, tokens: gmailTokens, label: 'mulino.vitaliti@gmail.com' };
+}
+
 async function loadGmailSpedizioniTokens() {
   try {
     const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='gmail_spedizioni_tokens'`);
@@ -1023,7 +1032,8 @@ app.get('/auth/callback', async (req, res) => {
 });
 
 app.get('/api/gmail/status', (req, res) => {
-  res.json({ connected: !!gmailTokens });
+  const { tokens, label } = getGmailAccount(req);
+  res.json({ connected: !!tokens, account: label });
 });
 
 // ── FATTURE IN CLOUD (OAuth2) ────────────────────────────────────────────
@@ -1363,12 +1373,13 @@ app.post('/api/fatture/disconnect', async (req, res) => {
 });
 
 app.get('/api/gmail/inbox', async (req, res) => {
-  if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  const { client, tokens } = getGmailAccount(req);
+  if (!tokens) return res.json({ error: 'Account email non connesso' });
   const folder = req.query.folder || 'inbox';
   const labelIds = folder === 'sent' ? ['SENT'] : ['INBOX'];
   try {
-    oauth2Client.setCredentials(gmailTokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    client.setCredentials(tokens);
+    const gmail = google.gmail({ version: 'v1', auth: client });
     const list = await gmail.users.messages.list({ userId: 'me', maxResults: 20, labelIds });
     if (!list.data.messages) return res.json({ emails: [] });
     const emails = await Promise.all(list.data.messages.slice(0, 15).map(async m => {
@@ -1682,10 +1693,11 @@ app.post('/api/gmail/genera', async (req, res) => {
 
 // ── GMAIL MESSAGE COMPLETO ────────────────────────────────────────────────
 app.get('/api/gmail/message/:id', async (req, res) => {
-  if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  const { client, tokens } = getGmailAccount(req);
+  if (!tokens) return res.json({ error: 'Account email non connesso' });
   try {
-    oauth2Client.setCredentials(gmailTokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    client.setCredentials(tokens);
+    const gmail = google.gmail({ version: 'v1', auth: client });
     const msg = await gmail.users.messages.get({ userId: 'me', id: req.params.id, format: 'full' });
     const payload = msg.data.payload;
     // Estrai body
@@ -1723,10 +1735,11 @@ app.get('/api/gmail/message/:id', async (req, res) => {
 });
 
 app.get('/api/gmail/attachment/:msgId/:attId', async (req, res) => {
-  if (!gmailTokens) return res.status(401).json({ error: 'Gmail non connesso' });
+  const { client, tokens } = getGmailAccount(req);
+  if (!tokens) return res.status(401).json({ error: 'Account email non connesso' });
   try {
-    oauth2Client.setCredentials(gmailTokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    client.setCredentials(tokens);
+    const gmail = google.gmail({ version: 'v1', auth: client });
     const att = await gmail.users.messages.attachments.get({
       userId: 'me', messageId: req.params.msgId, id: req.params.attId
     });
