@@ -1014,8 +1014,7 @@ app.get('/auth/fattureincloud/login', (req, res) => {
   const scopes = [
     'entity.clients:r', 'entity.clients:a',
     'issued_documents.invoices:r', 'issued_documents.invoices:a',
-    'issued_documents.receipts:r',
-    'settings.all:r'
+    'issued_documents.receipts:r'
   ].join(' ');
   const url = 'https://api-v2.fattureincloud.it/oauth/authorize?' + new URLSearchParams({
     response_type: 'code',
