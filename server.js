@@ -20,11 +20,20 @@ async function initDB() {
   const client = await pool.connect();
   try {
     await client.query(`
+      CREATE TABLE IF NOT EXISTS pipelines (
+        id TEXT PRIMARY KEY,
+        nome TEXT NOT NULL,
+        colore TEXT DEFAULT '#A8412A',
+        ordine INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS fasi (
         id TEXT PRIMARY KEY,
         label TEXT NOT NULL,
         color TEXT NOT NULL,
-        ordine INTEGER DEFAULT 0
+        ordine INTEGER DEFAULT 0,
+        pipeline_id TEXT DEFAULT 'default'
       );
 
       CREATE TABLE IF NOT EXISTS leads (
@@ -40,6 +49,15 @@ async function initDB() {
         tag TEXT,
         updated_at TIMESTAMP DEFAULT NOW(),
         created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS lead_pipeline_stato (
+        id SERIAL PRIMARY KEY,
+        lead_id INTEGER NOT NULL REFERENCES leads(id) ON DELETE CASCADE,
+        pipeline_id TEXT NOT NULL,
+        stato TEXT NOT NULL,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(lead_id, pipeline_id)
       );
 
       CREATE TABLE IF NOT EXISTS clienti (
@@ -176,6 +194,22 @@ async function initDB() {
       `);
     }
 
+    // ── MIGRAZIONE PIPELINE MULTIPLE ──────────────────────────────────────
+    // Se non esiste ancora nessuna pipeline, crea quella di default e migra i dati esistenti
+    const pipelineCount = await client.query('SELECT COUNT(*) FROM pipelines');
+    if (parseInt(pipelineCount.rows[0].count) === 0) {
+      await client.query(`INSERT INTO pipelines (id, nome, colore, ordine) VALUES ('default', 'Pipeline principale', '#A8412A', 0)`);
+      // Le fasi esistenti senza pipeline_id (o con valore di default già impostato dallo schema) restano associate a 'default'
+      await client.query(`UPDATE fasi SET pipeline_id = 'default' WHERE pipeline_id IS NULL`);
+      // Migra lo stato corrente di ogni lead nella tabella lead_pipeline_stato per la pipeline default
+      await client.query(`
+        INSERT INTO lead_pipeline_stato (lead_id, pipeline_id, stato)
+        SELECT id, 'default', stato FROM leads WHERE stato IS NOT NULL
+        ON CONFLICT (lead_id, pipeline_id) DO NOTHING
+      `);
+      console.log('✅ Migrazione pipeline multiple completata');
+    }
+
     console.log('✅ Database inizializzato');
   } catch (err) {
     console.error('❌ Errore DB init:', err.message);
@@ -250,17 +284,53 @@ app.patch('/api/utenti/:id/approva', async (req, res) => {
 });
 
 // ── FASI API ──────────────────────────────────────────────────────────────
+// ── PIPELINE API ──────────────────────────────────────────────────────────
+app.get('/api/pipelines', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM pipelines ORDER BY ordine, created_at');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/pipelines', async (req, res) => {
+  const { id, nome, colore, ordine } = req.body;
+  try {
+    const r = await pool.query('INSERT INTO pipelines (id, nome, colore, ordine) VALUES ($1,$2,$3,$4) RETURNING *', [id, nome, colore || '#A8412A', ordine || 0]);
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/pipelines/:id', async (req, res) => {
+  const { nome, colore } = req.body;
+  try {
+    await pool.query('UPDATE pipelines SET nome=$1, colore=$2 WHERE id=$3', [nome, colore, req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/pipelines/:id', async (req, res) => {
+  if (req.params.id === 'default') return res.json({ error: 'Non puoi eliminare la pipeline principale' });
+  try {
+    await pool.query('DELETE FROM fasi WHERE pipeline_id=$1', [req.params.id]);
+    await pool.query('DELETE FROM lead_pipeline_stato WHERE pipeline_id=$1', [req.params.id]);
+    await pool.query('DELETE FROM pipelines WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── FASI API ──────────────────────────────────────────────────────────────
 app.get('/api/fasi', async (req, res) => {
   try {
-    const r = await pool.query('SELECT * FROM fasi ORDER BY ordine');
+    const pipelineId = req.query.pipeline_id || 'default';
+    const r = await pool.query('SELECT * FROM fasi WHERE pipeline_id=$1 ORDER BY ordine', [pipelineId]);
     res.json(r.rows);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.post('/api/fasi', async (req, res) => {
-  const { id, label, color, ordine } = req.body;
+  const { id, label, color, ordine, pipeline_id } = req.body;
   try {
-    const r = await pool.query('INSERT INTO fasi (id, label, color, ordine) VALUES ($1,$2,$3,$4) RETURNING *', [id, label, color, ordine || 0]);
+    const r = await pool.query('INSERT INTO fasi (id, label, color, ordine, pipeline_id) VALUES ($1,$2,$3,$4,$5) RETURNING *', [id, label, color, ordine || 0, pipeline_id || 'default']);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -276,6 +346,52 @@ app.put('/api/fasi/:id', async (req, res) => {
 app.delete('/api/fasi/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM fasi WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── LEAD-PIPELINE-STATO API ──────────────────────────────────────────────
+// Restituisce per ogni lead lo stato nella pipeline richiesta (creando l'associazione se manca, opzionale)
+app.get('/api/lead-pipeline-stato', async (req, res) => {
+  try {
+    const pipelineId = req.query.pipeline_id || 'default';
+    const r = await pool.query('SELECT * FROM lead_pipeline_stato WHERE pipeline_id=$1', [pipelineId]);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Imposta/aggiorna lo stato di un lead in una specifica pipeline (crea l'associazione se non esiste)
+app.put('/api/lead-pipeline-stato', async (req, res) => {
+  const { lead_id, pipeline_id, stato } = req.body;
+  if (!lead_id || !pipeline_id || !stato) return res.json({ error: 'Parametri mancanti' });
+  try {
+    await pool.query(`
+      INSERT INTO lead_pipeline_stato (lead_id, pipeline_id, stato, updated_at)
+      VALUES ($1, $2, $3, NOW())
+      ON CONFLICT (lead_id, pipeline_id) DO UPDATE SET stato=$3, updated_at=NOW()
+    `, [lead_id, pipeline_id, stato]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Aggiunge un lead esistente a una pipeline (se non già presente) con uno stato iniziale
+app.post('/api/lead-pipeline-stato', async (req, res) => {
+  const { lead_id, pipeline_id, stato } = req.body;
+  if (!lead_id || !pipeline_id || !stato) return res.json({ error: 'Parametri mancanti' });
+  try {
+    const r = await pool.query(`
+      INSERT INTO lead_pipeline_stato (lead_id, pipeline_id, stato)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (lead_id, pipeline_id) DO UPDATE SET stato=$3, updated_at=NOW()
+      RETURNING *
+    `, [lead_id, pipeline_id, stato]);
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/lead-pipeline-stato/:leadId/:pipelineId', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM lead_pipeline_stato WHERE lead_id=$1 AND pipeline_id=$2', [req.params.leadId, req.params.pipelineId]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -300,6 +416,10 @@ function unipileHeaders(){
 
 // Lista chat WhatsApp
 app.get('/api/whatsapp/chats', async (req, res) => {
+  // TEMPORANEAMENTE DISABILITATO: in attesa di verifica con il supporto Unipile
+  // per un comportamento anomalo riscontrato (conversazioni non corrispondenti all'account reale)
+  return res.json({ error: 'Integrazione WhatsApp temporaneamente sospesa per verifica di sicurezza' });
+  // eslint-disable-next-line no-unreachable
   if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
   try {
     const url = `https://${UNIPILE_DSN}/api/v1/chats?account_id=${UNIPILE_ACCOUNT_ID}&limit=100`;
