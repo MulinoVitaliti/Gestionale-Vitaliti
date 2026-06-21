@@ -339,6 +339,7 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
+      <div class="nav-item" onclick="showPage('spedizioni')" id="nav-spedizioni"><i class="ti ti-truck-delivery"></i><span>Spedizioni</span></div>
       <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
@@ -705,6 +706,20 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
       </div>
     </div>
+
+    <!-- SPEDIZIONI -->
+    <div class="page" id="page-spedizioni">
+      <div class="page-header">
+        <div class="page-title">Spedizioni</div>
+        <button class="btn btn-primary" id="btn-sync-spedizioni" onclick="sincronizzaSpedizioni()"><i class="ti ti-refresh"></i>Sincronizza da email</button>
+      </div>
+      <div style="background:var(--brand-light);border:1px solid var(--brand);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--brand);display:flex;align-items:center;gap:10px">
+        <i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>
+        <div>Le spedizioni vengono lette automaticamente dalle email di One Express ricevute su Gmail. Clicca "Sincronizza" per cercare nuove notifiche di spedizione.</div>
+      </div>
+      <div id="spedizioni-list" style="display:flex;flex-direction:column;gap:10px"></div>
+    </div>
+
     <div class="page" id="page-automazioni">
       <div class="page-header">
         <div class="page-title">Automazioni</div>
@@ -1322,14 +1337,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false},
+  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
 
 let currentUser = null;
 let usersDB = [
@@ -1488,7 +1503,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture'].forEach(p=>{
+  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -1514,6 +1529,7 @@ function showPage(id){
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
+  if(id==='spedizioni') caricaSpedizioni();
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni')renderUtenti();
 }
@@ -4328,6 +4344,87 @@ async function inviaNuovaChatWhatsapp(){
   }catch(e){
     alert('Errore di rete');
   }
+}
+
+// ── SPEDIZIONI ────────────────────────────────────────────────────────────
+async function caricaSpedizioni(){
+  const cont = document.getElementById('spedizioni-list');
+  if(!cont) return;
+  cont.innerHTML = '<div class="empty-state" style="padding:20px"><i class="ti ti-loader"></i><p>Caricamento spedizioni...</p></div>';
+  try{
+    const data = await api.get('/api/spedizioni');
+    if(data.error){
+      cont.innerHTML = `<div class="empty-state" style="padding:20px"><p>${data.error}</p></div>`;
+      return;
+    }
+    renderSpedizioni(data);
+  }catch(e){
+    cont.innerHTML = '<div class="empty-state" style="padding:20px"><p>Errore di caricamento</p></div>';
+  }
+}
+
+function renderSpedizioni(lista){
+  const cont = document.getElementById('spedizioni-list');
+  if(!cont) return;
+  if(!lista.length){
+    cont.innerHTML = '<div class="empty-state" style="padding:30px"><i class="ti ti-truck-delivery" style="font-size:32px"></i><p>Nessuna spedizione trovata. Clicca "Sincronizza da email" per cercare le notifiche di One Express.</p></div>';
+    return;
+  }
+  cont.innerHTML = lista.map(s=>{
+    const trackingUrl = 'https://www.oneexpress.it/it/cerca-spedizione/?tracking=' + encodeURIComponent(s.numero_tracking||'');
+    const dataEmailFmt = s.data_email ? new Date(s.data_email).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '';
+    return `
+    <div class="card" style="padding:16px 18px">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:220px">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+            <i class="ti ti-truck-delivery" style="color:var(--brand);font-size:18px"></i>
+            <span style="font-weight:700;font-size:14px">DDT n. ${s.numero_ddt||'—'}</span>
+            ${dataEmailFmt?`<span style="font-size:11px;color:var(--text-3)">· ricevuta il ${dataEmailFmt}</span>`:''}
+          </div>
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:3px"><i class="ti ti-map-pin" style="font-size:13px"></i> ${s.destinatario||'—'}</div>
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:8px">${s.indirizzo_consegna||''}</div>
+          <div style="display:flex;gap:14px;flex-wrap:wrap;font-size:12px;color:var(--text-2)">
+            ${s.data_consegna_prevista?`<span><i class="ti ti-calendar-event" style="font-size:13px"></i> Consegna prevista: <strong>${s.data_consegna_prevista}</strong></span>`:''}
+            ${s.affiliato?`<span><i class="ti ti-building-warehouse" style="font-size:13px"></i> ${s.affiliato}</span>`:''}
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px">
+          <span class="badge" style="background:var(--brand-light);color:var(--brand);font-family:var(--font-mono);font-size:11px">${s.numero_tracking||'—'}</span>
+          <div style="display:flex;gap:6px">
+            <a href="${trackingUrl}" target="_blank" class="btn btn-sm btn-primary"><i class="ti ti-external-link"></i>Traccia</a>
+            <button class="btn btn-sm btn-danger btn-icon" onclick="eliminaSpedizione(${s.id})" title="Rimuovi"><i class="ti ti-trash"></i></button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+async function sincronizzaSpedizioni(){
+  const btn = document.getElementById('btn-sync-spedizioni');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Ricerca in corso...'; }
+  try{
+    const r = await api.post('/api/spedizioni/sincronizza', {});
+    if(r.error){
+      alert('Errore: '+r.error);
+    } else {
+      alert(`Trovate ${r.trovate} email, ${r.nuove} nuove spedizioni aggiunte`);
+    }
+    await caricaSpedizioni();
+  }catch(e){
+    alert('Errore di rete: '+e.message);
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-refresh"></i>Sincronizza da email'; }
+  }
+}
+
+async function eliminaSpedizione(id){
+  conferma(async()=>{
+    await api.del('/api/spedizioni/'+id);
+    await caricaSpedizioni();
+    showSave();
+  });
 }
 
 // ── TASK ──────────────────────────────────────────────────────────────────
