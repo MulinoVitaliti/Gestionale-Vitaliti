@@ -922,6 +922,218 @@ app.get('/api/gmail/status', (req, res) => {
   res.json({ connected: !!gmailTokens });
 });
 
+// ── FATTURE IN CLOUD (OAuth2) ────────────────────────────────────────────
+let ficTokens = null;
+let ficCompanyId = null;
+const FIC_CLIENT_ID = process.env.FIC_CLIENT_ID;
+const FIC_CLIENT_SECRET = process.env.FIC_CLIENT_SECRET;
+const FIC_REDIRECT_URI = process.env.FIC_REDIRECT_URI || (process.env.REDIRECT_URI ? process.env.REDIRECT_URI.replace('/auth/callback', '/auth/fattureincloud/callback') : '');
+
+async function loadFicTokens() {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='fic_tokens'`);
+    if (r.rows.length) {
+      ficTokens = JSON.parse(r.rows[0].valore);
+      console.log('✅ Token Fatture in Cloud caricati dal database');
+    }
+    const rc = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='fic_company_id'`);
+    if (rc.rows.length) ficCompanyId = rc.rows[0].valore;
+  } catch (e) { /* tabella non ancora pronta o nessun token salvato */ }
+}
+
+async function saveFicTokens(tokens) {
+  try {
+    await pool.query(`INSERT INTO impostazioni (chiave, valore) VALUES ('fic_tokens', $1) ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [JSON.stringify(tokens)]);
+  } catch(e) { console.error('Errore salvataggio token FIC:', e.message); }
+}
+
+async function saveFicCompanyId(id) {
+  try {
+    await pool.query(`INSERT INTO impostazioni (chiave, valore) VALUES ('fic_company_id', $1) ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [String(id)]);
+  } catch(e) { console.error('Errore salvataggio company id FIC:', e.message); }
+}
+
+async function ficRefreshTokenIfNeeded() {
+  if (!ficTokens) return false;
+  // Il token access_token scade dopo poco; se abbiamo un refresh_token proviamo sempre a usarlo se la chiamata fallisce con 401
+  return true;
+}
+
+async function ficRefreshToken() {
+  if (!ficTokens || !ficTokens.refresh_token) return false;
+  try {
+    const r = await fetch('https://api-v2.fattureincloud.it/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'refresh_token',
+        refresh_token: ficTokens.refresh_token,
+        client_id: FIC_CLIENT_ID,
+        client_secret: FIC_CLIENT_SECRET
+      }).toString()
+    });
+    const data = await r.json();
+    if (!r.ok) { console.error('Errore refresh token FIC:', data); return false; }
+    ficTokens = data;
+    await saveFicTokens(data);
+    return true;
+  } catch (e) { console.error('Errore refresh token FIC:', e.message); return false; }
+}
+
+// Helper per chiamate autenticate all'API Fatture in Cloud, con auto-refresh del token se serve
+async function ficFetch(path, options = {}) {
+  if (!ficTokens) throw new Error('Fatture in Cloud non connesso');
+  const doCall = async () => fetch('https://api-v2.fattureincloud.it' + path, {
+    ...options,
+    headers: {
+      ...(options.headers || {}),
+      'Authorization': 'Bearer ' + ficTokens.access_token,
+      'Content-Type': 'application/json'
+    }
+  });
+  let r = await doCall();
+  if (r.status === 401) {
+    const refreshed = await ficRefreshToken();
+    if (refreshed) r = await doCall();
+  }
+  return r;
+}
+
+app.get('/auth/fattureincloud/login', (req, res) => {
+  if (!FIC_CLIENT_ID || !FIC_REDIRECT_URI) return res.status(500).send('Fatture in Cloud non configurato (manca FIC_CLIENT_ID o redirect URI)');
+  const scopes = [
+    'entity.clients:r', 'entity.clients:a',
+    'issued_documents.invoices:r', 'issued_documents.invoices:a',
+    'issued_documents.receipts:r',
+    'settings.all:r'
+  ].join(' ');
+  const url = 'https://api-v2.fattureincloud.it/oauth/authorize?' + new URLSearchParams({
+    response_type: 'code',
+    client_id: FIC_CLIENT_ID,
+    redirect_uri: FIC_REDIRECT_URI,
+    scope: scopes,
+    state: 'gestionale_vitaliti'
+  }).toString();
+  res.redirect(url);
+});
+
+app.get('/auth/fattureincloud/callback', async (req, res) => {
+  try {
+    if (!req.query.code) return res.status(400).send('Codice di autorizzazione mancante');
+    const r = await fetch('https://api-v2.fattureincloud.it/oauth/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: req.query.code,
+        client_id: FIC_CLIENT_ID,
+        client_secret: FIC_CLIENT_SECRET,
+        redirect_uri: FIC_REDIRECT_URI
+      }).toString()
+    });
+    const tokens = await r.json();
+    if (!r.ok) return res.status(500).send('Errore OAuth Fatture in Cloud: ' + JSON.stringify(tokens));
+    ficTokens = tokens;
+    await saveFicTokens(tokens);
+
+    // Recupera l'elenco aziende collegate all'account per scegliere/salvare il company_id
+    try {
+      const companiesR = await ficFetch('/user/companies');
+      const companiesData = await companiesR.json();
+      const companies = companiesData?.data?.companies || [];
+      if (companies.length === 1) {
+        ficCompanyId = String(companies[0].id);
+        await saveFicCompanyId(ficCompanyId);
+      }
+    } catch (e) { /* ignora, l'utente potrà scegliere l'azienda manualmente dopo */ }
+
+    res.redirect('/?fic=connected');
+  } catch (err) { res.status(500).send('Errore OAuth Fatture in Cloud: ' + err.message); }
+});
+
+app.get('/api/fatture/status', (req, res) => {
+  res.json({ connected: !!ficTokens, companyId: ficCompanyId });
+});
+
+app.get('/api/fatture/companies', async (req, res) => {
+  try {
+    const r = await ficFetch('/user/companies');
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero aziende' });
+    res.json(data?.data?.companies || []);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/fatture/set-company', async (req, res) => {
+  const { companyId } = req.body;
+  if (!companyId) return res.json({ error: 'companyId mancante' });
+  ficCompanyId = String(companyId);
+  await saveFicCompanyId(ficCompanyId);
+  res.json({ success: true });
+});
+
+// Elenco fatture emesse (con filtro opzionale per anno)
+app.get('/api/fatture/invoices', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
+  try {
+    const page = req.query.page || 1;
+    let path = `/c/${ficCompanyId}/issued_documents?type=invoice&page=${page}&per_page=50&sort=-date`;
+    if (req.query.year) {
+      path += `&q=date%3E%3D'${req.query.year}-01-01'%3Bdate%3C%3D'${req.query.year}-12-31'`;
+    }
+    const r = await ficFetch(path);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero fatture' });
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Dettaglio singola fattura
+app.get('/api/fatture/invoices/:id', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
+  try {
+    const r = await ficFetch(`/c/${ficCompanyId}/issued_documents/${req.params.id}`);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero fattura' });
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Crea una nuova fattura
+app.post('/api/fatture/invoices', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
+  try {
+    const r = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+      method: 'POST',
+      body: JSON.stringify({ data: req.body })
+    });
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) });
+    res.json(data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Elenco clienti su Fatture in Cloud (utile per associare/creare fatture)
+app.get('/api/fatture/clients', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
+  try {
+    const r = await ficFetch(`/c/${ficCompanyId}/entities/clients?per_page=100`);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero clienti' });
+    res.json(data?.data || []);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Scollega l'integrazione
+app.post('/api/fatture/disconnect', async (req, res) => {
+  ficTokens = null;
+  ficCompanyId = null;
+  try {
+    await pool.query(`DELETE FROM impostazioni WHERE chiave IN ('fic_tokens','fic_company_id')`);
+  } catch (e) {}
+  res.json({ success: true });
+});
+
 app.get('/api/gmail/inbox', async (req, res) => {
   if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
   const folder = req.query.folder || 'inbox';
@@ -1262,5 +1474,6 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 initDB().then(async () => {
   await loadGmailTokens();
+  await loadFicTokens();
   app.listen(PORT, () => console.log(`✅ Server avviato su porta ${PORT}`));
 });
