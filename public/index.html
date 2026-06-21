@@ -567,21 +567,43 @@ tbody tr:hover{background:var(--surface-2)}
 
       <!-- Connesso: vista fatture -->
       <div id="fic-connesso" style="display:none">
-        <div class="metrics-grid metrics-3" style="margin-bottom:18px">
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-file-invoice"></i>Fatture anno corrente</div><div class="metric-value" id="fic-tot-fatture">—</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-cash"></i>Totale fatturato</div><div class="metric-value green" id="fic-tot-importo">—</div></div>
-          <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i>Da incassare</div><div class="metric-value" style="color:var(--orange)" id="fic-tot-da-incassare">—</div></div>
+        <div class="pills" style="margin-bottom:14px">
+          <div class="pill active" onclick="switchFicTab('fatture',this)"><i class="ti ti-file-invoice" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Fatture</div>
+          <div class="pill" onclick="switchFicTab('ddt',this)"><i class="ti ti-truck" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>DDT</div>
         </div>
-        <div class="pills">
-          <div class="pill active" onclick="filterFatture('tutte',this)">Tutte</div>
-          <div class="pill" onclick="filterFatture('non_pagate',this)">Non pagate</div>
-          <div class="pill" onclick="filterFatture('pagate',this)">Pagate</div>
+
+        <!-- Vista Fatture -->
+        <div id="fic-vista-fatture">
+          <div class="metrics-grid metrics-3" style="margin-bottom:18px">
+            <div class="metric-card"><div class="metric-label"><i class="ti ti-file-invoice"></i>Fatture anno corrente</div><div class="metric-value" id="fic-tot-fatture">—</div></div>
+            <div class="metric-card"><div class="metric-label"><i class="ti ti-cash"></i>Totale fatturato</div><div class="metric-value green" id="fic-tot-importo">—</div></div>
+            <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i>Da incassare</div><div class="metric-value" style="color:var(--orange)" id="fic-tot-da-incassare">—</div></div>
+          </div>
+          <div class="pills">
+            <div class="pill active" onclick="filterFatture('tutte',this)">Tutte</div>
+            <div class="pill" onclick="filterFatture('non_pagate',this)">Non pagate</div>
+            <div class="pill" onclick="filterFatture('pagate',this)">Pagate</div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th style="text-align:right">Importo</th><th>Stato</th><th></th></tr></thead>
+              <tbody id="tbl-fatture"></tbody>
+            </table>
+          </div>
         </div>
-        <div class="table-wrap">
-          <table>
-            <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th style="text-align:right">Importo</th><th>Stato</th><th></th></tr></thead>
-            <tbody id="tbl-fatture"></tbody>
-          </table>
+
+        <!-- Vista DDT -->
+        <div id="fic-vista-ddt" style="display:none">
+          <div class="metrics-grid metrics-2" style="margin-bottom:18px">
+            <div class="metric-card"><div class="metric-label"><i class="ti ti-truck"></i>DDT anno corrente</div><div class="metric-value" id="fic-tot-ddt">—</div></div>
+            <div class="metric-card"><div class="metric-label"><i class="ti ti-cash"></i>Totale valore merce</div><div class="metric-value green" id="fic-tot-importo-ddt">—</div></div>
+          </div>
+          <div class="table-wrap">
+            <table>
+              <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th style="text-align:right">Importo</th><th></th></tr></thead>
+              <tbody id="tbl-ddt"></tbody>
+            </table>
+          </div>
         </div>
       </div>
     </div>
@@ -2581,6 +2603,7 @@ async function initPaginaFatture(){
     if(connesso) connesso.style.display='block';
     if(headerActions) headerActions.innerHTML = `<button class="btn btn-sm" onclick="disconnettiFatture()"><i class="ti ti-plug-off"></i> Disconnetti</button>`;
     await caricaFatture();
+    await caricaDdt();
   }catch(e){
     console.error('Errore inizializzazione Fatture in Cloud:', e);
   }
@@ -2661,13 +2684,67 @@ function renderTabellaFatture(){
   tb.innerHTML = list.map(f=>{
     const dataFmt = f.date ? new Date(f.date).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
     const pagata = fatturaPagata(f);
-    return `<tr>
+    return `<tr onclick="window.open('${f.url||'#'}','_blank')" style="cursor:pointer">
       <td style="font-weight:600">${f.number||'—'}</td>
       <td style="font-size:13px;color:var(--text-2)">${dataFmt}</td>
       <td>${f.entity?.name||'—'}</td>
       <td style="text-align:right;font-weight:600">${fmt(parseFloat(f.amount_gross)||0)}</td>
       <td><span class="badge" style="background:${pagata?'var(--green-light)':'var(--orange-light)'};color:${pagata?'var(--green)':'var(--orange)'}">${pagata?'Pagata':'Non pagata'}</span></td>
-      <td><a href="${f.url||'#'}" target="_blank" class="btn btn-sm" title="Apri su Fatture in Cloud"><i class="ti ti-external-link"></i></a></td>
+      <td><a href="${f.url||'#'}" target="_blank" class="btn btn-sm" title="Apri su Fatture in Cloud" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a></td>
+    </tr>`;
+  }).join('');
+}
+
+// ── DDT (Documenti di Trasporto) ─────────────────────────────────────────
+let ficDdt = [];
+
+function switchFicTab(tab, el){
+  document.querySelectorAll('#fic-connesso .pills:first-of-type .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.getElementById('fic-vista-fatture').style.display = tab==='fatture' ? 'block' : 'none';
+  document.getElementById('fic-vista-ddt').style.display = tab==='ddt' ? 'block' : 'none';
+}
+
+async function caricaDdt(){
+  const tb = document.getElementById('tbl-ddt');
+  if(tb) tb.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="padding:20px"><i class="ti ti-loader"></i><p>Caricamento DDT...</p></div></td></tr>';
+  try{
+    const data = await api.get('/api/fatture/ddt');
+    if(data.error){
+      if(tb) tb.innerHTML = `<tr><td colspan="5"><div class="empty-state" style="padding:20px"><p>${data.error}</p></div></td></tr>`;
+      return;
+    }
+    ficDdt = data.data || [];
+    aggiornaMetricheDdt();
+    renderTabellaDdt();
+  }catch(e){
+    if(tb) tb.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="padding:20px"><p>Errore di caricamento</p></div></td></tr>';
+  }
+}
+
+function aggiornaMetricheDdt(){
+  const anno = new Date().getFullYear();
+  const ddtAnno = ficDdt.filter(d=>d.date && new Date(d.date).getFullYear()===anno);
+  const elTot = document.getElementById('fic-tot-ddt'); if(elTot) elTot.textContent = ddtAnno.length;
+  const totImporto = ddtAnno.reduce((s,d)=>s+(parseFloat(d.amount_gross)||0),0);
+  const elImp = document.getElementById('fic-tot-importo-ddt'); if(elImp) elImp.textContent = fmt(totImporto);
+}
+
+function renderTabellaDdt(){
+  const tb = document.getElementById('tbl-ddt');
+  if(!tb) return;
+  if(!ficDdt.length){
+    tb.innerHTML = '<tr><td colspan="5"><div class="empty-state" style="padding:20px"><i class="ti ti-truck"></i><p>Nessun DDT</p></div></td></tr>';
+    return;
+  }
+  tb.innerHTML = ficDdt.map(d=>{
+    const dataFmt = d.date ? new Date(d.date).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+    return `<tr onclick="window.open('${d.url||'#'}','_blank')" style="cursor:pointer">
+      <td style="font-weight:600">${d.number||'—'}</td>
+      <td style="font-size:13px;color:var(--text-2)">${dataFmt}</td>
+      <td>${d.entity?.name||'—'}</td>
+      <td style="text-align:right;font-weight:600">${fmt(parseFloat(d.amount_gross)||0)}</td>
+      <td><a href="${d.url||'#'}" target="_blank" class="btn btn-sm" title="Apri su Fatture in Cloud" onclick="event.stopPropagation()"><i class="ti ti-external-link"></i></a></td>
     </tr>`;
   }).join('');
 }
