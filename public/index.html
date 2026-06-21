@@ -345,6 +345,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section-items" id="sec-finanza">
       <div class="nav-item" onclick="checkFinanzaPassword('contabilita')" id="nav-contabilita"><i class="ti ti-chart-bar"></i><span>Contabilità</span></div>
       <div class="nav-item" onclick="checkFinanzaPassword('statistiche')" id="nav-statistiche"><i class="ti ti-chart-pie"></i><span>Statistiche</span></div>
+      <div class="nav-item" onclick="checkFinanzaPassword('fatture')" id="nav-fatture"><i class="ti ti-file-invoice"></i><span>Fatture in Cloud</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-admin')"><span>AI &amp; Admin</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-admin">
@@ -535,6 +536,52 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="card">
           <div class="card-header"><div class="card-title"><i class="ti ti-chart-line" style="color:var(--brand)"></i>Confronto entrate vs uscite</div></div>
           <div class="card-body" id="grafico-confronto"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- FATTURE IN CLOUD -->
+    <div class="page" id="page-fatture">
+      <div class="page-header">
+        <div class="page-title">Fatture in Cloud</div>
+        <div id="fic-header-actions"></div>
+      </div>
+
+      <!-- Non connesso -->
+      <div id="fic-non-connesso" style="display:none">
+        <div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:36px 28px">
+          <i class="ti ti-file-invoice" style="font-size:46px;color:var(--brand);margin-bottom:14px"></i>
+          <div style="font-size:17px;font-weight:700;margin-bottom:8px">Collega Fatture in Cloud</div>
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:22px;line-height:1.6">Connetti il tuo account per consultare e creare fatture direttamente dal gestionale, senza aprire un'altra finestra.</div>
+          <button class="btn btn-primary" onclick="window.location.href='/auth/fattureincloud/login'" style="margin:0 auto"><i class="ti ti-plug"></i>Connetti Fatture in Cloud</button>
+        </div>
+      </div>
+
+      <!-- Selezione azienda (se più di una collegata) -->
+      <div id="fic-seleziona-azienda" style="display:none">
+        <div class="card" style="max-width:480px;margin:40px auto;padding:28px">
+          <div style="font-size:15px;font-weight:700;margin-bottom:14px">Seleziona l'azienda</div>
+          <div id="fic-lista-aziende" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+      </div>
+
+      <!-- Connesso: vista fatture -->
+      <div id="fic-connesso" style="display:none">
+        <div class="metrics-grid metrics-3" style="margin-bottom:18px">
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-file-invoice"></i>Fatture anno corrente</div><div class="metric-value" id="fic-tot-fatture">—</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-cash"></i>Totale fatturato</div><div class="metric-value green" id="fic-tot-importo">—</div></div>
+          <div class="metric-card"><div class="metric-label"><i class="ti ti-clock"></i>Da incassare</div><div class="metric-value" style="color:var(--orange)" id="fic-tot-da-incassare">—</div></div>
+        </div>
+        <div class="pills">
+          <div class="pill active" onclick="filterFatture('tutte',this)">Tutte</div>
+          <div class="pill" onclick="filterFatture('non_pagate',this)">Non pagate</div>
+          <div class="pill" onclick="filterFatture('pagate',this)">Pagate</div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead><tr><th>Numero</th><th>Data</th><th>Cliente</th><th style="text-align:right">Importo</th><th>Stato</th><th></th></tr></thead>
+            <tbody id="tbl-fatture"></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -1428,6 +1475,7 @@ function showPage(id){
   if(id==='contabilita')renderContab();
   if(id==='dashboard')renderDash();
   if(id==='email')checkGmailStatus();
+  if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni')renderUtenti();
@@ -2495,7 +2543,126 @@ async function checkGmailStatus(){
     aggiornaContatoreBozze();
   }catch(e){}
 }
-// ── EMAIL ─────────────────────────────────────────────────────────────────
+// ── FATTURE IN CLOUD ──────────────────────────────────────────────────────
+let ficFatture = [];
+let ficFilter = 'tutte';
+
+async function initPaginaFatture(){
+  try{
+    const status = await api.get('/api/fatture/status');
+    const nonConnesso = document.getElementById('fic-non-connesso');
+    const selAzienda = document.getElementById('fic-seleziona-azienda');
+    const connesso = document.getElementById('fic-connesso');
+    const headerActions = document.getElementById('fic-header-actions');
+    [nonConnesso, selAzienda, connesso].forEach(el=>{ if(el) el.style.display='none'; });
+    if(headerActions) headerActions.innerHTML='';
+
+    if(!status.connected){
+      if(nonConnesso) nonConnesso.style.display='block';
+      return;
+    }
+    if(!status.companyId){
+      // Connesso ma senza azienda selezionata: mostra lista aziende
+      const aziende = await api.get('/api/fatture/companies');
+      if(aziende.error || !Array.isArray(aziende) || !aziende.length){
+        if(nonConnesso) nonConnesso.style.display='block';
+        return;
+      }
+      if(selAzienda){
+        selAzienda.style.display='block';
+        document.getElementById('fic-lista-aziende').innerHTML = aziende.map(a=>`
+          <button class="btn" onclick="selezionaAziendaFatture(${a.id})" style="text-align:left;justify-content:flex-start">
+            <i class="ti ti-building"></i> ${a.name}
+          </button>`).join('');
+      }
+      return;
+    }
+    // Connesso e azienda selezionata
+    if(connesso) connesso.style.display='block';
+    if(headerActions) headerActions.innerHTML = `<button class="btn btn-sm" onclick="disconnettiFatture()"><i class="ti ti-plug-off"></i> Disconnetti</button>`;
+    await caricaFatture();
+  }catch(e){
+    console.error('Errore inizializzazione Fatture in Cloud:', e);
+  }
+}
+
+async function selezionaAziendaFatture(companyId){
+  try{
+    await api.post('/api/fatture/set-company', {companyId});
+    await initPaginaFatture();
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+}
+
+async function disconnettiFatture(){
+  conferma(async()=>{
+    try{
+      await api.post('/api/fatture/disconnect', {});
+      await initPaginaFatture();
+      showSave();
+    }catch(e){ alert('Errore di rete: '+e.message); }
+  });
+}
+
+async function caricaFatture(){
+  const tb = document.getElementById('tbl-fatture');
+  if(tb) tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:20px"><i class="ti ti-loader"></i><p>Caricamento fatture...</p></div></td></tr>';
+  try{
+    const anno = new Date().getFullYear();
+    const data = await api.get('/api/fatture/invoices?year='+anno);
+    if(data.error){
+      if(tb) tb.innerHTML = `<tr><td colspan="6"><div class="empty-state" style="padding:20px"><p>${data.error}</p></div></td></tr>`;
+      return;
+    }
+    ficFatture = data.data || [];
+    aggiornaMetricheFatture();
+    renderTabellaFatture();
+  }catch(e){
+    if(tb) tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:20px"><p>Errore di caricamento</p></div></td></tr>';
+  }
+}
+
+function aggiornaMetricheFatture(){
+  const totFatture = ficFatture.length;
+  const totImporto = ficFatture.reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
+  const daIncassare = ficFatture.filter(f=>f.payment_status!=='paid').reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
+  const elTot = document.getElementById('fic-tot-fatture'); if(elTot) elTot.textContent = totFatture;
+  const elImp = document.getElementById('fic-tot-importo'); if(elImp) elImp.textContent = fmt(totImporto);
+  const elDa = document.getElementById('fic-tot-da-incassare'); if(elDa) elDa.textContent = fmt(daIncassare);
+}
+
+function filterFatture(tipo, el){
+  ficFilter = tipo;
+  document.querySelectorAll('#page-fatture .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderTabellaFatture();
+}
+
+function renderTabellaFatture(){
+  const tb = document.getElementById('tbl-fatture');
+  if(!tb) return;
+  let list = ficFatture;
+  if(ficFilter==='pagate') list = list.filter(f=>f.payment_status==='paid');
+  if(ficFilter==='non_pagate') list = list.filter(f=>f.payment_status!=='paid');
+  if(!list.length){
+    tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:20px"><i class="ti ti-file-invoice"></i><p>Nessuna fattura</p></div></td></tr>';
+    return;
+  }
+  tb.innerHTML = list.map(f=>{
+    const dataFmt = f.date ? new Date(f.date).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
+    const pagata = f.payment_status === 'paid';
+    return `<tr>
+      <td style="font-weight:600">${f.number||'—'}</td>
+      <td style="font-size:13px;color:var(--text-2)">${dataFmt}</td>
+      <td>${f.entity?.name||'—'}</td>
+      <td style="text-align:right;font-weight:600">${fmt(parseFloat(f.amount_gross)||0)}</td>
+      <td><span class="badge" style="background:${pagata?'var(--green-light)':'var(--orange-light)'};color:${pagata?'var(--green)':'var(--orange)'}">${pagata?'Pagata':'Non pagata'}</span></td>
+      <td><a href="${f.url||'#'}" target="_blank" class="btn btn-sm" title="Apri su Fatture in Cloud"><i class="ti ti-external-link"></i></a></td>
+    </tr>`;
+  }).join('');
+}
+
+
 let emailFolder = 'inbox';
 const FOLDER_LABELS = {inbox:'In arrivo',sent:'Inviati',drafts:'Bozze',spam:'Spam'};
 const FOLDER_MAP = {inbox:'INBOX',sent:'SENT',drafts:'DRAFT',spam:'SPAM'};
