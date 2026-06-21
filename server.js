@@ -1382,19 +1382,65 @@ app.get('/api/gmail/inbox', async (req, res) => {
 });
 
 // ── SPEDIZIONI ONE EXPRESS (parsing email automatico) ───────────────────
+
+// Estrae il testo leggibile dal payload di un messaggio Gmail, cercando prima text/plain,
+// poi text/html (ripulito dai tag), usando lo snippet solo come ultima risorsa
+function estraiCorpoEmail(payload) {
+  function trovaParte(parts, mimeType) {
+    if (!parts) return null;
+    for (const p of parts) {
+      if (p.mimeType === mimeType && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
+      if (p.parts) { const r = trovaParte(p.parts, mimeType); if (r) return r; }
+    }
+    return null;
+  }
+  function htmlToText(html) {
+    return html
+      .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+      .replace(/<script[\s\S]*?<\/script>/gi, ' ')
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/p>/gi, '\n')
+      .replace(/<\/div>/gi, '\n')
+      .replace(/<\/tr>/gi, '\n')
+      .replace(/<\/td>/gi, ' ')
+      .replace(/<[^>]+>/g, ' ')
+      .replace(/&#39;/g, "'")
+      .replace(/&amp;/g, '&')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&agrave;/g, 'à').replace(/&egrave;/g, 'è').replace(/&igrave;/g, 'ì')
+      .replace(/&ograve;/g, 'ò').replace(/&ugrave;/g, 'ù')
+      .replace(/[ \t]+/g, ' ')
+      .replace(/\n{2,}/g, '\n')
+      .trim();
+  }
+
+  if (payload.mimeType === 'text/plain' && payload.body?.data) {
+    return { testo: Buffer.from(payload.body.data, 'base64').toString('utf-8'), fonte: 'body diretto plain text' };
+  }
+  if (payload.mimeType === 'text/html' && payload.body?.data) {
+    return { testo: htmlToText(Buffer.from(payload.body.data, 'base64').toString('utf-8')), fonte: 'body diretto html' };
+  }
+  const plain = trovaParte(payload.parts, 'text/plain');
+  if (plain) return { testo: plain, fonte: 'parts plain text' };
+  const html = trovaParte(payload.parts, 'text/html');
+  if (html) return { testo: htmlToText(html), fonte: 'parts html ripulito' };
+  return { testo: '', fonte: 'nessun corpo trovato' };
+}
+
 function estraiDatiSpedizioneOneExpress(testoEmail) {
   // Estrae i dati dalla email di One Express con pattern testuali robusti
+  // Tollera spazi multipli/a capo tra l'etichetta e il valore (tipico dell'HTML convertito)
   const get = (regex) => {
     const m = testoEmail.match(regex);
     return m ? m[1].trim() : null;
   };
-  const numero_ddt = get(/Numero ddt:\s*\n*\s*(\d+)/i);
-  const numero_tracking = get(/Numero tracciamento:\s*\n*\s*([A-Z0-9]+)/i);
-  const pin_consegna = get(/Codice PIN conferma consegna:\s*\n*\s*([A-Z0-9]+)/i);
-  const data_consegna_prevista = get(/Consegna prevista:\s*\n*\s*([^\n]+)/i);
-  const indirizzo_consegna = get(/Indirizzo di consegna:\s*\n*\s*([^\n]+(?:\n[^\n]+)?)/i);
+  const numero_ddt = get(/Numero ddt:?\s*(\d+)/i);
+  const numero_tracking = get(/Numero tracci?amento:?\s*([A-Z0-9]{6,})/i);
+  const pin_consegna = get(/Codice PIN conferma consegna:?\s*([A-Z0-9]{6,})/i);
+  const data_consegna_prevista = get(/Consegna prevista:?\s*([^\n]+)/i);
+  const indirizzo_consegna = get(/Indirizzo di consegna:?\s*([^\n]+(?:\n[^\n]+)?)/i);
   // L'affiliato è la riga subito dopo "preso in carico dall'affiliato..." prima del codice numerico lungo
-  const affiliatoMatch = testoEmail.match(/competente\.\s*\n+([^\n]+)\n/i);
+  const affiliatoMatch = testoEmail.match(/competente\.?\s*\n+\s*([^\n]+)/i);
   const affiliato = affiliatoMatch ? affiliatoMatch[1].trim() : null;
   // Il destinatario è solitamente la prima parte dell'indirizzo di consegna, prima della via
   let destinatario = null;
@@ -1441,25 +1487,7 @@ app.get('/api/spedizioni/debug-parsing', async (req, res) => {
     const m = list.data.messages[0];
     const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
 
-    function getBodyText(parts) {
-      if (!parts) return '';
-      for (const p of parts) {
-        if (p.mimeType === 'text/plain' && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
-        if (p.parts) { const r = getBodyText(p.parts); if (r) return r; }
-      }
-      return '';
-    }
-    let testo = '';
-    let fonte = '';
-    if (msg.data.payload.mimeType === 'text/plain' && msg.data.payload.body?.data) {
-      testo = Buffer.from(msg.data.payload.body.data, 'base64').toString('utf-8');
-      fonte = 'body diretto plain text';
-    } else {
-      testo = getBodyText(msg.data.payload.parts);
-      fonte = testo ? 'parts plain text' : 'snippet (fallback)';
-      if (!testo) testo = msg.data.snippet || '';
-    }
-
+    const { testo, fonte } = estraiCorpoEmail(msg.data.payload);
     const dati = estraiDatiSpedizioneOneExpress(testo);
 
     res.json({
@@ -1467,7 +1495,7 @@ app.get('/api/spedizioni/debug-parsing', async (req, res) => {
       mimeTypeRoot: msg.data.payload.mimeType,
       fonteTesto: fonte,
       lunghezzaTesto: testo.length,
-      primi500Caratteri: testo.slice(0, 500),
+      primi800Caratteri: testo.slice(0, 800),
       datiEstratti: dati
     });
   } catch (err) { res.json({ error: err.message }); }
@@ -1502,20 +1530,7 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
       if (!/one\s*express/i.test(from) && !/one\s*express/i.test(subject)) continue;
 
       // Estrai il testo del corpo (plain text se disponibile, altrimenti html ripulito)
-      function getBodyText(parts) {
-        if (!parts) return '';
-        for (const p of parts) {
-          if (p.mimeType === 'text/plain' && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
-          if (p.parts) { const r = getBodyText(p.parts); if (r) return r; }
-        }
-        return '';
-      }
-      let testo = '';
-      if (msg.data.payload.mimeType === 'text/plain' && msg.data.payload.body?.data) {
-        testo = Buffer.from(msg.data.payload.body.data, 'base64').toString('utf-8');
-      } else {
-        testo = getBodyText(msg.data.payload.parts) || msg.data.snippet || '';
-      }
+      const { testo } = estraiCorpoEmail(msg.data.payload);
 
       const dati = estraiDatiSpedizioneOneExpress(testo);
       if (!dati.numero_tracking) continue; // non sembra una email di tracking valida
