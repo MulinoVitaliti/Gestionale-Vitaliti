@@ -2608,8 +2608,7 @@ async function caricaFatture(){
   const tb = document.getElementById('tbl-fatture');
   if(tb) tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:20px"><i class="ti ti-loader"></i><p>Caricamento fatture...</p></div></td></tr>';
   try{
-    const anno = new Date().getFullYear();
-    const data = await api.get('/api/fatture/invoices?year='+anno);
+    const data = await api.get('/api/fatture/invoices');
     if(data.error){
       if(tb) tb.innerHTML = `<tr><td colspan="6"><div class="empty-state" style="padding:20px"><p>${data.error}</p></div></td></tr>`;
       return;
@@ -2622,10 +2621,21 @@ async function caricaFatture(){
   }
 }
 
+// Una fattura si considera "pagata" se ha già superato la data di scadenza pagamento senza importo residuo,
+// oppure se l'azienda non ha impostato scadenze (next_due_date assente). In assenza del campo payment_status
+// dall'API, usiamo amount_due_discount/next_due_date come indicatori indiretti.
+function fatturaPagata(f){
+  if(f.payment_status) return f.payment_status === 'paid';
+  if(!f.next_due_date) return true; // nessuna scadenza impostata, consideriamo regolata
+  return new Date(f.next_due_date) < new Date(); // scadenza già passata
+}
+
 function aggiornaMetricheFatture(){
-  const totFatture = ficFatture.length;
-  const totImporto = ficFatture.reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
-  const daIncassare = ficFatture.filter(f=>f.payment_status!=='paid').reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
+  const anno = new Date().getFullYear();
+  const fattureAnno = ficFatture.filter(f=>f.date && new Date(f.date).getFullYear()===anno);
+  const totFatture = fattureAnno.length;
+  const totImporto = fattureAnno.reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
+  const daIncassare = fattureAnno.filter(f=>!fatturaPagata(f)).reduce((s,f)=>s+(parseFloat(f.amount_gross)||0),0);
   const elTot = document.getElementById('fic-tot-fatture'); if(elTot) elTot.textContent = totFatture;
   const elImp = document.getElementById('fic-tot-importo'); if(elImp) elImp.textContent = fmt(totImporto);
   const elDa = document.getElementById('fic-tot-da-incassare'); if(elDa) elDa.textContent = fmt(daIncassare);
@@ -2642,15 +2652,15 @@ function renderTabellaFatture(){
   const tb = document.getElementById('tbl-fatture');
   if(!tb) return;
   let list = ficFatture;
-  if(ficFilter==='pagate') list = list.filter(f=>f.payment_status==='paid');
-  if(ficFilter==='non_pagate') list = list.filter(f=>f.payment_status!=='paid');
+  if(ficFilter==='pagate') list = list.filter(f=>fatturaPagata(f));
+  if(ficFilter==='non_pagate') list = list.filter(f=>!fatturaPagata(f));
   if(!list.length){
     tb.innerHTML = '<tr><td colspan="6"><div class="empty-state" style="padding:20px"><i class="ti ti-file-invoice"></i><p>Nessuna fattura</p></div></td></tr>';
     return;
   }
   tb.innerHTML = list.map(f=>{
     const dataFmt = f.date ? new Date(f.date).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-    const pagata = f.payment_status === 'paid';
+    const pagata = fatturaPagata(f);
     return `<tr>
       <td style="font-weight:600">${f.number||'—'}</td>
       <td style="font-size:13px;color:var(--text-2)">${dataFmt}</td>
