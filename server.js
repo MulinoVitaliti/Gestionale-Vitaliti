@@ -1405,6 +1405,27 @@ function estraiDatiSpedizioneOneExpress(testoEmail) {
   return { numero_ddt, numero_tracking, affiliato, destinatario, indirizzo_consegna, data_consegna_prevista, pin_consegna };
 }
 
+app.get('/api/spedizioni/debug-inbox', async (req, res) => {
+  if (!gmailSpedizioniTokens) return res.json({ error: 'Casella spedizioni non connessa' });
+  try {
+    oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+    const list = await gmail.users.messages.list({ userId: 'me', maxResults: 15 });
+    if (!list.data.messages) return res.json({ totale: 0, email: [] });
+    const dettagli = [];
+    for (const m of list.data.messages) {
+      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'Subject', 'Date'] });
+      const headers = msg.data.payload.headers || [];
+      dettagli.push({
+        from: (headers.find(h => h.name === 'From') || {}).value || '',
+        subject: (headers.find(h => h.name === 'Subject') || {}).value || '',
+        date: (headers.find(h => h.name === 'Date') || {}).value || ''
+      });
+    }
+    res.json({ totale: list.data.messages.length, email: dettagli });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.post('/api/spedizioni/sincronizza', async (req, res) => {
   if (!gmailSpedizioniTokens) return res.json({ error: 'Casella email spedizioni non connessa. Vai su Spedizioni e collega l\'account spedizioni.mulinovitaliti@gmail.com' });
   try {
