@@ -916,6 +916,64 @@ const oauth2Client = new google.auth.OAuth2(
   process.env.REDIRECT_URI
 );
 
+// ── Secondo account Gmail dedicato alle spedizioni (One Express) ─────────
+let gmailSpedizioniTokens = null;
+const SPEDIZIONI_REDIRECT_URI = process.env.SPEDIZIONI_REDIRECT_URI ||
+  (process.env.REDIRECT_URI ? process.env.REDIRECT_URI.replace('/auth/callback', '/auth/spedizioni/callback') : '');
+
+const oauth2ClientSpedizioni = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  SPEDIZIONI_REDIRECT_URI
+);
+
+async function loadGmailSpedizioniTokens() {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='gmail_spedizioni_tokens'`);
+    if (r.rows.length) {
+      gmailSpedizioniTokens = JSON.parse(r.rows[0].valore);
+      oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+      console.log('✅ Token Gmail Spedizioni caricati dal database');
+    }
+  } catch(e) { console.log('ℹ️ Nessun token Gmail Spedizioni salvato'); }
+}
+
+async function saveGmailSpedizioniTokens(tokens) {
+  try {
+    await pool.query(`INSERT INTO impostazioni (chiave, valore) VALUES ('gmail_spedizioni_tokens', $1) ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [JSON.stringify(tokens)]);
+  } catch(e) { console.error('Errore salvataggio token spedizioni:', e.message); }
+}
+
+app.get('/auth/spedizioni/login', (req, res) => {
+  if (!SPEDIZIONI_REDIRECT_URI) return res.status(500).send('Redirect URI spedizioni non configurato');
+  const url = oauth2ClientSpedizioni.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/gmail.readonly']
+  });
+  res.redirect(url);
+});
+
+app.get('/auth/spedizioni/callback', async (req, res) => {
+  try {
+    const { tokens } = await oauth2ClientSpedizioni.getToken(req.query.code);
+    gmailSpedizioniTokens = tokens;
+    oauth2ClientSpedizioni.setCredentials(tokens);
+    await saveGmailSpedizioniTokens(tokens);
+    res.redirect('/?spedizioni=connected');
+  } catch (err) { res.status(500).send('Errore OAuth Spedizioni: ' + err.message); }
+});
+
+app.get('/api/spedizioni/gmail-status', (req, res) => {
+  res.json({ connected: !!gmailSpedizioniTokens });
+});
+
+app.post('/api/spedizioni/disconnect', async (req, res) => {
+  gmailSpedizioniTokens = null;
+  try { await pool.query(`DELETE FROM impostazioni WHERE chiave='gmail_spedizioni_tokens'`); } catch(e) {}
+  res.json({ success: true });
+});
+
 // Carica token dal DB all'avvio
 async function loadGmailTokens() {
   try {
@@ -1338,10 +1396,10 @@ function estraiDatiSpedizioneOneExpress(testoEmail) {
 }
 
 app.post('/api/spedizioni/sincronizza', async (req, res) => {
-  if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  if (!gmailSpedizioniTokens) return res.json({ error: 'Casella email spedizioni non connessa. Vai su Spedizioni e collega l\'account spedizioni.mulinovitaliti@gmail.com' });
   try {
-    oauth2Client.setCredentials(gmailTokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
     // Cerca le email di One Express negli ultimi messaggi
     const list = await gmail.users.messages.list({
       userId: 'me',
@@ -1734,6 +1792,7 @@ app.get('*', (req, res) => {
 const PORT = process.env.PORT || 3000;
 initDB().then(async () => {
   await loadGmailTokens();
+  await loadGmailSpedizioniTokens();
   await loadFicTokens();
   app.listen(PORT, () => console.log(`✅ Server avviato su porta ${PORT}`));
 });
