@@ -1029,7 +1029,14 @@ app.get('/auth/fattureincloud/login', (req, res) => {
 
 app.get('/auth/fattureincloud/callback', async (req, res) => {
   try {
-    if (!req.query.code) return res.status(400).send('Codice di autorizzazione mancante');
+    if (!req.query.code) {
+      console.log('Callback Fatture in Cloud senza code. Query ricevuta:', req.query);
+      return res.status(400).send(
+        'Codice di autorizzazione mancante.<br><br>Parametri ricevuti da Fatture in Cloud:<br><pre>' +
+        JSON.stringify(req.query, null, 2) +
+        '</pre>'
+      );
+    }
     const r = await fetch('https://api-v2.fattureincloud.it/oauth/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
