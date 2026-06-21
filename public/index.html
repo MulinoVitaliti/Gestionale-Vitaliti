@@ -116,14 +116,17 @@ tbody tr:hover{background:var(--surface-2)}
 .badge-contabile{background:var(--green-light);color:var(--green)}.badge-magazzino{background:var(--orange-light);color:var(--orange)}
 .pipeline-wrap{overflow-x:auto;padding-bottom:8px}
 .pipeline{display:flex;gap:12px;min-width:max-content;align-items:flex-start}
-.pl-col{width:235px;flex-shrink:0;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rl);padding:11px}
+.pl-col{width:270px;flex-shrink:0;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rl);padding:12px;transition:background .15s,border-color .15s}
+.pl-col-dragover{background:var(--brand-light);border-color:var(--brand)}
 .pl-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--border)}
-.pl-col-title{font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
-.pl-col-count{background:#fff;border:1px solid var(--border);border-radius:20px;padding:1px 7px;font-size:11px;font-weight:600;color:var(--text-2)}
-.pl-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:10px;margin-bottom:6px;box-shadow:var(--shadow-sm);transition:all .15s;border-left:3px solid transparent}
+.pl-col-title{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+.pl-col-count{background:#fff;border:1px solid var(--border);border-radius:20px;padding:1px 8px;font-size:11.5px;font-weight:600;color:var(--text-2)}
+.pl-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:13px 14px;margin-bottom:9px;box-shadow:var(--shadow-sm);transition:all .15s;border-left:4px solid transparent;cursor:grab}
 .pl-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
-.pl-card-name{font-size:13px;font-weight:600;margin-bottom:3px}
-.pl-card-sub{font-size:11px;color:var(--text-2);margin-bottom:6px}
+.pl-card:active{cursor:grabbing}
+.pl-card-dragging{opacity:0.35}
+.pl-card-name{font-size:14.5px;font-weight:700;margin-bottom:4px}
+.pl-card-sub{font-size:12px;color:var(--text-2);margin-bottom:8px}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
 .tag-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-bottom:6px}
 .tag-cliente{background:var(--green-light);color:var(--green)}
@@ -333,7 +336,7 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
-      <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
+      <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
@@ -424,6 +427,7 @@ tbody tr:hover{background:var(--surface-2)}
           <button class="btn btn-primary" onclick="openModal('modal-lead')"><i class="ti ti-plus"></i>Aggiungi contatto</button>
         </div>
       </div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:16px;flex-wrap:wrap" id="pipeline-tabs"></div>
       <div class="pipeline-wrap"><div class="pipeline" id="pipeline-board"></div></div>
     </div>
     <div class="page" id="page-clienti">
@@ -1167,6 +1171,31 @@ tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 
+<!-- Modal Nuova Pipeline -->
+<div class="modal-overlay" id="modal-nuova-pipeline">
+  <div class="modal" style="width:420px">
+    <div class="modal-header"><div class="modal-title"><i class="ti ti-stack-2"></i> Nuova pipeline</div><button class="btn btn-icon" onclick="closeModal('modal-nuova-pipeline')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Nome pipeline *</label><input type="text" id="np-nome" placeholder="Es. Vendita confezionato"></div>
+      <div class="form-group"><label class="form-label">Colore</label>
+        <div style="display:flex;gap:8px" id="np-colori">
+          <div class="np-colore-opt" data-colore="#A8412A" style="width:30px;height:30px;border-radius:50%;background:#A8412A;cursor:pointer;border:2px solid transparent"></div>
+          <div class="np-colore-opt" data-colore="#2D7A4F" style="width:30px;height:30px;border-radius:50%;background:#2D7A4F;cursor:pointer;border:2px solid transparent"></div>
+          <div class="np-colore-opt" data-colore="#C9A227" style="width:30px;height:30px;border-radius:50%;background:#C9A227;cursor:pointer;border:2px solid transparent"></div>
+          <div class="np-colore-opt" data-colore="#6366f1" style="width:30px;height:30px;border-radius:50%;background:#6366f1;cursor:pointer;border:2px solid transparent"></div>
+          <div class="np-colore-opt" data-colore="#0891b2" style="width:30px;height:30px;border-radius:50%;background:#0891b2;cursor:pointer;border:2px solid transparent"></div>
+        </div>
+        <input type="hidden" id="np-colore-selezionato" value="#A8412A">
+      </div>
+      <div style="font-size:12px;color:var(--text-2);margin-bottom:14px">Dopo la creazione potrai aggiungere le fasi specifiche per questa pipeline da "Gestisci fasi".</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-nuova-pipeline')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaNuovaPipeline()"><i class="ti ti-check"></i>Crea pipeline</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <!-- Modal Nuova Chat WhatsApp -->
 <div class="modal-overlay" id="modal-wa-nuova-chat">
   <div class="modal" style="width:420px">
@@ -1319,6 +1348,7 @@ async function loadAllData() {
     state.movimenti = movimenti.error ? [] : movimenti;
     state.attivita = attivita.error ? [] : attivita;
     state.tasks = tasks.error ? [] : tasks;
+    state.leadPipelineStato = [];
     aggiornaAttBadge();
     aggiornaTaskBadge();
     renderDashTask();
@@ -1406,7 +1436,7 @@ function showPage(id){
   if(id==='task')renderTaskBoard();
   if(id==='statistiche')renderStatistiche();
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
-  if(id==='pipeline')renderPipeline();
+  if(id==='pipeline'){ initPipelinePage(); }
   if(id==='clienti')renderClienti();
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
@@ -1466,7 +1496,7 @@ function renderFasiList(){
   state.fasi.forEach(f=>{
     const div=document.createElement('div');
     div.style.cssText='display:flex;align-items:center;gap:8px;padding:8px 10px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r)';
-    const canDel=!state.leads.some(l=>l.stato===f.id);
+    const canDel=!state.leads.some(l=>statoLeadInPipeline(l, currentPipelineId)===f.id);
     const inputId='fase-input-'+f.id;
     div.innerHTML=`<div style="width:9px;height:9px;border-radius:50%;background:${f.color};flex-shrink:0"></div><input type="text" id="${inputId}" value="${f.label}" style="flex:1;border:none;background:transparent;font-size:13px;font-family:var(--font);color:var(--text);outline:none" onkeydown="if(event.key==='Enter'){salvaNomeFase('${f.id}','${inputId}')}"><button class="btn btn-primary btn-sm" onclick="salvaNomeFase('${f.id}','${inputId}')" title="Salva nome"><i class="ti ti-check"></i></button><button class="btn btn-danger btn-sm btn-icon" onclick="eliminaFase('${f.id}')" ${canDel?'':'disabled title="Ci sono contatti in questa fase"'}><i class="ti ti-trash"></i></button>`;
     cont.appendChild(div);
@@ -1482,10 +1512,10 @@ async function aggiungiFase(){
   const nome=document.getElementById('nuova-fase-nome').value.trim(); if(!nome)return;
   const colors=['var(--blue)','var(--orange)','var(--gold)','var(--green)','var(--brand)','var(--red)'];
   const id='fase_'+Date.now();
-  const data=await api.post('/api/fasi',{id,label:nome,color:colors[state.fasi.length%colors.length],ordine:state.fasi.length});
+  const data=await api.post('/api/fasi',{id,label:nome,color:colors[state.fasi.length%colors.length],ordine:state.fasi.length,pipeline_id:currentPipelineId});
   if(!data.error) state.fasi.push(data);
   document.getElementById('nuova-fase-nome').value='';
-  renderFasiList(); showSave();
+  renderFasiList(); renderPipeline(); showSave();
 }
 async function rinominaFase(id,nome){
   await api.put('/api/fasi/'+id,{label:nome,color:(state.fasi.find(x=>x.id===id)||{}).color});
@@ -1493,26 +1523,141 @@ async function rinominaFase(id,nome){
   renderPipeline();
 }
 async function eliminaFase(id){
-  if(state.leads.some(l=>l.stato===id)){alert('Sposta prima i contatti da questa fase.');return;}
+  if(state.leads.some(l=>statoLeadInPipeline(l, currentPipelineId)===id)){alert('Sposta prima i contatti da questa fase.');return;}
   conferma(async()=>{
     await api.del('/api/fasi/'+id);
     state.fasi=state.fasi.filter(f=>f.id!==id);
-    renderFasiList(); showSave();
+    renderFasiList(); renderPipeline(); showSave();
   });
 }
+// ── PIPELINE MULTIPLE ────────────────────────────────────────────────────
+let currentPipelineId = 'default';
+let _pipelinePageInizializzata = false;
+
+async function initPipelinePage(){
+  attaccaListenerColoriPipeline();
+  if(!_pipelinePageInizializzata){
+    await loadPipelines();
+    _pipelinePageInizializzata = true;
+  }
+  renderPipelineTabs();
+  if(currentPipelineId !== 'default'){
+    await loadFasiPerPipeline(currentPipelineId);
+    await loadLeadPipelineStato(currentPipelineId);
+  }
+  renderPipeline();
+}
+
+async function loadPipelines(){
+  try{
+    state.pipelines = await api.get('/api/pipelines');
+    if(!state.pipelines || state.pipelines.error || !state.pipelines.length){
+      state.pipelines = [{id:'default', nome:'Pipeline principale', colore:'#A8412A', ordine:0}];
+    }
+  }catch(e){
+    state.pipelines = [{id:'default', nome:'Pipeline principale', colore:'#A8412A', ordine:0}];
+  }
+}
+
+async function loadFasiPerPipeline(pipelineId){
+  try{
+    const fasi = await api.get('/api/fasi?pipeline_id='+encodeURIComponent(pipelineId));
+    state.fasi = (fasi && !fasi.error) ? fasi : [];
+  }catch(e){ state.fasi = []; }
+}
+
+async function loadLeadPipelineStato(pipelineId){
+  if(pipelineId === 'default') return; // per default usiamo lead.stato direttamente, già caricato
+  try{
+    const stati = await api.get('/api/lead-pipeline-stato?pipeline_id='+encodeURIComponent(pipelineId));
+    state.leadPipelineStato = (stati && !stati.error) ? stati : [];
+  }catch(e){ state.leadPipelineStato = []; }
+}
+
+// Restituisce lo stato di un lead nella pipeline corrente (gestisce sia default che custom)
+function statoLeadInPipeline(lead, pipelineId){
+  if(pipelineId === 'default') return lead.stato;
+  const assoc = (state.leadPipelineStato||[]).find(s=>s.lead_id===lead.id);
+  return assoc ? assoc.stato : null;
+}
+
+function renderPipelineTabs(){
+  const cont = document.getElementById('pipeline-tabs');
+  if(!cont) return;
+  cont.innerHTML = (state.pipelines||[]).map(p=>`
+    <div class="pipeline-tab ${p.id===currentPipelineId?'active':''}" onclick="switchPipeline('${p.id}')" style="display:inline-flex;align-items:center;gap:7px;padding:7px 14px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;border:1.5px solid ${p.id===currentPipelineId?p.colore:'var(--border)'};background:${p.id===currentPipelineId?p.colore:'#fff'};color:${p.id===currentPipelineId?'#fff':'var(--text)'};transition:all .15s">
+      <span style="width:8px;height:8px;border-radius:50%;background:${p.id===currentPipelineId?'#fff':p.colore}"></span>${p.nome}
+    </div>`).join('') + `
+    <div onclick="openModal('modal-nuova-pipeline')" style="display:inline-flex;align-items:center;gap:5px;padding:7px 14px;border-radius:20px;cursor:pointer;font-size:13px;font-weight:600;border:1.5px dashed var(--border);color:var(--text-2)">
+      <i class="ti ti-plus" style="font-size:14px"></i>Nuova pipeline
+    </div>`;
+}
+
+async function switchPipeline(pipelineId){
+  if(pipelineId === currentPipelineId) return;
+  currentPipelineId = pipelineId;
+  renderPipelineTabs();
+  await loadFasiPerPipeline(pipelineId);
+  await loadLeadPipelineStato(pipelineId);
+  renderPipeline();
+}
+
+function attaccaListenerColoriPipeline(){
+  const cont = document.getElementById('np-colori');
+  if(!cont || cont.dataset.bound) return;
+  cont.dataset.bound = '1';
+  cont.addEventListener('click', (e)=>{
+    const opt = e.target.closest('.np-colore-opt');
+    if(!opt) return;
+    document.querySelectorAll('.np-colore-opt').forEach(o=>o.style.borderColor='transparent');
+    opt.style.borderColor = '#333';
+    document.getElementById('np-colore-selezionato').value = opt.dataset.colore;
+  });
+}
+
+async function salvaNuovaPipeline(){
+  const nome = document.getElementById('np-nome').value.trim();
+  if(!nome) return alert('Inserisci il nome della pipeline');
+  const colore = document.getElementById('np-colore-selezionato').value || '#A8412A';
+  const id = 'pl_'+Date.now();
+  try{
+    const nuova = await api.post('/api/pipelines', {id, nome, colore, ordine:(state.pipelines||[]).length});
+    if(nuova && !nuova.error){
+      state.pipelines.push(nuova);
+      // Crea una prima fase di default per la nuova pipeline così non è vuota
+      const faseDefault = await api.post('/api/fasi', {id:id+'_fase1', label:'Nuovo contatto', color:colore, ordine:0, pipeline_id:id});
+      closeModal('modal-nuova-pipeline');
+      document.getElementById('np-nome').value='';
+      renderPipelineTabs();
+      await switchPipeline(id);
+      showSave();
+    } else {
+      alert('Errore: '+(nuova?.error||'impossibile creare la pipeline'));
+    }
+  }catch(e){ alert('Errore di rete'); }
+}
+
 function renderPipeline(){
   const board=document.getElementById('pipeline-board'); board.innerHTML='';
   state.fasi.forEach(fase=>{
-    const items=state.leads.filter(l=>l.stato===fase.id);
+    const items=state.leads.filter(l=>statoLeadInPipeline(l, currentPipelineId)===fase.id);
     const col=document.createElement('div'); col.className='pl-col';
+    col.dataset.faseId = fase.id;
+    col.ondragover = (e)=>{ e.preventDefault(); col.classList.add('pl-col-dragover'); };
+    col.ondragleave = ()=>{ col.classList.remove('pl-col-dragover'); };
+    col.ondrop = (e)=> dropLeadInFase(e, fase.id, col);
     col.innerHTML=`<div class="pl-col-header"><span class="pl-col-title" style="color:${fase.color}">${fase.label}</span><span class="pl-col-count">${items.length}</span></div>`;
     if(!items.length){const e=document.createElement('div');e.className='empty-state';e.style.padding='16px 0';e.innerHTML='<i class="ti ti-inbox" style="font-size:22px"></i><p>Nessun contatto</p>';col.appendChild(e);}
     items.forEach(l=>{
       const c=document.createElement('div'); c.className='pl-card';
+      c.draggable = true;
+      c.dataset.leadId = l.id;
+      c.ondragstart = (e)=>{ e.dataTransfer.setData('text/plain', l.id); c.classList.add('pl-card-dragging'); };
+      c.ondragend = ()=>{ c.classList.remove('pl-card-dragging'); };
       c.style.borderLeftColor=fase.color;
       const tagLabels = {cliente:'🟢 Cliente', potenziale:'🟡 Potenziale', non_interessato:'🔴 Non interessato'};
       const tagHtml = l.tag && tagLabels[l.tag] ? `<div class="tag-badge tag-${l.tag}">${tagLabels[l.tag]}</div>` : '';
-      c.innerHTML=`${tagHtml}<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:11px;color:var(--text-3)">${l.contatto||''}</span><div style="display:flex;gap:3px"><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:3px 8px;font-size:11px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
+      c.innerHTML=`${tagHtml}<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span><div style="display:flex;gap:4px"><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
       col.appendChild(c);
     });
     board.appendChild(col);
@@ -1521,6 +1666,39 @@ function renderPipeline(){
   addBtn.innerHTML='<i class="ti ti-plus"></i> Nuova fase';
   addBtn.onclick=()=>openModal('modal-gestisci-fasi');
   board.appendChild(addBtn);
+}
+
+async function dropLeadInFase(e, faseId, col){
+  e.preventDefault();
+  col.classList.remove('pl-col-dragover');
+  const leadId = parseInt(e.dataTransfer.getData('text/plain'));
+  if(!leadId) return;
+  const lead = state.leads.find(l=>l.id===leadId);
+  if(!lead) return;
+  const statoAttuale = statoLeadInPipeline(lead, currentPipelineId);
+  if(statoAttuale===faseId) return;
+
+  if(currentPipelineId === 'default'){
+    lead.stato = faseId;
+    renderPipeline();
+    try{
+      await api.put('/api/leads/'+leadId, {
+        nome:lead.nome, contatto:lead.contatto, tel:lead.tel, citta:lead.citta,
+        prodotto:lead.prodotto, stato:faseId, note:lead.note, tag:lead.tag||null
+      });
+      showSave();
+    }catch(err){ console.error('Errore spostamento lead:', err); }
+  } else {
+    // Aggiorna lo stato locale nella mappa lead_pipeline_stato
+    let assoc = (state.leadPipelineStato||[]).find(s=>s.lead_id===leadId);
+    if(assoc) assoc.stato = faseId;
+    else { assoc = {lead_id:leadId, pipeline_id:currentPipelineId, stato:faseId}; state.leadPipelineStato.push(assoc); }
+    renderPipeline();
+    try{
+      await api.put('/api/lead-pipeline-stato', {lead_id:leadId, pipeline_id:currentPipelineId, stato:faseId});
+      showSave();
+    }catch(err){ console.error('Errore spostamento lead in pipeline custom:', err); }
+  }
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
@@ -1753,8 +1931,19 @@ function renderDash(){
 // ── SALVA LEAD ────────────────────────────────────────────────────────────
 async function salvaLead(){
   const nome=document.getElementById('lead-nome').value.trim(); if(!nome)return alert('Inserisci il nome');
-  const data=await api.post('/api/leads',{nome,contatto:document.getElementById('lead-contatto').value,tel:document.getElementById('lead-tel').value,citta:document.getElementById('lead-citta').value,prodotto:document.getElementById('lead-prodotto').value,stato:document.getElementById('lead-stato').value,note:document.getElementById('lead-note').value,tag:document.getElementById('lead-tag').value||null});
-  if(!data.error) state.leads.unshift(data);
+  const statoIniziale = document.getElementById('lead-stato').value;
+  // Per la pipeline default lo stato va sul lead stesso; per le altre lo lasciamo vuoto qui e lo creiamo a parte
+  const statoPerLeadRecord = currentPipelineId==='default' ? statoIniziale : (state.fasi[0]?.id||'');
+  const data=await api.post('/api/leads',{nome,contatto:document.getElementById('lead-contatto').value,tel:document.getElementById('lead-tel').value,citta:document.getElementById('lead-citta').value,prodotto:document.getElementById('lead-prodotto').value,stato:statoPerLeadRecord,note:document.getElementById('lead-note').value,tag:document.getElementById('lead-tag').value||null});
+  if(!data.error){
+    state.leads.unshift(data);
+    if(currentPipelineId !== 'default'){
+      try{
+        const assoc = await api.post('/api/lead-pipeline-stato', {lead_id:data.id, pipeline_id:currentPipelineId, stato:statoIniziale});
+        if(assoc && !assoc.error) state.leadPipelineStato.push(assoc);
+      }catch(e){ console.error('Errore associazione pipeline custom:', e); }
+    }
+  }
   closeModal('modal-lead'); renderPipeline(); renderDash(); showSave();
   ['lead-nome','lead-contatto','lead-tel','lead-citta','lead-note'].forEach(id=>document.getElementById(id).value='');
   document.getElementById('lead-tag').value='';
@@ -1769,15 +1958,30 @@ function editLead(id){
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
   const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
-  const ss=document.getElementById('edit-lead-stato'); for(let o of ss.options) if(o.value===l.stato)o.selected=true;
+  const statoCorrente = statoLeadInPipeline(l, currentPipelineId);
+  const ss=document.getElementById('edit-lead-stato'); for(let o of ss.options) if(o.value===statoCorrente)o.selected=true;
   document.getElementById('edit-lead-tag').value=l.tag||'';
   openModal('modal-edit-lead');
 }
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,stato:document.getElementById('edit-lead-stato').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
-  await api.put('/api/leads/'+id, body);
-  const l=state.leads.find(x=>x.id===id); if(l)Object.assign(l,body);
+  const nuovoStato = document.getElementById('edit-lead-stato').value;
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+
+  if(currentPipelineId === 'default'){
+    body.stato = nuovoStato;
+    await api.put('/api/leads/'+id, body);
+    const l=state.leads.find(x=>x.id===id); if(l)Object.assign(l,body);
+  } else {
+    const l=state.leads.find(x=>x.id===id);
+    body.stato = l ? l.stato : nuovoStato; // mantieni invariato lo stato sulla pipeline default
+    await api.put('/api/leads/'+id, body);
+    if(l)Object.assign(l,body);
+    let assoc = (state.leadPipelineStato||[]).find(s=>s.lead_id===id);
+    if(assoc) assoc.stato = nuovoStato;
+    else { assoc = {lead_id:id, pipeline_id:currentPipelineId, stato:nuovoStato}; state.leadPipelineStato.push(assoc); }
+    try{ await api.put('/api/lead-pipeline-stato', {lead_id:id, pipeline_id:currentPipelineId, stato:nuovoStato}); }catch(e){}
+  }
   closeModal('modal-edit-lead'); renderPipeline(); renderDash(); showSave();
 }
 
