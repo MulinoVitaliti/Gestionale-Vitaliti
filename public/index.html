@@ -667,9 +667,13 @@ tbody tr:hover{background:var(--surface-2)}
             <div class="email-nav-item" onclick="apriInvioMultiplo()" style="color:var(--brand);font-weight:600"><i class="ti ti-send" style="color:var(--brand)"></i>Invio multiplo</div>
           </div>
           <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
-            <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Account</div>
+            <div style="font-size:10px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:1px;padding:0 9px;margin-bottom:5px">Casella email</div>
+            <div class="email-nav-item active" id="eacc-principale" onclick="switchEmailAccount('principale',this)" style="font-size:12px"><i class="ti ti-mail"></i>mulino.vitaliti@gmail.com</div>
+            <div class="email-nav-item" id="eacc-spedizioni" onclick="switchEmailAccount('spedizioni',this)" style="font-size:12px"><i class="ti ti-truck-delivery"></i>spedizioni.mulinovitaliti</div>
+          </div>
+          <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border)">
             <div id="gmail-status-sidebar" style="padding:6px 9px;font-size:12px;color:var(--text-2)">Non connesso</div>
-            <div style="padding:0 9px"><button class="btn btn-sm btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="window.location.href='/auth/login'" id="btn-connect-gmail"><i class="ti ti-brand-google"></i>Connetti Gmail</button></div>
+            <div style="padding:0 9px"><button class="btn btn-sm btn-primary" style="width:100%;justify-content:center;margin-top:4px" onclick="connettiAccountEmailCorrente()" id="btn-connect-gmail"><i class="ti ti-brand-google"></i>Connetti</button></div>
           </div>
         </div>
         <!-- Lista email -->
@@ -2597,15 +2601,33 @@ async function eliminaUtente(id){
 }
 
 // ── GMAIL ─────────────────────────────────────────────────────────────────
+let currentEmailAccount = 'principale';
+
+function switchEmailAccount(account, el){
+  currentEmailAccount = account;
+  document.querySelectorAll('#eacc-principale, #eacc-spedizioni').forEach(e=>e.classList.remove('active'));
+  if(el) el.classList.add('active');
+  checkGmailStatus();
+}
+
+function connettiAccountEmailCorrente(){
+  window.location.href = currentEmailAccount === 'spedizioni' ? '/auth/spedizioni/login' : '/auth/login';
+}
+
 async function checkGmailStatus(){
   try{
-    const res=await fetch('/api/gmail/status'); const data=await res.json();
+    const res=await fetch('/api/gmail/status?account='+currentEmailAccount); const data=await res.json();
     const sb=document.getElementById('gmail-status-sidebar');
     const btn=document.getElementById('btn-connect-gmail');
     if(data.connected){
       if(sb) sb.innerHTML='<span style="color:var(--green);font-weight:600;display:flex;align-items:center;gap:4px"><i class="ti ti-check"></i>Connesso</span>';
       if(btn) btn.style.display='none';
       caricaEmail();
+    } else {
+      if(sb) sb.innerHTML='Non connesso';
+      if(btn) btn.style.display='block';
+      const list=document.getElementById('email-list');
+      if(list) list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-plug-off"></i><p>Questa casella non è ancora connessa</p></div>';
     }
     await loadTemplates();
     aggiornaContatoreBozze();
@@ -2941,6 +2963,10 @@ function caricaEmail(){
   const list=document.getElementById('email-list'); if(!list)return;
   list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-loader"></i><p>Caricamento...</p></div>';
   if(emailFolder==='drafts'){
+    if(currentEmailAccount==='spedizioni'){
+      list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-lock"></i><p>Le bozze non sono disponibili per questa casella (sola lettura)</p></div>';
+      return;
+    }
     api.get('/api/bozze').then(data=>{
       if(!data.length){list.innerHTML='<div class="empty-state" style="padding:24px"><i class="ti ti-file-text"></i><p>Nessuna bozza</p></div>';return;}
       list.innerHTML=data.map((b,i)=>`
@@ -2953,7 +2979,7 @@ function caricaEmail(){
     });
     return;
   }
-  fetch('/api/gmail/inbox?folder='+emailFolder).then(r=>r.json()).then(data=>{
+  fetch('/api/gmail/inbox?folder='+emailFolder+'&account='+currentEmailAccount).then(r=>r.json()).then(data=>{
     if(data.error){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-alert-circle"></i><p>${data.error}</p></div>`;return;}
     if(!data.emails||!data.emails.length){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-inbox"></i><p>Nessuna email</p></div>`;return;}
     const unread=data.emails.filter(e=>e.unread).length;
@@ -2993,7 +3019,7 @@ async function mostraEmail(idx){
     </div>`;
   // Carica corpo completo e allegati
   try{
-    const full = await api.get('/api/gmail/message/'+e.id);
+    const full = await api.get('/api/gmail/message/'+e.id+'?account='+currentEmailAccount);
     const bodyEl=document.getElementById('email-body-view');
     const attEl=document.getElementById('email-attachments-view');
     if(bodyEl) bodyEl.innerHTML = full.body || e.snippet || '';
@@ -3004,7 +3030,7 @@ async function mostraEmail(idx){
           <div style="font-size:12px;font-weight:600;color:var(--text-2);margin-bottom:8px"><i class="ti ti-paperclip"></i> Allegati (${full.attachments.length})</div>
           <div style="display:flex;gap:8px;flex-wrap:wrap">
             ${full.attachments.map(a=>`
-              <a href="/api/gmail/attachment/${e.id}/${a.attachmentId}?filename=${encodeURIComponent(a.filename)}" download="${a.filename}"
+              <a href="/api/gmail/attachment/${e.id}/${a.attachmentId}?filename=${encodeURIComponent(a.filename)}&account=${currentEmailAccount}" download="${a.filename}"
                 style="display:flex;align-items:center;gap:6px;padding:7px 12px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);font-size:12px;text-decoration:none;color:var(--text);transition:border-color .15s"
                 onmouseover="this.style.borderColor='var(--brand)'" onmouseout="this.style.borderColor='var(--border)'">
                 <i class="ti ti-file" style="color:var(--brand)"></i>${a.filename}
