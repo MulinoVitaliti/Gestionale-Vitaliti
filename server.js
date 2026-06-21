@@ -1426,6 +1426,53 @@ app.get('/api/spedizioni/debug-inbox', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+app.get('/api/spedizioni/debug-parsing', async (req, res) => {
+  if (!gmailSpedizioniTokens) return res.json({ error: 'Casella spedizioni non connessa' });
+  try {
+    oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 1,
+      q: 'from:mail.via1.it OR subject:"TRACKING ONEEXPRESS"'
+    });
+    if (!list.data.messages) return res.json({ trovata: false });
+
+    const m = list.data.messages[0];
+    const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
+
+    function getBodyText(parts) {
+      if (!parts) return '';
+      for (const p of parts) {
+        if (p.mimeType === 'text/plain' && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
+        if (p.parts) { const r = getBodyText(p.parts); if (r) return r; }
+      }
+      return '';
+    }
+    let testo = '';
+    let fonte = '';
+    if (msg.data.payload.mimeType === 'text/plain' && msg.data.payload.body?.data) {
+      testo = Buffer.from(msg.data.payload.body.data, 'base64').toString('utf-8');
+      fonte = 'body diretto plain text';
+    } else {
+      testo = getBodyText(msg.data.payload.parts);
+      fonte = testo ? 'parts plain text' : 'snippet (fallback)';
+      if (!testo) testo = msg.data.snippet || '';
+    }
+
+    const dati = estraiDatiSpedizioneOneExpress(testo);
+
+    res.json({
+      messageId: m.id,
+      mimeTypeRoot: msg.data.payload.mimeType,
+      fonteTesto: fonte,
+      lunghezzaTesto: testo.length,
+      primi500Caratteri: testo.slice(0, 500),
+      datiEstratti: dati
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.post('/api/spedizioni/sincronizza', async (req, res) => {
   if (!gmailSpedizioniTokens) return res.json({ error: 'Casella email spedizioni non connessa. Vai su Spedizioni e collega l\'account spedizioni.mulinovitaliti@gmail.com' });
   try {
