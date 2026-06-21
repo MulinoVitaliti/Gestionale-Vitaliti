@@ -1014,6 +1014,7 @@ app.get('/auth/fattureincloud/login', (req, res) => {
   const scopes = [
     'entity.clients:r', 'entity.clients:a',
     'issued_documents.invoices:r', 'issued_documents.invoices:a',
+    'issued_documents.delivery_notes:r', 'issued_documents.delivery_notes:a',
     'issued_documents.receipts:r'
   ].join(' ');
   const url = 'https://api-v2.fattureincloud.it/oauth/authorize?' + new URLSearchParams({
@@ -1106,6 +1107,28 @@ app.get('/api/fatture/invoices', async (req, res) => {
     res.json(data);
   } catch (err) {
     console.error('Errore route invoices:', err);
+    res.json({ error: err.message });
+  }
+});
+
+// Elenco DDT (documenti di trasporto)
+app.get('/api/fatture/ddt', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
+  try {
+    const page = req.query.page || 1;
+    const params = new URLSearchParams({
+      type: 'delivery_note',
+      page: String(page),
+      per_page: '100',
+      sort: '-date'
+    });
+    const path = `/c/${ficCompanyId}/issued_documents?${params.toString()}`;
+    const r = await ficFetch(path);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) || 'Errore recupero DDT' });
+    res.json(data);
+  } catch (err) {
+    console.error('Errore route ddt:', err);
     res.json({ error: err.message });
   }
 });
