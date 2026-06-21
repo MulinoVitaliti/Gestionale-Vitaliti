@@ -999,6 +999,16 @@ async function ficFetch(path, options = {}) {
   return r;
 }
 
+app.get('/auth/fattureincloud/debug', (req, res) => {
+  res.json({
+    hasClientId: !!FIC_CLIENT_ID,
+    clientIdLength: FIC_CLIENT_ID ? FIC_CLIENT_ID.length : 0,
+    hasClientSecret: !!FIC_CLIENT_SECRET,
+    redirectUri: FIC_REDIRECT_URI || '(vuoto)',
+    envFicRedirectUri: process.env.FIC_REDIRECT_URI || '(non impostata)'
+  });
+});
+
 app.get('/auth/fattureincloud/login', (req, res) => {
   if (!FIC_CLIENT_ID || !FIC_REDIRECT_URI) return res.status(500).send('Fatture in Cloud non configurato (manca FIC_CLIENT_ID o redirect URI)');
   const scopes = [
