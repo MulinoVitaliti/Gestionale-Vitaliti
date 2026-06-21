@@ -330,10 +330,13 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section" onclick="toggleSection('sec-principale')"><span>Principale</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-principale">
       <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
+      <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
+    </div>
+    <div class="s-section" onclick="toggleSection('sec-vendita')"><span>Vendita</span><i class="ti ti-chevron-down s-arrow"></i></div>
+    <div class="s-section-items" id="sec-vendita">
       <div class="nav-item" onclick="showPage('attivita')" id="nav-attivita"><i class="ti ti-checkbox"></i><span>Attività</span><span class="nav-badge" id="att-badge" style="display:none">0</span></div>
       <div class="nav-item" onclick="showPage('task')" id="nav-task"><i class="ti ti-list-check"></i><span>Task</span><span class="nav-badge" id="task-badge" style="display:none">0</span></div>
       <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i><span>Pipeline vendite</span></div>
-      <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
