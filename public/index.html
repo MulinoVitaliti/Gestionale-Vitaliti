@@ -1547,6 +1547,7 @@ function renderPipelineDropdownMenu(){
         ${p.id===currentPipelineId?'<i class="ti ti-check" style="font-size:14px;color:var(--brand);flex-shrink:0"></i>':''}
       </span>
       <i class="ti ti-pencil" style="font-size:14px;color:var(--text-3);flex-shrink:0;cursor:pointer" onclick="event.stopPropagation();apriRinominaPipeline('${p.id}')" title="Rinomina pipeline"></i>
+      ${p.id!=='default'?`<i class="ti ti-trash" style="font-size:14px;color:var(--text-3);flex-shrink:0;cursor:pointer" onclick="event.stopPropagation();eliminaPipelineConCheck('${p.id}','${p.nome.replace(/'/g,"\\'")}')" title="Elimina pipeline"></i>`:''}
     </div>`).join('');
   menu.innerHTML = items + `
     <div onclick="apriCreazioneNuovaPipeline()" style="border-top:1px solid var(--border);padding:10px 14px;font-size:14px;color:var(--brand);cursor:pointer;display:flex;align-items:center;gap:7px" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='transparent'">
@@ -1568,6 +1569,30 @@ async function apriRinominaPipeline(pipelineId){
     renderPipelineDropdownButton();
     showSave();
   }catch(e){ alert('Errore di rete: '+e.message); }
+}
+
+async function eliminaPipelineConCheck(pipelineId, nomePipeline){
+  if(pipelineId === 'default'){
+    alert('Non puoi eliminare la pipeline principale.');
+    return;
+  }
+  document.getElementById('pl-dropdown-menu').style.display = 'none';
+  conferma(async()=>{
+    try{
+      const r = await api.del('/api/pipelines/'+pipelineId);
+      if(r && r.error){ alert('Errore: '+r.error); return; }
+      state.pipelines = (state.pipelines||[]).filter(p=>p.id!==pipelineId);
+      // Se stavamo guardando proprio la pipeline eliminata, torna alla principale
+      if(currentPipelineId === pipelineId){
+        currentPipelineId = 'default';
+        renderPipelineDropdownButton();
+        await loadFasiPerPipeline('default');
+        await loadLeadPipelineStato('default');
+        renderPipeline();
+      }
+      showSave();
+    }catch(e){ alert('Errore di rete: '+e.message); }
+  });
 }
 
 async function selezionaPipelineDaDropdown(pipelineId){
