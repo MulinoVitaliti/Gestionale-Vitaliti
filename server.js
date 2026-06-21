@@ -179,6 +179,20 @@ async function initDB() {
         UNIQUE(nome, vat_number)
       );
 
+      CREATE TABLE IF NOT EXISTS spedizioni (
+        id SERIAL PRIMARY KEY,
+        gmail_msg_id TEXT UNIQUE,
+        numero_ddt TEXT,
+        numero_tracking TEXT,
+        affiliato TEXT,
+        destinatario TEXT,
+        indirizzo_consegna TEXT,
+        data_consegna_prevista TEXT,
+        pin_consegna TEXT,
+        data_email TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS utenti (
         id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
@@ -1296,6 +1310,106 @@ app.get('/api/gmail/inbox', async (req, res) => {
       return { id: m.id, from: get('From'), to: get('To'), subject: get('Subject'), date: get('Date'), snippet: msg.data.snippet, unread: msg.data.labelIds?.includes('UNREAD') };
     }));
     res.json({ emails });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── SPEDIZIONI ONE EXPRESS (parsing email automatico) ───────────────────
+function estraiDatiSpedizioneOneExpress(testoEmail) {
+  // Estrae i dati dalla email di One Express con pattern testuali robusti
+  const get = (regex) => {
+    const m = testoEmail.match(regex);
+    return m ? m[1].trim() : null;
+  };
+  const numero_ddt = get(/Numero ddt:\s*\n*\s*(\d+)/i);
+  const numero_tracking = get(/Numero tracciamento:\s*\n*\s*([A-Z0-9]+)/i);
+  const pin_consegna = get(/Codice PIN conferma consegna:\s*\n*\s*([A-Z0-9]+)/i);
+  const data_consegna_prevista = get(/Consegna prevista:\s*\n*\s*([^\n]+)/i);
+  const indirizzo_consegna = get(/Indirizzo di consegna:\s*\n*\s*([^\n]+(?:\n[^\n]+)?)/i);
+  // L'affiliato è la riga subito dopo "preso in carico dall'affiliato..." prima del codice numerico lungo
+  const affiliatoMatch = testoEmail.match(/competente\.\s*\n+([^\n]+)\n/i);
+  const affiliato = affiliatoMatch ? affiliatoMatch[1].trim() : null;
+  // Il destinatario è solitamente la prima parte dell'indirizzo di consegna, prima della via
+  let destinatario = null;
+  if (indirizzo_consegna) {
+    const partiIndirizzo = indirizzo_consegna.split(/\s+VIA\s+|\s+CORSO\s+|\s+PIAZZA\s+/i);
+    destinatario = partiIndirizzo[0] ? partiIndirizzo[0].trim() : null;
+  }
+  return { numero_ddt, numero_tracking, affiliato, destinatario, indirizzo_consegna, data_consegna_prevista, pin_consegna };
+}
+
+app.post('/api/spedizioni/sincronizza', async (req, res) => {
+  if (!gmailTokens) return res.json({ error: 'Gmail non connesso' });
+  try {
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    // Cerca le email di One Express negli ultimi messaggi
+    const list = await gmail.users.messages.list({
+      userId: 'me',
+      maxResults: 50,
+      q: 'from:oneexpress.it OR subject:"presa in carico" OR subject:"tracciamento"'
+    });
+    if (!list.data.messages) return res.json({ trovate: 0, nuove: 0 });
+
+    let nuove = 0;
+    for (const m of list.data.messages) {
+      // Salta se già salvata
+      const esiste = await pool.query('SELECT id FROM spedizioni WHERE gmail_msg_id=$1', [m.id]);
+      if (esiste.rows.length) continue;
+
+      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
+      const headers = msg.data.payload.headers || [];
+      const subject = (headers.find(h => h.name === 'Subject') || {}).value || '';
+      const from = (headers.find(h => h.name === 'From') || {}).value || '';
+      const dateHeader = (headers.find(h => h.name === 'Date') || {}).value || '';
+
+      // Verifica che sia davvero una email One Express
+      if (!/one\s*express/i.test(from) && !/one\s*express/i.test(subject)) continue;
+
+      // Estrai il testo del corpo (plain text se disponibile, altrimenti html ripulito)
+      function getBodyText(parts) {
+        if (!parts) return '';
+        for (const p of parts) {
+          if (p.mimeType === 'text/plain' && p.body?.data) return Buffer.from(p.body.data, 'base64').toString('utf-8');
+          if (p.parts) { const r = getBodyText(p.parts); if (r) return r; }
+        }
+        return '';
+      }
+      let testo = '';
+      if (msg.data.payload.mimeType === 'text/plain' && msg.data.payload.body?.data) {
+        testo = Buffer.from(msg.data.payload.body.data, 'base64').toString('utf-8');
+      } else {
+        testo = getBodyText(msg.data.payload.parts) || msg.data.snippet || '';
+      }
+
+      const dati = estraiDatiSpedizioneOneExpress(testo);
+      if (!dati.numero_tracking) continue; // non sembra una email di tracking valida
+
+      await pool.query(
+        `INSERT INTO spedizioni (gmail_msg_id, numero_ddt, numero_tracking, affiliato, destinatario, indirizzo_consegna, data_consegna_prevista, pin_consegna, data_email)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)
+         ON CONFLICT (gmail_msg_id) DO NOTHING`,
+        [m.id, dati.numero_ddt, dati.numero_tracking, dati.affiliato, dati.destinatario, dati.indirizzo_consegna, dati.data_consegna_prevista, dati.pin_consegna, dateHeader ? new Date(dateHeader) : null]
+      );
+      nuove++;
+    }
+    res.json({ trovate: list.data.messages.length, nuove });
+  } catch (err) {
+    console.error('Errore sincronizzazione spedizioni:', err);
+    res.json({ error: err.message });
+  }
+});
+
+app.get('/api/spedizioni', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM spedizioni ORDER BY data_email DESC NULLS LAST, created_at DESC LIMIT 100');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/spedizioni/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM spedizioni WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
 
