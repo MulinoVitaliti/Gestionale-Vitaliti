@@ -1435,7 +1435,7 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
     const list = await gmail.users.messages.list({
       userId: 'me',
       maxResults: 50,
-      q: 'from:oneexpress.it OR subject:"presa in carico" OR subject:"tracciamento"'
+      q: 'from:mail.via1.it OR subject:"TRACKING ONEEXPRESS"'
     });
     if (!list.data.messages) return res.json({ trovate: 0, nuove: 0 });
 
