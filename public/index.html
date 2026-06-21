@@ -1285,14 +1285,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false},
+  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud'};
 
 let currentUser = null;
 let usersDB = [
@@ -1451,7 +1451,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task'].forEach(p=>{
+  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
