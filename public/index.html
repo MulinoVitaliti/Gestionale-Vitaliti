@@ -128,6 +128,7 @@ tbody tr:hover{background:var(--surface-2)}
 .pl-card-name{font-size:14.5px;font-weight:700;margin-bottom:4px}
 .pl-card-sub{font-size:12px;color:var(--text-2);margin-bottom:8px}
 .pl-card-footer{display:flex;align-items:center;justify-content:space-between}
+.status-dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:6px;flex-shrink:0;vertical-align:middle}
 .tag-badge{display:inline-flex;align-items:center;gap:3px;font-size:10px;font-weight:700;padding:2px 7px;border-radius:20px;margin-bottom:6px}
 .tag-cliente{background:var(--green-light);color:var(--green)}
 .tag-potenziale{background:var(--orange-light);color:var(--orange)}
@@ -389,9 +390,9 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="pills">
         <div class="pill active" onclick="filterAttivita('tutte',this)">Tutte</div>
-        <div class="pill" onclick="filterAttivita('oggi',this)">🟢 Oggi</div>
-        <div class="pill" onclick="filterAttivita('scadute',this)">🔴 Scadute</div>
-        <div class="pill" onclick="filterAttivita('future',this)">⚪ Future</div>
+        <div class="pill" onclick="filterAttivita('oggi',this)"><span class="status-dot" style="background:var(--green)"></span>Oggi</div>
+        <div class="pill" onclick="filterAttivita('scadute',this)"><span class="status-dot" style="background:var(--red)"></span>Scadute</div>
+        <div class="pill" onclick="filterAttivita('future',this)"><span class="status-dot" style="background:var(--text-3)"></span>Future</div>
       </div>
       <div style="display:grid;gap:8px" id="att-list-page"></div>
     </div>
@@ -1685,8 +1686,9 @@ function renderPipeline(){
       c.ondragstart = (e)=>{ e.dataTransfer.setData('text/plain', l.id); c.classList.add('pl-card-dragging'); };
       c.ondragend = ()=>{ c.classList.remove('pl-card-dragging'); };
       c.style.borderLeftColor=fase.color;
-      const tagLabels = {cliente:'🟢 Cliente', potenziale:'🟡 Potenziale', non_interessato:'🔴 Non interessato'};
-      const tagHtml = l.tag && tagLabels[l.tag] ? `<div class="tag-badge tag-${l.tag}">${tagLabels[l.tag]}</div>` : '';
+      const tagLabels = {cliente:'Cliente', potenziale:'Potenziale', non_interessato:'Non interessato'};
+      const tagDotColors = {cliente:'var(--green)', potenziale:'var(--orange)', non_interessato:'var(--red)'};
+      const tagHtml = l.tag && tagLabels[l.tag] ? `<div class="tag-badge tag-${l.tag}"><span class="status-dot" style="background:${tagDotColors[l.tag]};margin-right:4px"></span>${tagLabels[l.tag]}</div>` : '';
       c.innerHTML=`${tagHtml}<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span><div style="display:flex;gap:4px"><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
       col.appendChild(c);
     });
@@ -1851,8 +1853,9 @@ function apriDettaglio(id){
 function apriDettaglioLead(id){
   const l=state.leads.find(x=>x.id===id); if(!l)return;
   const faseLabel=(state.fasi.find(f=>f.id===l.stato)||{}).label||l.stato;
-  const tagLabelsDet = {cliente:'🟢 Cliente', potenziale:'🟡 Potenziale cliente', non_interessato:'🔴 Non interessato'};
-  const tagHtmlDet = l.tag && tagLabelsDet[l.tag] ? `<span class="tag-badge tag-${l.tag}" style="margin-left:8px">${tagLabelsDet[l.tag]}</span>` : '';
+  const tagLabelsDet = {cliente:'Cliente', potenziale:'Potenziale cliente', non_interessato:'Non interessato'};
+  const tagDotColorsDet = {cliente:'var(--green)', potenziale:'var(--orange)', non_interessato:'var(--red)'};
+  const tagHtmlDet = l.tag && tagLabelsDet[l.tag] ? `<span class="tag-badge tag-${l.tag}" style="margin-left:8px"><span class="status-dot" style="background:${tagDotColorsDet[l.tag]};margin-right:4px"></span>${tagLabelsDet[l.tag]}</span>` : '';
   document.getElementById('detail-panel').innerHTML=`
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
       <div class="flex-row"><div class="avatar" style="width:40px;height:40px;font-size:12px">${ini(l.nome)}</div><div><div style="font-weight:700;font-size:15px">${l.nome}${tagHtmlDet}</div><div style="font-size:12px;color:var(--text-2)">${faseLabel}</div></div></div>
@@ -3707,7 +3710,7 @@ function renderAttItem(a, showCollegata=true){
       ${a.note?`<div class="att-note">${a.note}</div>`:''}
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
         <span class="att-date ${cls}">
-          ${cls==='oggi'?'🟢':cls==='scaduta'?'🔴':'⚪'} ${txt}
+          <span class="status-dot" style="background:${cls==='oggi'?'var(--green)':cls==='scaduta'?'var(--red)':'var(--text-3)'}"></span>${txt}
         </span>
         ${collegataStr}
       </div>
@@ -4107,7 +4110,7 @@ function taskFiltrate(){
   return list;
 }
 
-const PRIORITA_LABEL = {alta:'🔴 Alta', media:'🟠 Media', bassa:'🟢 Bassa'};
+const PRIORITA_LABEL = {alta:'Alta', media:'Media', bassa:'Bassa'};
 
 function renderTaskCard(t){
   const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
