@@ -1,3 +1,4 @@
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -1103,10 +1104,29 @@ app.get('/api/fatture/invoices', async (req, res) => {
       params.set('q', `date>='${req.query.year}-01-01',date<='${req.query.year}-12-31'`);
     }
     const path = `/c/${ficCompanyId}/issued_documents?${params.toString()}`;
+    console.log('FIC invoices request path:', path);
     const r = await ficFetch(path);
     const data = await r.json();
-    if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero fatture' });
+    console.log('FIC invoices response status:', r.status, 'body:', JSON.stringify(data).slice(0, 500));
+    if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) || 'Errore recupero fatture' });
     res.json(data);
+  } catch (err) {
+    console.error('Errore route invoices:', err);
+    res.json({ error: err.message });
+  }
+});
+
+// Endpoint di debug temporaneo
+app.get('/api/fatture/debug', async (req, res) => {
+  try {
+    const out = { hasTokens: !!ficTokens, companyId: ficCompanyId };
+    if (ficCompanyId) {
+      const r = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=invoice&per_page=5`);
+      const data = await r.json();
+      out.status = r.status;
+      out.response = data;
+    }
+    res.json(out);
   } catch (err) { res.json({ error: err.message }); }
 });
 
