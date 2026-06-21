@@ -332,7 +332,6 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section-items" id="sec-principale">
       <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
       <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
-      <div class="nav-item" onclick="showPage('task')" id="nav-task"><i class="ti ti-list-check"></i><span>Task</span><span class="nav-badge" id="task-badge" style="display:none">0</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-vendita')"><span>Vendita</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-vendita">
@@ -370,7 +369,7 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="card" style="cursor:pointer" onclick="showPage('task')">
         <div class="card-header">
-          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task</div>
+          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
           <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
         </div>
         <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
@@ -399,13 +398,16 @@ tbody tr:hover{background:var(--surface-2)}
     <!-- TASK -->
     <div class="page" id="page-task">
       <div class="page-header">
-        <div class="page-title">Task</div>
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-icon" onclick="showPage('dashboard')" title="Torna alla dashboard"><i class="ti ti-arrow-left"></i></button>
+          <div class="page-title" style="margin:0">Task</div>
+        </div>
         <button class="btn btn-primary" onclick="apriModalTask()"><i class="ti ti-plus"></i>Nuova task</button>
       </div>
       <div class="pills">
         <div class="pill active" onclick="filterTask('tutte',this)">Tutte</div>
-        <div class="pill" onclick="filterTask('mie',this)">👤 Le mie</div>
-        <div class="pill" onclick="filterTask('assegnate',this)">📤 Assegnate da me</div>
+        <div class="pill" onclick="filterTask('mie',this)"><i class="ti ti-user" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Le mie</div>
+        <div class="pill" onclick="filterTask('assegnate',this)"><i class="ti ti-send" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Assegnate da me</div>
       </div>
       <div id="task-board" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px">
         <div class="task-col" data-stato="da_fare">
