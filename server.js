@@ -1,4 +1,3 @@
-
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -1097,17 +1096,12 @@ app.get('/api/fatture/invoices', async (req, res) => {
     const params = new URLSearchParams({
       type: 'invoice',
       page: String(page),
-      per_page: '50',
+      per_page: '100',
       sort: '-date'
     });
-    if (req.query.year) {
-      params.set('q', `date>='${req.query.year}-01-01',date<='${req.query.year}-12-31'`);
-    }
     const path = `/c/${ficCompanyId}/issued_documents?${params.toString()}`;
-    console.log('FIC invoices request path:', path);
     const r = await ficFetch(path);
     const data = await r.json();
-    console.log('FIC invoices response status:', r.status, 'body:', JSON.stringify(data).slice(0, 500));
     if (!r.ok) return res.json({ error: data.error?.message || JSON.stringify(data) || 'Errore recupero fatture' });
     res.json(data);
   } catch (err) {
