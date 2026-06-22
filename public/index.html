@@ -478,7 +478,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="page" id="page-clienti">
       <div class="page-header">
         <div class="page-title">Clienti</div>
-        <button class="btn btn-primary" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="btn-importa-fic" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
+          <button class="btn btn-primary" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
+        </div>
       </div>
       <div class="search-bar-wrap" style="margin:0 auto 18px">
         <div class="search-bar-box">
@@ -815,6 +818,17 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
+      <!-- Conflitti importazione clienti FIC -->
+      <div class="card" style="margin-bottom:20px" id="card-conflitti">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-git-merge" style="color:var(--orange)"></i>Conflitti importazione clienti <span class="nav-badge" id="conflitti-badge" style="display:none;background:var(--orange);margin-left:6px">0</span></div>
+          <button class="btn btn-sm" onclick="caricaConflitti()"><i class="ti ti-refresh"></i>Aggiorna</button>
+        </div>
+        <div id="conflitti-list" style="padding:10px 14px">
+          <div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun conflitto pendente. I conflitti appaiono qui quando importi clienti da Fatture in Cloud e un cliente con la stessa P.IVA esiste già nel gestionale.</div>
+        </div>
+      </div>
+
       <!-- Utenti & Permessi -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -891,7 +905,9 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="cl-ind"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
+    <div class="form-group"><label class="form-label"><i class="ti ti-building" style="font-size:13px;color:var(--brand)"></i> Indirizzo legale (sede)</label><input type="text" id="cl-ind-legale" placeholder="Es. Via Roma 1, 00100 Roma (RM)"></div>
+    <div class="form-group"><label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label><input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)"></div>
     <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="cl-prod" placeholder="Es. Semola rimacinata, Farina 00"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="cl-note"></textarea></div>
@@ -904,7 +920,9 @@ tbody tr:hover{background:var(--surface-2)}
     <input type="hidden" id="edit-cl-id">
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="edit-cl-ind"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
+    <div class="form-group"><label class="form-label"><i class="ti ti-building" style="font-size:13px;color:var(--brand)"></i> Indirizzo legale (sede)</label><input type="text" id="edit-cl-ind-legale"></div>
+    <div class="form-group"><label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label><input type="text" id="edit-cl-ind-consegna"></div>
     <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="edit-cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="edit-cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="edit-cl-prod"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-cl-note"></textarea></div>
@@ -1582,7 +1600,7 @@ function showPage(id){
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='spedizioni') initPaginaSpedizioni();
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni')renderUtenti();
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -1964,6 +1982,96 @@ async function eliminaFaseConCheck(id){
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
+
+// ── IMPORTAZIONE DA FATTURE IN CLOUD ─────────────────────────────────────
+async function importaClientiDaFic(){
+  const btn = document.getElementById('btn-importa-fic');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Importazione...'; }
+  try{
+    const r = await api.post('/api/clienti/importa-fic', {});
+    if(r.error){ alert('Errore: '+r.error); return; }
+    // Ricarica la lista clienti
+    const clientiAggiornati = await api.get('/api/clienti');
+    if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    renderClienti();
+    // Mostra il riepilogo
+    let msg = `✅ Importazione completata!\n\n• ${r.importati} clienti nuovi aggiunti\n• ${r.saltati} già presenti (senza P.IVA, ignorati)\n• ${r.conflitti} conflitti da risolvere`;
+    if(r.conflitti > 0) msg += '\n\n⚠️ Vai su Impostazioni per gestire i conflitti.';
+    alert(msg);
+    if(r.conflitti > 0) aggiornaConflittiBadge(r.conflitti);
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+  finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-cloud-download"></i>Importa da FIC'; }
+  }
+}
+
+// ── GESTIONE CONFLITTI ────────────────────────────────────────────────────
+async function caricaConflitti(){
+  const cont = document.getElementById('conflitti-list');
+  if(!cont) return;
+  cont.innerHTML = '<div style="font-size:13px;color:var(--text-2);padding:8px 0"><i class="ti ti-loader"></i> Caricamento...</div>';
+  try{
+    const data = await api.get('/api/clienti/conflitti');
+    if(data.error){ cont.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0">${data.error}</div>`; return; }
+    aggiornaConflittiBadge(data.length);
+    if(!data.length){
+      cont.innerHTML = '<div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun conflitto pendente. I conflitti appaiono qui quando importi clienti da Fatture in Cloud e un cliente con la stessa P.IVA esiste già nel gestionale.</div>';
+      return;
+    }
+    cont.innerHTML = data.map(c=>{
+      const fic = typeof c.fic_data === 'string' ? JSON.parse(c.fic_data) : c.fic_data;
+      return `
+      <div style="border:1px solid var(--border);border-radius:var(--r);padding:14px;margin-bottom:10px">
+        <div style="font-size:12px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:10px">Conflitto — stessa P.IVA <strong style="color:var(--orange)">${fic.piva||'—'}</strong></div>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:12px">
+          <div style="background:var(--surface-2);border-radius:var(--r);padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--text-3);margin-bottom:6px">📋 NEL GESTIONALE</div>
+            <div style="font-size:13px;font-weight:600">${c.cliente_nome}</div>
+            <div style="font-size:12px;color:var(--text-2)">P.IVA: ${c.cliente_piva||'—'}</div>
+            <div style="font-size:12px;color:var(--text-2)">${c.cliente_email||''}</div>
+            <div style="font-size:12px;color:var(--text-2)">${c.cliente_ind||''}</div>
+          </div>
+          <div style="background:#fff7ed;border:1px solid #fed7aa;border-radius:var(--r);padding:10px">
+            <div style="font-size:11px;font-weight:700;color:var(--orange);margin-bottom:6px">☁️ DA FATTURE IN CLOUD</div>
+            <div style="font-size:13px;font-weight:600">${fic.nome}</div>
+            <div style="font-size:12px;color:var(--text-2)">P.IVA: ${fic.piva||'—'}</div>
+            <div style="font-size:12px;color:var(--text-2)">${fic.email||''}</div>
+            <div style="font-size:12px;color:var(--text-2)">SDI: ${fic.sdi||'—'} · PEC: ${fic.pec||'—'}</div>
+            <div style="font-size:12px;color:var(--text-2)">${fic.ind_legale||''}</div>
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-primary btn-sm" onclick="risolviConflitto(${c.id},'unisci')"><i class="ti ti-git-merge"></i>Aggiorna con dati FIC</button>
+          <button class="btn btn-sm" onclick="risolviConflitto(${c.id},'ignora')"><i class="ti ti-x"></i>Mantieni dati attuali</button>
+        </div>
+      </div>`;
+    }).join('');
+  }catch(e){
+    cont.innerHTML = '<div style="color:var(--red);font-size:13px;padding:8px 0">Errore di caricamento</div>';
+  }
+}
+
+async function risolviConflitto(id, azione){
+  try{
+    await api.post(`/api/clienti/conflitti/${id}/${azione}`, {});
+    if(azione === 'unisci'){
+      const clientiAggiornati = await api.get('/api/clienti');
+      if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    }
+    await caricaConflitti();
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+}
+
+function aggiornaConflittiBadge(n){
+  const badge = document.getElementById('conflitti-badge');
+  if(!badge) return;
+  if(n > 0){ badge.textContent = n; badge.style.display='inline-flex'; }
+  else badge.style.display='none';
+}
+
+
 function renderClienti(){
   const q=(document.getElementById('search-clienti').value||'').toLowerCase();
   const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q));
@@ -2420,21 +2528,24 @@ async function salvaCliente(){
   const data=await api.post('/api/clienti',{
     nome, ref:document.getElementById('cl-ref').value,
     tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
-    citta:document.getElementById('cl-citta').value, ind:document.getElementById('cl-ind').value,
+    citta:document.getElementById('cl-citta').value,
+    piva:document.getElementById('cl-piva').value.trim(),
+    ind_legale:document.getElementById('cl-ind-legale').value.trim(),
+    ind_consegna:document.getElementById('cl-ind-consegna').value.trim(),
     sdi:document.getElementById('cl-sdi').value.toUpperCase().trim(),
     pec:document.getElementById('cl-pec').value.trim(),
     prod:document.getElementById('cl-prod').value, note:document.getElementById('cl-note').value
   });
   if(!data.error) state.clienti.push(data);
   closeModal('modal-cliente'); renderClienti(); renderDash(); showSave();
-  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-ind','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  ['nome','ref','tel','email','citta','ind','sdi','pec','prod','note'].forEach(f=>{
-    const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f]||'';
+  ['nome','ref','tel','email','citta','piva','ind_legale','ind_consegna','sdi','pec','prod','note'].forEach(f=>{
+    const el=document.getElementById('edit-cl-'+f.replace('_','-')); if(el) el.value=c[f]||'';
   });
   openModal('modal-edit-cliente');
 }
@@ -2443,7 +2554,10 @@ async function aggiornaCliente(){
   const body={
     nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
     tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
-    citta:document.getElementById('edit-cl-citta').value, ind:document.getElementById('edit-cl-ind').value,
+    citta:document.getElementById('edit-cl-citta').value,
+    piva:document.getElementById('edit-cl-piva')?.value.trim()||'',
+    ind_legale:document.getElementById('edit-cl-ind-legale')?.value.trim()||'',
+    ind_consegna:document.getElementById('edit-cl-ind-consegna')?.value.trim()||'',
     sdi:document.getElementById('edit-cl-sdi').value.toUpperCase().trim(),
     pec:document.getElementById('edit-cl-pec').value.trim(),
     prod:document.getElementById('edit-cl-prod').value, note:document.getElementById('edit-cl-note').value
