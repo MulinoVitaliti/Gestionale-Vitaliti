@@ -63,6 +63,7 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS clienti (
         id SERIAL PRIMARY KEY,
         codice TEXT UNIQUE,
+        tipo TEXT DEFAULT 'cliente',
         nome TEXT NOT NULL,
         ref TEXT,
         tel TEXT,
@@ -700,32 +701,36 @@ app.delete('/api/leads/:id', async (req, res) => {
 // ── CLIENTI API ───────────────────────────────────────────────────────────
 app.get('/api/clienti', async (req, res) => {
   try {
-    const r = await pool.query('SELECT * FROM clienti ORDER BY nome');
+    const tipo = req.query.tipo;
+    const r = tipo
+      ? await pool.query('SELECT * FROM clienti WHERE tipo=$1 ORDER BY nome', [tipo])
+      : await pool.query('SELECT * FROM clienti ORDER BY tipo, nome');
     res.json(r.rows);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.post('/api/clienti', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
   try {
-    // Genera codice cliente progressivo C001, C002, ...
-    const countR = await pool.query('SELECT COUNT(*) FROM clienti');
+    const tipoRecord = tipo || 'cliente';
+    const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
+    const countR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipoRecord]);
     const n = parseInt(countR.rows[0].count) + 1;
-    const codice = 'C' + String(n).padStart(3, '0');
+    const codice = prefisso + String(n).padStart(3, '0');
     const r = await pool.query(
-      'INSERT INTO clienti (codice,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-      [codice, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
+      'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [codice, tipoRecord, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/clienti/:id', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, tipo } = req.body;
   try {
     await pool.query(
-      'UPDATE clienti SET nome=$1,ref=$2,tel=$3,email=$4,citta=$5,ind=$6,ind_legale=$7,ind_consegna=$8,sdi=$9,pec=$10,piva=$11,prod=$12,note=$13 WHERE id=$14',
-      [nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
+      'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,ind=$7,ind_legale=$8,ind_consegna=$9,sdi=$10,pec=$11,piva=$12,prod=$13,note=$14 WHERE id=$15',
+      [tipo||'cliente', nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -761,36 +766,33 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
       if (!c.name) continue;
       const piva = c.vat_number || c.tax_code || null;
       const indirizzo = [c.address_street, c.address_city, c.address_postal_code, c.address_province].filter(Boolean).join(', ');
+      // FIC usa entity_type: 'client' o 'supplier' (o null)
+      const tipo = (c.entity_type === 'supplier') ? 'fornitore' : 'cliente';
+      const prefisso = tipo === 'fornitore' ? 'F' : 'C';
 
       if (piva) {
-        // Cerca per P.IVA
         const esistente = await pool.query('SELECT id, nome FROM clienti WHERE piva=$1', [piva]);
         if (esistente.rows.length > 0) {
-          // Conflitto: cliente già esistente con stessa P.IVA
-          const ficData = { nome:c.name, piva, sdi:c.ei_code||null, pec:c.certified_email||null, email:c.email||null, tel:c.phone||null, ind_legale:indirizzo, fic_id:c.id };
-          // Upsert conflitto (evita duplicati se già in coda)
+          const ficData = { nome:c.name, piva, tipo, sdi:c.ei_code||null, pec:c.certified_email||null, email:c.email||null, tel:c.phone||null, ind_legale:indirizzo, fic_id:c.id };
           await pool.query(
-            `INSERT INTO fic_conflitti (cliente_id, fic_data, stato)
-             VALUES ($1,$2,'pending')
-             ON CONFLICT DO NOTHING`,
+            `INSERT INTO fic_conflitti (cliente_id, fic_data, stato) VALUES ($1,$2,'pending') ON CONFLICT DO NOTHING`,
             [esistente.rows[0].id, JSON.stringify(ficData)]
           );
           conflitti++;
           continue;
         }
       } else {
-        // Senza P.IVA, cerca per nome esatto
         const esistente = await pool.query('SELECT id FROM clienti WHERE LOWER(nome)=LOWER($1)', [c.name]);
         if (esistente.rows.length > 0) { saltati++; continue; }
       }
 
-      // Cliente nuovo — importa direttamente con codice progressivo
-      const cntR = await pool.query('SELECT COUNT(*) FROM clienti');
+      // Nuovo — importa con codice progressivo per tipo
+      const cntR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipo]);
       const cN = parseInt(cntR.rows[0].count) + 1;
-      const codice = 'C' + String(cN).padStart(3, '0');
+      const codice = prefisso + String(cN).padStart(3, '0');
       await pool.query(
-        'INSERT INTO clienti (codice,nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING',
-        [codice, c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
+        'INSERT INTO clienti (codice,tipo,nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING',
+        [codice, tipo, c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
       );
       importati++;
     }
