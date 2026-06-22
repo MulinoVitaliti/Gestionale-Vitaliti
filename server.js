@@ -62,6 +62,7 @@ async function initDB() {
 
       CREATE TABLE IF NOT EXISTS clienti (
         id SERIAL PRIMARY KEY,
+        codice TEXT UNIQUE,
         nome TEXT NOT NULL,
         ref TEXT,
         tel TEXT,
@@ -707,9 +708,13 @@ app.get('/api/clienti', async (req, res) => {
 app.post('/api/clienti', async (req, res) => {
   const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id } = req.body;
   try {
+    // Genera codice cliente progressivo C001, C002, ...
+    const countR = await pool.query('SELECT COUNT(*) FROM clienti');
+    const n = parseInt(countR.rows[0].count) + 1;
+    const codice = 'C' + String(n).padStart(3, '0');
     const r = await pool.query(
-      'INSERT INTO clienti (nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
+      'INSERT INTO clienti (codice,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [codice, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
@@ -779,10 +784,13 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
         if (esistente.rows.length > 0) { saltati++; continue; }
       }
 
-      // Cliente nuovo — importa direttamente
+      // Cliente nuovo — importa direttamente con codice progressivo
+      const cntR = await pool.query('SELECT COUNT(*) FROM clienti');
+      const cN = parseInt(cntR.rows[0].count) + 1;
+      const codice = 'C' + String(cN).padStart(3, '0');
       await pool.query(
-        'INSERT INTO clienti (nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING',
-        [c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
+        'INSERT INTO clienti (codice,nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) ON CONFLICT DO NOTHING',
+        [codice, c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
       );
       importati++;
     }
