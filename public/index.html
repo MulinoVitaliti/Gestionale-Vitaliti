@@ -1994,7 +1994,36 @@ function renderPipeline(){
       const tagLabels = {cliente:'Cliente', potenziale:'Potenziale', non_interessato:'Non interessato'};
       const tagDotColors = {cliente:'var(--green)', potenziale:'var(--orange)', non_interessato:'var(--red)'};
       const tagHtml = l.tag && tagLabels[l.tag] ? `<div class="tag-badge tag-${l.tag}"><span class="status-dot" style="background:${tagDotColors[l.tag]};margin-right:4px"></span>${tagLabels[l.tag]}</div>` : '';
-      c.innerHTML=`${tagHtml}<div class="pl-card-name">${l.nome}</div><div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div><div class="pl-card-footer"><span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span><div style="display:flex;gap:4px"><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})"><i class="ti ti-eye"></i></button><button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})"><i class="ti ti-pencil"></i></button></div></div>`;
+      // Conta attività pendenti per questo lead
+      const nAtt = (state.attivita||[]).filter(a=>!a.completata&&(a.lead_id===l.id||a.collegata_id===l.id)).length;
+      const attBadge = nAtt>0 ? `<span style="background:var(--brand);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px">${nAtt}</span>` : '';
+      const leadNomeSafe = l.nome.replace(/'/g,"\\'");
+      c.innerHTML=`
+        ${tagHtml}
+        <div class="pl-card-name">${l.nome}${attBadge}</div>
+        <div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div>
+        <!-- Pulsanti attività rapide stile Pipedrive -->
+        <div style="display:flex;gap:0;border:1px solid var(--border);border-radius:var(--r);overflow:hidden;margin-bottom:8px" onclick="event.stopPropagation()">
+          <button onclick="apriAttivitaInLead(${l.id},'${leadNomeSafe}','chiamata')" title="Nuova chiamata" style="flex:1;padding:6px 4px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-phone" style="font-size:14px;color:var(--blue)"></i>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${leadNomeSafe}','email')" title="Nuova email" style="flex:1;padding:6px 4px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s" onmouseover="this.style.background='#fff7ed'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-mail" style="font-size:14px;color:var(--orange)"></i>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${leadNomeSafe}','ordine')" title="Nuovo ordine" style="flex:1;padding:6px 4px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-package" style="font-size:14px;color:var(--green)"></i>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${leadNomeSafe}','nota')" title="Nuova nota" style="flex:1;padding:6px 4px;border:none;background:#fff;cursor:pointer;display:flex;align-items:center;justify-content:center;transition:background .15s" onmouseover="this.style.background='#fefce8'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-note" style="font-size:14px;color:var(--gold)"></i>
+          </button>
+        </div>
+        <div class="pl-card-footer">
+          <span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span>
+          <div style="display:flex;gap:4px">
+            <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})" title="Vedi dettaglio"><i class="ti ti-eye"></i></button>
+            <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+          </div>
+        </div>`;
       col.appendChild(c);
     });
     board.appendChild(col);
