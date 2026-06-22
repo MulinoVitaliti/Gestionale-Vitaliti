@@ -520,7 +520,8 @@ tbody tr:hover{background:var(--surface-2)}
           </div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-primary" onclick="openModal('modal-lead')"><i class="ti ti-plus"></i>Aggiungi contatto</button>
+          <button class="btn btn-primary" onclick="openModal('modal-lead')"><i class="ti ti-plus"></i>Aggiungi lead</button>
+          <button class="btn" onclick="apriModalAttivitaVeloce()"><i class="ti ti-checkbox"></i>Aggiungi attività</button>
         </div>
       </div>
       <div class="pipeline-wrap"><div class="pipeline" id="pipeline-board"></div></div>
@@ -941,7 +942,7 @@ tbody tr:hover{background:var(--surface-2)}
 
 <!-- APP STRUCTURE AND MODALS -->
 <div class="modal-overlay" id="modal-lead">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi contatto pipeline</div><button class="btn btn-icon" onclick="closeModal('modal-lead')"><i class="ti ti-x"></i></button></div>
+  <div class="modal"><div class="modal-header"><div class="modal-title">Aggiungi lead alla pipeline</div><button class="btn btn-icon" onclick="closeModal('modal-lead')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <div class="form-row"><div class="form-group"><label class="form-label">Nome / Ragione sociale *</label><input type="text" id="lead-nome" placeholder="Es. Panificio Rossi"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="lead-contatto"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="lead-tel"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="lead-citta"></div></div>
@@ -2374,14 +2375,80 @@ function apriDettaglioLead(id){
     <div class="card">
       <div class="card-header">
         <div class="card-title"><i class="ti ti-checkbox" style="color:var(--brand)"></i>Attività</div>
-        <button class="btn btn-sm btn-primary" onclick="openModalAttivita('lead',${l.id},'${l.nome.replace(/'/g,"\\'")}')"><i class="ti ti-plus"></i>Aggiungi</button>
       </div>
-      <div class="card-body" id="att-lead-${l.id}">${renderAttivitaPerEntita('lead',l.id)}</div>
+      <div class="card-body" style="padding:0">
+        <!-- Pulsanti tipo attività stile Pipedrive -->
+        <div style="display:flex;gap:0;border-bottom:1px solid var(--border)">
+          <button onclick="apriAttivitaInLead(${l.id},'${l.nome.replace(/'/g,"\\'")}','chiamata')" style="flex:1;padding:11px 6px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:background .15s" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-phone" style="font-size:18px;color:var(--blue)"></i>
+            <span style="font-size:11px;font-weight:600;color:var(--text-2)">Chiamata</span>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${l.nome.replace(/'/g,"\\'")}','email')" style="flex:1;padding:11px 6px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:background .15s" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-mail" style="font-size:18px;color:var(--orange)"></i>
+            <span style="font-size:11px;font-weight:600;color:var(--text-2)">Email</span>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${l.nome.replace(/'/g,"\\'")}','ordine')" style="flex:1;padding:11px 6px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:background .15s" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-package" style="font-size:18px;color:var(--green)"></i>
+            <span style="font-size:11px;font-weight:600;color:var(--text-2)">Ordine</span>
+          </button>
+          <button onclick="apriAttivitaInLead(${l.id},'${l.nome.replace(/'/g,"\\'")}','nota')" style="flex:1;padding:11px 6px;border:none;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:4px;transition:background .15s" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='#fff'">
+            <i class="ti ti-note" style="font-size:18px;color:var(--gold)"></i>
+            <span style="font-size:11px;font-weight:600;color:var(--text-2)">Nota</span>
+          </button>
+        </div>
+        <!-- Feed attività -->
+        <div id="att-lead-${l.id}" style="padding:10px 14px">${renderAttivitaPerEntita('lead',l.id)}</div>
+      </div>
     </div>`;
   document.getElementById('detail-overlay').classList.add('open');
   document.getElementById('detail-panel').classList.add('open');
 }
 function chiudiDettaglio(){document.getElementById('detail-overlay').classList.remove('open');document.getElementById('detail-panel').classList.remove('open');}
+
+// Apre il modal attività precompilando tipo e lead dal pannello dettaglio
+function apriAttivitaInLead(leadId, leadNome, tipo){
+  // Trova la pipeline del lead
+  const stato = (state.leadPipelineStato||[]).find(s=>s.lead_id===leadId);
+  const pipelineId = stato?.pipeline_id || 'default';
+
+  // Reset modal
+  document.getElementById('att-id').value='';
+  document.getElementById('att-titolo').value='';
+  document.getElementById('att-note').value='';
+  document.getElementById('att-data').value=new Date().toISOString().slice(0,10);
+  document.getElementById('modal-att-title').textContent='Nuova '+tipo+' — '+leadNome;
+  setTipoAtt(tipo);
+
+  // Popola pipeline e preseleziona
+  popolaPipelineModal();
+  const pipSel = document.getElementById('att-pipeline');
+  if(pipSel) pipSel.value = pipelineId;
+  onAttPipelineChange();
+
+  // Preseleziona lead dopo che si popola la select
+  setTimeout(()=>{
+    const leadSel = document.getElementById('att-lead');
+    if(leadSel) leadSel.value = leadId;
+  }, 60);
+
+  // Placeholder titolo suggerito in base al tipo
+  const placeholders = {
+    chiamata: 'Es. Chiamata di follow-up con '+leadNome,
+    email: 'Es. Email offerta a '+leadNome,
+    ordine: 'Es. Ordine semola per '+leadNome,
+    nota: 'Es. Nota su '+leadNome
+  };
+  document.getElementById('att-titolo').placeholder = placeholders[tipo]||'';
+
+  openModal('modal-attivita');
+}
+
+// Apre modal attività veloce dalla pipeline (senza lead preselezionato)
+function apriModalAttivitaVeloce(){
+  openModalAttivita();
+}
+
+
 
 async function eliminaLead(id){
   conferma(async()=>{
@@ -4777,6 +4844,11 @@ async function salvaAttivita(){
   }
   closeModal('modal-attivita');
   aggiornaAttBadge();
+  // Aggiorna feed nel pannello dettaglio lead se aperto
+  if(leadId){
+    const feedEl = document.getElementById('att-lead-'+leadId);
+    if(feedEl) feedEl.innerHTML = renderAttivitaPerEntita('lead', leadId);
+  }
   if(document.getElementById('page-attivita').classList.contains('active')) renderPageAttivita();
   showSave();
 }
@@ -4816,14 +4888,85 @@ async function eliminaAttivita(id){
   });
 }
 
-function renderAttivitaPerEntita(tipo,id){
-  const list=(state.attivita||[]).filter(a=>a.collegata_tipo===tipo&&a.collegata_id===id&&!a.completata);
-  if(!list.length) return '<div class="empty-state" style="padding:10px 0"><p>Nessuna attività</p></div>';
-  return list.sort((a,b)=>{
-    const ord={scaduta:0,oggi:1,futura:2};
-    return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
-  }).map(a=>renderAttItem(a,false)).join('');
+function renderAttivitaPerEntita(tipo, id){
+  const list = (state.attivita||[]).filter(a=>
+    (a.collegata_tipo===tipo && a.collegata_id===id) ||
+    (tipo==='lead' && a.lead_id===id)
+  ).sort((a,b)=> new Date(b.created_at||0) - new Date(a.created_at||0));
+
+  if(!list.length) return `
+    <div style="padding:18px 0;text-align:center;color:var(--text-3);font-size:13px">
+      <i class="ti ti-activity" style="font-size:26px;display:block;margin-bottom:8px;opacity:0.3"></i>
+      Nessuna attività ancora — usa i pulsanti sopra per iniziare
+    </div>`;
+
+  const icnMap = {chiamata:'ti-phone',email:'ti-mail',ordine:'ti-package',nota:'ti-note'};
+  const colorMap = {chiamata:'var(--blue)',email:'var(--orange)',ordine:'var(--green)',nota:'var(--gold)'};
+  const labelMap = {chiamata:'Chiamata',email:'Email',ordine:'Ordine',nota:'Nota'};
+
+  return `<div style="position:relative;padding-left:28px">
+    <!-- Linea verticale timeline -->
+    <div style="position:absolute;left:11px;top:8px;bottom:8px;width:2px;background:var(--border)"></div>
+    ${list.map((a,i)=>{
+      const {cls,txt} = attDataLabel(a.data_scadenza||a.scadenza);
+      const icn = icnMap[a.tipo]||'ti-checkbox';
+      const col = colorMap[a.tipo]||'var(--brand)';
+      const lab = labelMap[a.tipo]||a.tipo;
+      const data_crea = a.created_at ? new Date(a.created_at).toLocaleDateString('it-IT',{day:'2-digit',month:'short',hour:'2-digit',minute:'2-digit'}) : '';
+      const completata = a.completata;
+      return `
+      <div style="position:relative;margin-bottom:${i<list.length-1?'14px':'0'};${completata?'opacity:0.5':''}">
+        <!-- Pallino timeline -->
+        <div style="position:absolute;left:-22px;top:10px;width:22px;height:22px;border-radius:50%;background:${completata?'var(--surface-2)':col};display:flex;align-items:center;justify-content:center;border:2px solid ${completata?'var(--border)':col}">
+          <i class="ti ${completata?'ti-check':icn}" style="font-size:11px;color:${completata?'var(--text-3)':'#fff'}"></i>
+        </div>
+        <!-- Card attività -->
+        <div style="background:var(--surface-2);border-radius:var(--r);padding:10px 12px;border-left:3px solid ${completata?'var(--border)':col}">
+          <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+            <div style="flex:1;min-width:0">
+              <div style="display:flex;align-items:center;gap:6px;margin-bottom:3px">
+                <span style="font-size:11px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:0.4px">${lab}</span>
+                ${completata?'<span style="font-size:10px;background:#dcfce7;color:var(--green);padding:1px 6px;border-radius:99px;font-weight:700">✓ Fatto</span>':''}
+              </div>
+              <div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:${a.note?'4px':'0'};${completata?'text-decoration:line-through':''}">${a.titolo||lab}</div>
+              ${a.note?`<div style="font-size:12px;color:var(--text-2);white-space:pre-line">${a.note}</div>`:''}
+            </div>
+            <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
+              ${a.data_scadenza?`<span style="font-size:10px;font-weight:600;color:${cls==='scaduta'?'var(--red)':cls==='oggi'?'var(--orange)':'var(--text-3)'};background:${cls==='scaduta'?'#fee2e2':cls==='oggi'?'#fef3c7':'var(--surface-2)'};padding:2px 6px;border-radius:99px">${cls==='scaduta'?'⚠ '+txt:cls==='oggi'?'Oggi':txt}</span>`:''}
+              <div style="display:flex;gap:4px">
+                ${!completata?`<button class="btn btn-sm btn-icon" onclick="completaAttivitaLead(${a.id},${id})" title="Segna come fatto" style="padding:3px 6px"><i class="ti ti-check" style="color:var(--green);font-size:13px"></i></button>`:''}
+                <button class="btn btn-sm btn-icon btn-danger" onclick="eliminaAttivitaLead(${a.id},${id})" title="Elimina" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:13px"></i></button>
+              </div>
+            </div>
+          </div>
+          ${data_crea?`<div style="font-size:10px;color:var(--text-3);margin-top:5px">${data_crea}</div>`:''}
+        </div>
+      </div>`;}
+    ).join('')}
+  </div>`;
 }
+
+async function completaAttivitaLead(attId, leadId){
+  await api.put('/api/attivita/'+attId, {completata:true});
+  if(state.attivita){ const a=state.attivita.find(x=>x.id===attId); if(a) a.completata=true; }
+  aggiornaAttBadge();
+  // Aggiorna il feed nel pannello dettaglio
+  const feedEl = document.getElementById('att-lead-'+leadId);
+  if(feedEl) feedEl.innerHTML = renderAttivitaPerEntita('lead', leadId);
+  showSave();
+}
+
+async function eliminaAttivitaLead(attId, leadId){
+  conferma(async()=>{
+    await api.del('/api/attivita/'+attId);
+    state.attivita = (state.attivita||[]).filter(a=>a.id!==attId);
+    aggiornaAttBadge();
+    const feedEl = document.getElementById('att-lead-'+leadId);
+    if(feedEl) feedEl.innerHTML = renderAttivitaPerEntita('lead', leadId);
+    showSave();
+  });
+}
+
 
 // ── WHATSAPP ──────────────────────────────────────────────────────────────
 let waChats = [];
