@@ -337,6 +337,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section-items" id="sec-principale">
       <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
       <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
+      <div class="nav-item" onclick="showPage('fornitori')" id="nav-fornitori"><i class="ti ti-building-factory-2"></i><span>Fornitori</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-vendita')"><span>Vendita</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-vendita">
@@ -492,6 +493,25 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
     </div>
+    <!-- FORNITORI -->
+    <div class="page" id="page-fornitori">
+      <div class="page-header">
+        <div class="page-title">Fornitori</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="btn-importa-fic-fornitori" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
+          <button class="btn btn-primary" onclick="apriModalNuovoFornitore()"><i class="ti ti-plus"></i>Nuovo fornitore</button>
+        </div>
+      </div>
+      <div class="search-bar-wrap" style="margin:0 auto 18px">
+        <div class="search-bar-box">
+          <i class="ti ti-search search-icon"></i>
+          <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
+          <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
+    </div>
+
     <div class="page" id="page-ordini">
       <div class="page-header">
         <div class="page-title">Ordini</div>
@@ -1406,14 +1426,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
+  admin:       {dashboard:true,pipeline:true,clienti:true,fornitori:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
+  commerciale: {dashboard:true,pipeline:true,clienti:true,fornitori:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
+  contabile:   {dashboard:true,pipeline:false,clienti:false,fornitori:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
+  magazzino:   {dashboard:true,pipeline:false,clienti:false,fornitori:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',fornitori:'Fornitori',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
 
 let currentUser = null;
 let usersDB = [
@@ -1572,7 +1592,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
+  ['pipeline','clienti','fornitori','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -1592,6 +1612,7 @@ function showPage(id){
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline'){ initPipelinePage(); }
   if(id==='clienti')renderClienti();
+  if(id==='fornitori')renderFornitori();
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
   if(id==='dashboard')renderDash();
@@ -1982,8 +2003,72 @@ async function eliminaFaseConCheck(id){
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
+// Filtra solo clienti (non fornitori)
+function renderClienti(){
+  const q=(document.getElementById('search-clienti')?.value||'').toLowerCase();
+  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
+  const cnt=document.getElementById('clienti-count');
+  const soloClienti=(state.clienti||[]).filter(c=>c.tipo!=='fornitore');
+  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloClienti.length} clienti`;
+  const tb=document.getElementById('tbl-clienti'); if(!tb)return; tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
+  list.forEach(c=>{
+    const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
+    const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
+    tr.innerHTML=`
+      <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
+      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
+      <td>${c.citta||'—'}</td>
+      <td>${c.tel||'—'}</td>
+      <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
+        <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
 
-// ── IMPORTAZIONE DA FATTURE IN CLOUD ─────────────────────────────────────
+// ── FORNITORI ─────────────────────────────────────────────────────────────
+function renderFornitori(){
+  const q=(document.getElementById('search-fornitori')?.value||'').toLowerCase();
+  const list=(state.clienti||[]).filter(c=>c.tipo==='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.piva||'').includes(q)||(c.tel||'').includes(q)||(c.codice||'').toLowerCase().includes(q)));
+  const cnt=document.getElementById('fornitori-count');
+  const soloFornitori=(state.clienti||[]).filter(c=>c.tipo==='fornitore');
+  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloFornitori.length} fornitori`;
+  const tb=document.getElementById('tbl-fornitori'); if(!tb)return; tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun fornitore trovato</div></td></tr>';return;}
+  list.forEach(c=>{
+    const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
+    const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
+    tr.innerHTML=`
+      <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--orange);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
+      <td><div class="flex-row"><div class="avatar" style="background:var(--orange)">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
+      <td>${c.citta||'—'}</td>
+      <td>${c.tel||'—'}</td>
+      <td style="font-size:12px;color:var(--text-2)">${c.piva||'—'}</td>
+      <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>`;
+    tb.appendChild(tr);
+  });
+}
+
+function apriModalNuovoFornitore(){
+  // Riusa il modal cliente ma imposta il tipo fornitore
+  openModal('modal-cliente');
+  // Imposta un campo nascosto per il tipo — gestiamo tramite titolo modal
+  const title = document.querySelector('#modal-cliente .modal-title');
+  if(title) title.textContent = 'Nuovo fornitore';
+  // Salviamo il tipo come attributo nel modal
+  document.getElementById('modal-cliente').dataset.tipo = 'fornitore';
+}
+
+
 async function importaClientiDaFic(){
   const btn = document.getElementById('btn-importa-fic');
   if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Importazione...'; }
@@ -2548,7 +2633,9 @@ function selezionaAziendaGoogle(prefix, idx){
 // ── SALVA CLIENTE ─────────────────────────────────────────────────────────
 async function salvaCliente(){
   const nome=document.getElementById('cl-nome').value.trim(); if(!nome)return alert('Inserisci la ragione sociale');
+  const tipoModal = document.getElementById('modal-cliente').dataset.tipo || 'cliente';
   const data=await api.post('/api/clienti',{
+    tipo:tipoModal,
     nome, ref:document.getElementById('cl-ref').value,
     tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
     citta:document.getElementById('cl-citta').value,
@@ -2560,7 +2647,13 @@ async function salvaCliente(){
     prod:document.getElementById('cl-prod').value, note:document.getElementById('cl-note').value
   });
   if(!data.error) state.clienti.push(data);
-  closeModal('modal-cliente'); renderClienti(); renderDash(); showSave();
+  // Reset tipo nel modal
+  document.getElementById('modal-cliente').dataset.tipo = 'cliente';
+  const title = document.querySelector('#modal-cliente .modal-title');
+  if(title) title.textContent = 'Nuovo cliente';
+  closeModal('modal-cliente');
+  if(tipoModal==='fornitore') renderFornitori(); else renderClienti();
+  renderDash(); showSave();
   ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
