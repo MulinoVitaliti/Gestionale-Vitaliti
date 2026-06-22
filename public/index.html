@@ -452,14 +452,22 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
         <button class="btn btn-primary" onclick="openModalAttivita()"><i class="ti ti-plus"></i>Nuova attività</button>
       </div>
-      <div class="pills">
+
+      <!-- Filtri tipo -->
+      <div class="pills" style="margin-bottom:14px">
         <div class="pill active" onclick="filterAttivita('tutte',this)">Tutte</div>
         <div class="pill" onclick="filterAttivita('oggi',this)"><span class="status-dot" style="background:var(--green)"></span>Oggi</div>
         <div class="pill" onclick="filterAttivita('scadute',this)"><span class="status-dot" style="background:var(--red)"></span>Scadute</div>
-        <div class="pill" onclick="filterAttivita('future',this)"><span class="status-dot" style="background:var(--text-3)"></span>Future</div>
+        <div class="pill" onclick="filterAttivita('chiamata',this)">📞 Chiamate</div>
+        <div class="pill" onclick="filterAttivita('email',this)">✉️ Email</div>
+        <div class="pill" onclick="filterAttivita('ordine',this)">📦 Ordini</div>
+        <div class="pill" onclick="filterAttivita('nota',this)">📝 Note</div>
       </div>
-      <div style="display:grid;gap:8px" id="att-list-page"></div>
+
+      <!-- Lista raggruppata per pipeline -->
+      <div id="att-list-page"></div>
     </div>
+
     <!-- TASK -->
     <div class="page" id="page-task">
       <div class="page-header">
@@ -1263,25 +1271,34 @@ tbody tr:hover{background:var(--surface-2)}
     <input type="hidden" id="att-id">
     <input type="hidden" id="att-ref-tipo">
     <input type="hidden" id="att-ref-id">
+    <!-- Tipo attività -->
     <div class="form-group"><label class="form-label">Tipo attività</label>
       <div style="display:flex;gap:8px;margin-top:4px">
         <button class="btn" id="att-btn-chiamata" onclick="setTipoAtt('chiamata')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-phone" style="font-size:18px;color:var(--blue)"></i><span style="font-size:11px">Chiamata</span></button>
         <button class="btn" id="att-btn-email" onclick="setTipoAtt('email')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-mail" style="font-size:18px;color:var(--orange)"></i><span style="font-size:11px">Email</span></button>
-        <button class="btn" id="att-btn-nota" onclick="setTipoAtt('nota')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-note" style="font-size:18px;color:var(--gold)"></i><span style="font-size:11px">Nota</span></button>
         <button class="btn" id="att-btn-ordine" onclick="setTipoAtt('ordine')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-package" style="font-size:18px;color:var(--green)"></i><span style="font-size:11px">Ordine</span></button>
+        <button class="btn" id="att-btn-nota" onclick="setTipoAtt('nota')" style="flex:1;flex-direction:column;gap:3px;padding:10px 6px"><i class="ti ti-note" style="font-size:18px;color:var(--gold)"></i><span style="font-size:11px">Nota</span></button>
       </div>
       <input type="hidden" id="att-tipo" value="chiamata">
     </div>
-    <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" placeholder="Es. Chiamata di follow-up"></div>
+    <!-- Pipeline → Lead (obbligatorio) -->
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Data scadenza *</label><input type="date" id="att-data"></div>
-      <div class="form-group"><label class="form-label">Collegata a</label>
-        <select id="att-collegata">
-          <option value="">— nessuna —</option>
-          <optgroup label="Lead pipeline" id="att-opt-leads"></optgroup>
-          <optgroup label="Clienti" id="att-opt-clienti"></optgroup>
+      <div class="form-group">
+        <label class="form-label">Pipeline *</label>
+        <select id="att-pipeline" onchange="onAttPipelineChange()">
+          <option value="">— seleziona pipeline —</option>
         </select>
       </div>
+      <div class="form-group">
+        <label class="form-label">Lead *</label>
+        <select id="att-lead">
+          <option value="">— seleziona prima la pipeline —</option>
+        </select>
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" placeholder="Es. Chiamata di follow-up"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Data scadenza</label><input type="date" id="att-data"></div>
     </div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="att-note" style="min-height:60px"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-attivita')">Annulla</button><button class="btn btn-primary" onclick="salvaAttivita()"><i class="ti ti-check"></i>Salva</button></div>
@@ -4591,10 +4608,11 @@ function attDataLabel(data){
   return {cls:s,txt};
 }
 
-function renderAttItem(a, showCollegata=true){
+function renderAttItem(a, showLead=true){
   const {cls,txt}=attDataLabel(a.data_scadenza||a.scadenza);
   const icn=ATT_ICONS[a.tipo]||'ti-checkbox';
-  const collegataStr = showCollegata&&a.collegata_nome ? `<span style="font-size:11px;color:var(--text-2)"><i class="ti ti-link" style="font-size:10px"></i> ${a.collegata_nome}</span>` : '';
+  const leadStr = showLead&&(a.lead_nome||a.collegata_nome) ?
+    `<span style="font-size:11px;color:var(--text-2)"><i class="ti ti-user" style="font-size:10px"></i> ${a.lead_nome||a.collegata_nome}</span>` : '';
   return `<div class="att-item">
     <div class="att-icon ${a.tipo}"><i class="ti ${icn}"></i></div>
     <div class="att-body">
@@ -4604,7 +4622,7 @@ function renderAttItem(a, showCollegata=true){
         <span class="att-date ${cls}">
           <span class="status-dot" style="background:${cls==='oggi'?'var(--green)':cls==='scaduta'?'var(--red)':'var(--text-3)'}"></span>${txt}
         </span>
-        ${collegataStr}
+        ${leadStr}
       </div>
     </div>
     <div class="att-actions">
@@ -4633,44 +4651,93 @@ async function renderPageAttivita(){
   await loadAttivita();
   const list=document.getElementById('att-list-page'); if(!list)return;
   let items=(state.attivita||[]).filter(a=>!a.completata);
+
+  // Filtro tipo/data
   if(attFilter==='oggi') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='oggi');
   else if(attFilter==='scadute') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='scaduta');
-  else if(attFilter==='future') items=items.filter(a=>attScadenza(a.data_scadenza||a.scadenza)==='futura');
-  // Sort: scadute first, then oggi, then future
+  else if(['chiamata','email','ordine','nota'].includes(attFilter)) items=items.filter(a=>a.tipo===attFilter);
+
+  if(!items.length){
+    list.innerHTML='<div class="empty-state"><i class="ti ti-checkbox" style="font-size:34px;margin-bottom:9px;opacity:0.3;display:block"></i><p>Nessuna attività</p></div>';
+    return;
+  }
+
+  // Raggruppa per pipeline
+  const pipelines = state.pipelines||[{id:'default',nome:'Pipeline principale',colore:'var(--brand)'}];
+  const pipelineMap = {};
+  pipelines.forEach(p=>{ pipelineMap[p.id]={...p, items:[]}; });
+  pipelineMap['__nessuna'] = {id:'__nessuna', nome:'Senza pipeline', colore:'var(--text-3)', items:[]};
+
   items.sort((a,b)=>{
     const ord={scaduta:0,oggi:1,futura:2};
     return (ord[attScadenza(a.data_scadenza||a.scadenza)]||2)-(ord[attScadenza(b.data_scadenza||b.scadenza)]||2);
   });
-  if(!items.length){list.innerHTML='<div class="empty-state"><i class="ti ti-checkbox" style="font-size:34px;margin-bottom:9px;opacity:0.3;display:block"></i><p>Nessuna attività</p></div>';return;}
-  list.innerHTML=items.map(a=>`
-    <div class="card" style="padding:0 14px">${renderAttItem(a,true)}</div>
-  `).join('');
+
+  items.forEach(a=>{
+    const pid = a.pipeline_id||'__nessuna';
+    if(!pipelineMap[pid]) pipelineMap[pid] = {id:pid, nome:'Pipeline sconosciuta', colore:'var(--text-3)', items:[]};
+    pipelineMap[pid].items.push(a);
+  });
+
+  const html = Object.values(pipelineMap).filter(p=>p.items.length>0).map(p=>`
+    <div style="margin-bottom:20px">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 12px;background:${p.colore||'var(--brand)'};border-radius:var(--r)">
+        <i class="ti ti-layout-kanban" style="color:#fff;font-size:16px"></i>
+        <span style="font-weight:700;color:#fff;font-size:14px">${p.nome}</span>
+        <span style="background:rgba(255,255,255,0.25);color:#fff;font-size:11px;font-weight:700;padding:2px 8px;border-radius:99px;margin-left:auto">${p.items.length} attività</span>
+      </div>
+      <div style="display:grid;gap:8px;padding-left:4px">
+        ${p.items.map(a=>`<div class="card" style="padding:0 14px">${renderAttItem(a,true)}</div>`).join('')}
+      </div>
+    </div>`).join('');
+
+  list.innerHTML = html || '<div class="empty-state"><p>Nessuna attività</p></div>';
 }
 
 function filterAttivita(f,el){
   attFilter=f;
-  document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));
+  document.querySelectorAll('#page-attivita .pills .pill').forEach(p=>p.classList.remove('active'));
   el.classList.add('active');
   renderPageAttivita();
 }
 
-function openModalAttivita(refTipo='',refId='',refNome=''){
+// Popola pipeline select nel modal
+function popolaPipelineModal(){
+  const sel = document.getElementById('att-pipeline');
+  if(!sel) return;
+  const pipelines = state.pipelines||[{id:'default',nome:'Pipeline principale'}];
+  sel.innerHTML = '<option value="">— seleziona pipeline —</option>' +
+    pipelines.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+}
+
+function onAttPipelineChange(){
+  const pipelineId = document.getElementById('att-pipeline').value;
+  const leadSel = document.getElementById('att-lead');
+  if(!pipelineId){ leadSel.innerHTML='<option value="">— seleziona prima la pipeline —</option>'; return; }
+  const leads = (state.leads||[]).filter(l=>{
+    // Cerca i lead associati alla pipeline tramite lead_pipeline_stato o pipeline_id
+    return l.pipeline_id===pipelineId || (state.leadPipelineStati||[]).find(s=>s.lead_id===l.id&&s.pipeline_id===pipelineId);
+  });
+  // Se non trova lead con pipeline, mostra tutti i lead
+  const tuttiLeads = leads.length>0 ? leads : (state.leads||[]);
+  leadSel.innerHTML = '<option value="">— seleziona lead —</option>' +
+    tuttiLeads.map(l=>`<option value="${l.id}">${l.nome}</option>`).join('');
+}
+
+function openModalAttivita(leadId='', pipelineId=''){
   document.getElementById('att-id').value='';
-  document.getElementById('att-ref-tipo').value=refTipo;
-  document.getElementById('att-ref-id').value=refId;
   document.getElementById('att-titolo').value='';
   document.getElementById('att-note').value='';
   document.getElementById('att-data').value=new Date().toISOString().slice(0,10);
   document.getElementById('modal-att-title').textContent='Nuova attività';
   setTipoAtt('chiamata');
-  // Popola select collegata
-  const optLeads=document.getElementById('att-opt-leads');
-  const optClienti=document.getElementById('att-opt-clienti');
-  optLeads.innerHTML=(state.leads||[]).map(l=>`<option value="lead_${l.id}" ${refTipo==='lead'&&refId==l.id?'selected':''}>${l.nome}</option>`).join('');
-  optClienti.innerHTML=(state.clienti||[]).map(c=>`<option value="cliente_${c.id}" ${refTipo==='cliente'&&refId==c.id?'selected':''}>${c.nome}</option>`).join('');
-  // Se viene da un lead/cliente preseleziona
-  if(refTipo&&refId){
-    document.getElementById('att-collegata').value=refTipo+'_'+refId;
+  popolaPipelineModal();
+  if(pipelineId){
+    document.getElementById('att-pipeline').value=pipelineId;
+    onAttPipelineChange();
+    if(leadId) setTimeout(()=>{ document.getElementById('att-lead').value=leadId; },50);
+  } else {
+    onAttPipelineChange();
   }
   openModal('modal-attivita');
 }
@@ -4679,32 +4746,34 @@ function setTipoAtt(tipo){
   document.getElementById('att-tipo').value=tipo;
   ['chiamata','email','nota','ordine'].forEach(t=>{
     const btn=document.getElementById('att-btn-'+t);
-    if(btn) btn.style.background=t===tipo?'var(--brand-light)':'';
-    if(btn) btn.style.borderColor=t===tipo?'var(--brand)':'';
+    if(btn){ btn.style.background=t===tipo?'var(--brand-light)':''; btn.style.borderColor=t===tipo?'var(--brand)':''; }
   });
 }
 
 async function salvaAttivita(){
   const id=document.getElementById('att-id').value;
   const titolo=document.getElementById('att-titolo').value.trim();
-  if(!titolo)return alert('Inserisci un titolo');
-  const collegata=document.getElementById('att-collegata').value;
-  let collegata_tipo='',collegata_id=null,collegata_nome='';
-  if(collegata){
-    const parts=collegata.split('_');
-    collegata_tipo=parts[0];
-    collegata_id=parseInt(parts[1]);
-    const ref=collegata_tipo==='lead'?(state.leads||[]).find(x=>x.id===collegata_id):(state.clienti||[]).find(x=>x.id===collegata_id);
-    if(ref) collegata_nome=ref.nome;
-  }
-  const body={tipo:document.getElementById('att-tipo').value,titolo,note:document.getElementById('att-note').value,data_scadenza:document.getElementById('att-data').value,collegata_tipo,collegata_id,collegata_nome,completata:false};
+  if(!titolo) return alert('Inserisci un titolo');
+  const leadId = parseInt(document.getElementById('att-lead').value)||null;
+  const pipelineId = document.getElementById('att-pipeline').value||null;
+  if(!leadId) return alert('Seleziona un lead dalla pipeline');
+  const lead = (state.leads||[]).find(l=>l.id===leadId);
+  const pipeline = (state.pipelines||[]).find(p=>p.id===pipelineId);
+  const body={
+    tipo:document.getElementById('att-tipo').value,
+    titolo, note:document.getElementById('att-note').value,
+    data_scadenza:document.getElementById('att-data').value||null,
+    lead_id:leadId, pipeline_id:pipelineId,
+    collegata_tipo:'lead', collegata_id:leadId, collegata_nome:lead?.nome||'',
+    completata:false
+  };
   if(id){
     await api.put('/api/attivita/'+id,body);
     const idx=(state.attivita||[]).findIndex(a=>a.id===parseInt(id));
-    if(idx>=0) state.attivita[idx]=Object.assign(state.attivita[idx],body);
+    if(idx>=0) state.attivita[idx]=Object.assign(state.attivita[idx],body,{lead_nome:lead?.nome});
   } else {
     const data=await api.post('/api/attivita',body);
-    if(!data.error){state.attivita=state.attivita||[];state.attivita.unshift(data);}
+    if(!data.error){ state.attivita=state.attivita||[]; state.attivita.unshift({...data,lead_nome:lead?.nome}); }
   }
   closeModal('modal-attivita');
   aggiornaAttBadge();
@@ -4728,11 +4797,12 @@ function editAttivita(id){
   document.getElementById('att-data').value=(a.data_scadenza||a.scadenza||'').slice(0,10);
   document.getElementById('modal-att-title').textContent='Modifica attività';
   setTipoAtt(a.tipo||'chiamata');
-  const optLeads=document.getElementById('att-opt-leads');
-  const optClienti=document.getElementById('att-opt-clienti');
-  optLeads.innerHTML=(state.leads||[]).map(l=>`<option value="lead_${l.id}">${l.nome}</option>`).join('');
-  optClienti.innerHTML=(state.clienti||[]).map(c=>`<option value="cliente_${c.id}">${c.nome}</option>`).join('');
-  if(a.collegata_tipo&&a.collegata_id) document.getElementById('att-collegata').value=a.collegata_tipo+'_'+a.collegata_id;
+  popolaPipelineModal();
+  if(a.pipeline_id){
+    document.getElementById('att-pipeline').value=a.pipeline_id;
+    onAttPipelineChange();
+    setTimeout(()=>{ if(a.lead_id) document.getElementById('att-lead').value=a.lead_id; },50);
+  }
   openModal('modal-attivita');
 }
 
