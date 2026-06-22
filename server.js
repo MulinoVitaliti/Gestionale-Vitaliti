@@ -68,6 +68,8 @@ async function initDB() {
         email TEXT,
         citta TEXT,
         ind TEXT,
+        sdi TEXT,
+        pec TEXT,
         prod TEXT,
         note TEXT,
         created_at TIMESTAMP DEFAULT NOW()
@@ -691,17 +693,17 @@ app.get('/api/clienti', async (req, res) => {
 });
 
 app.post('/api/clienti', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, prod, note } = req.body;
+  const { nome, ref, tel, email, citta, ind, sdi, pec, prod, note } = req.body;
   try {
-    const r = await pool.query('INSERT INTO clienti (nome,ref,tel,email,citta,ind,prod,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [nome, ref, tel, email, citta, ind, prod, note]);
+    const r = await pool.query('INSERT INTO clienti (nome,ref,tel,email,citta,ind,sdi,pec,prod,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [nome, ref, tel, email, citta, ind, sdi||null, pec||null, prod, note]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/clienti/:id', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, prod, note } = req.body;
+  const { nome, ref, tel, email, citta, ind, sdi, pec, prod, note } = req.body;
   try {
-    await pool.query('UPDATE clienti SET nome=$1,ref=$2,tel=$3,email=$4,citta=$5,ind=$6,prod=$7,note=$8 WHERE id=$9', [nome, ref, tel, email, citta, ind, prod, note, req.params.id]);
+    await pool.query('UPDATE clienti SET nome=$1,ref=$2,tel=$3,email=$4,citta=$5,ind=$6,sdi=$7,pec=$8,prod=$9,note=$10 WHERE id=$11', [nome, ref, tel, email, citta, ind, sdi||null, pec||null, prod, note, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
