@@ -490,7 +490,7 @@ tbody tr:hover{background:var(--surface-2)}
           <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
         </div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+      <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
     </div>
     <div class="page" id="page-ordini">
       <div class="page-header">
@@ -2074,16 +2074,39 @@ function aggiornaConflittiBadge(n){
 
 function renderClienti(){
   const q=(document.getElementById('search-clienti').value||'').toLowerCase();
-  const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q));
+  const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q));
   const cnt=document.getElementById('clienti-count');
   if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${state.clienti.length} clienti`;
   const tb=document.getElementById('tbl-clienti'); tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
     const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
-    tr.innerHTML=`<td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td><td>${c.citta||'—'}</td><td>${c.tel||'—'}</td><td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td><td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="apriDettaglio(${c.id})" style="margin-right:4px"><i class="ti ti-eye"></i></button><button class="btn btn-sm" onclick="editCliente(${c.id})"><i class="ti ti-pencil"></i></button></td>`;
+    tr.innerHTML=`
+      <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
+      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
+      <td>${c.citta||'—'}</td>
+      <td>${c.tel||'—'}</td>
+      <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
+        <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>`;
     tb.appendChild(tr);
+  });
+}
+
+async function eliminaCliente(id, nome){
+  conferma(async()=>{
+    try{
+      await api.del('/api/clienti/'+id);
+      state.clienti = state.clienti.filter(c=>c.id!==id);
+      renderClienti();
+      renderDash();
+      showSave();
+    }catch(e){ alert('Errore di rete: '+e.message); }
   });
 }
 function apriDettaglio(id){
