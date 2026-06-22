@@ -68,10 +68,22 @@ async function initDB() {
         email TEXT,
         citta TEXT,
         ind TEXT,
+        ind_legale TEXT,
+        ind_consegna TEXT,
         sdi TEXT,
         pec TEXT,
+        piva TEXT,
         prod TEXT,
         note TEXT,
+        fic_id INTEGER,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS fic_conflitti (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER REFERENCES clienti(id) ON DELETE CASCADE,
+        fic_data JSONB NOT NULL,
+        stato TEXT DEFAULT 'pending',
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -693,17 +705,23 @@ app.get('/api/clienti', async (req, res) => {
 });
 
 app.post('/api/clienti', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, sdi, pec, prod, note } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id } = req.body;
   try {
-    const r = await pool.query('INSERT INTO clienti (nome,ref,tel,email,citta,ind,sdi,pec,prod,note) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [nome, ref, tel, email, citta, ind, sdi||null, pec||null, prod, note]);
+    const r = await pool.query(
+      'INSERT INTO clienti (nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
+    );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/clienti/:id', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, sdi, pec, prod, note } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note } = req.body;
   try {
-    await pool.query('UPDATE clienti SET nome=$1,ref=$2,tel=$3,email=$4,citta=$5,ind=$6,sdi=$7,pec=$8,prod=$9,note=$10 WHERE id=$11', [nome, ref, tel, email, citta, ind, sdi||null, pec||null, prod, note, req.params.id]);
+    await pool.query(
+      'UPDATE clienti SET nome=$1,ref=$2,tel=$3,email=$4,citta=$5,ind=$6,ind_legale=$7,ind_consegna=$8,sdi=$9,pec=$10,piva=$11,prod=$12,note=$13 WHERE id=$14',
+      [nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
+    );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -715,7 +733,105 @@ app.delete('/api/clienti/:id', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// ── ORDINI API ────────────────────────────────────────────────────────────
+// ── IMPORTAZIONE CLIENTI DA FATTURE IN CLOUD ─────────────────────────────
+app.post('/api/clienti/importa-fic', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
+  try {
+    // Recupera tutti i clienti da FIC (con paginazione se necessario)
+    let tuttiClienti = [];
+    let page = 1;
+    while (true) {
+      const r = await ficFetch(`/c/${ficCompanyId}/entities/clients?per_page=100&page=${page}`);
+      const data = await r.json();
+      if (!r.ok) return res.json({ error: data.error?.message || 'Errore FIC' });
+      const items = data.data || [];
+      tuttiClienti = tuttiClienti.concat(items);
+      if (!data.next_page_url || items.length < 100) break;
+      page++;
+    }
+
+    let importati = 0, conflitti = 0, saltati = 0;
+
+    for (const c of tuttiClienti) {
+      if (!c.name) continue;
+      const piva = c.vat_number || c.tax_code || null;
+      const indirizzo = [c.address_street, c.address_city, c.address_postal_code, c.address_province].filter(Boolean).join(', ');
+
+      if (piva) {
+        // Cerca per P.IVA
+        const esistente = await pool.query('SELECT id, nome FROM clienti WHERE piva=$1', [piva]);
+        if (esistente.rows.length > 0) {
+          // Conflitto: cliente già esistente con stessa P.IVA
+          const ficData = { nome:c.name, piva, sdi:c.ei_code||null, pec:c.certified_email||null, email:c.email||null, tel:c.phone||null, ind_legale:indirizzo, fic_id:c.id };
+          // Upsert conflitto (evita duplicati se già in coda)
+          await pool.query(
+            `INSERT INTO fic_conflitti (cliente_id, fic_data, stato)
+             VALUES ($1,$2,'pending')
+             ON CONFLICT DO NOTHING`,
+            [esistente.rows[0].id, JSON.stringify(ficData)]
+          );
+          conflitti++;
+          continue;
+        }
+      } else {
+        // Senza P.IVA, cerca per nome esatto
+        const esistente = await pool.query('SELECT id FROM clienti WHERE LOWER(nome)=LOWER($1)', [c.name]);
+        if (esistente.rows.length > 0) { saltati++; continue; }
+      }
+
+      // Cliente nuovo — importa direttamente
+      await pool.query(
+        'INSERT INTO clienti (nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) ON CONFLICT DO NOTHING',
+        [c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
+      );
+      importati++;
+    }
+
+    res.json({ totale: tuttiClienti.length, importati, conflitti, saltati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── GESTIONE CONFLITTI ────────────────────────────────────────────────────
+app.get('/api/clienti/conflitti', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT f.id, f.fic_data, f.stato, f.created_at,
+             c.id as cliente_id, c.nome as cliente_nome, c.piva as cliente_piva,
+             c.email as cliente_email, c.tel as cliente_tel, c.ind_legale as cliente_ind
+      FROM fic_conflitti f
+      JOIN clienti c ON c.id = f.cliente_id
+      WHERE f.stato = 'pending'
+      ORDER BY f.created_at DESC
+    `);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Unisci: aggiorna il cliente con i dati di FIC
+app.post('/api/clienti/conflitti/:id/unisci', async (req, res) => {
+  try {
+    const conflitto = await pool.query('SELECT * FROM fic_conflitti WHERE id=$1', [req.params.id]);
+    if (!conflitto.rows.length) return res.json({ error: 'Conflitto non trovato' });
+    const { cliente_id, fic_data } = conflitto.rows[0];
+    const d = typeof fic_data === 'string' ? JSON.parse(fic_data) : fic_data;
+    await pool.query(
+      `UPDATE clienti SET nome=$1,piva=$2,sdi=$3,pec=$4,email=$5,tel=$6,ind_legale=$7,fic_id=$8 WHERE id=$9`,
+      [d.nome, d.piva, d.sdi, d.pec, d.email, d.tel, d.ind_legale, d.fic_id, cliente_id]
+    );
+    await pool.query('UPDATE fic_conflitti SET stato=$1 WHERE id=$2', ['risolto', req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Ignora: mantieni i dati esistenti, marca il conflitto come ignorato
+app.post('/api/clienti/conflitti/:id/ignora', async (req, res) => {
+  try {
+    await pool.query('UPDATE fic_conflitti SET stato=$1 WHERE id=$2', ['ignorato', req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+
 app.get('/api/ordini', async (req, res) => {
   try {
     const r = await pool.query('SELECT * FROM ordini ORDER BY created_at DESC');
