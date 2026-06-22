@@ -260,6 +260,19 @@ tbody tr:hover{background:var(--surface-2)}
 .storico-item:last-child{border-bottom:none}
 .flex-row{display:flex;align-items:center;gap:8px}
 .avatar{width:30px;height:30px;border-radius:50%;background:var(--brand-light);color:var(--brand);display:inline-flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0}
+@keyframes strikethrough{from{width:0}to{width:100%}}
+@keyframes taskComplete{0%{transform:scale(1)}30%{transform:scale(1.08)}100%{transform:scale(1)}}
+@keyframes fadeInUp{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+@keyframes streakPulse{0%,100%{transform:scale(1)}50%{transform:scale(1.2)}}
+.dash-task-item{display:flex;align-items:center;gap:12px;padding:10px 13px;border-radius:var(--r);background:var(--surface-2);transition:background .15s,box-shadow .15s;animation:fadeInUp .3s ease both}
+.dash-task-item:hover{background:#f0ede9;box-shadow:var(--shadow-sm)}
+.dash-task-item.completed{background:#f0fdf4}
+.dash-task-check{width:22px;height:22px;border-radius:50%;border:2px solid var(--border-strong);display:flex;align-items:center;justify-content:center;cursor:pointer;flex-shrink:0;transition:all .2s;background:#fff}
+.dash-task-check.checked{background:var(--green);border-color:var(--green)}
+.dash-task-title{flex:1;font-size:13px;font-weight:600;color:var(--text);position:relative;overflow:hidden}
+.dash-task-title.struck::after{content:'';position:absolute;top:50%;left:0;height:2px;background:var(--green);animation:strikethrough .3s ease forwards}
+.dash-task-title.struck{color:var(--text-3)}
+.confetti-container{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999}
 @media(max-width:900px){.metrics-4{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.quick-actions{grid-template-columns:1fr 1fr}}
 @media(max-width:680px){.sidebar{width:50px}.s-logo-text,.s-section,.nav-item span,.s-user-name,.s-user-role,.s-version{display:none}.nav-item{justify-content:center;padding:8px;margin:2px 4px}.s-user{justify-content:center}.page{padding:12px}.metrics-4,.metrics-3{grid-template-columns:1fr 1fr}.detail-panel{width:100vw}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
@@ -379,13 +392,42 @@ tbody tr:hover{background:var(--surface-2)}
         <div id="dash-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-md);z-index:100;max-height:380px;overflow-y:auto"></div>
       </div>
 
-      <!-- Task -->
-      <div class="card" style="cursor:pointer;margin-bottom:14px" onclick="showPage('task')">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
-          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
+      <!-- Task del Giorno - Focus Giornaliero -->
+      <div class="card" style="margin-bottom:14px;overflow:hidden">
+        <!-- Header motivazionale -->
+        <div style="background:linear-gradient(135deg,var(--brand) 0%,#c0572e 100%);padding:14px 18px;color:#fff">
+          <div style="display:flex;justify-content:space-between;align-items:center">
+            <div>
+              <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;opacity:0.85;margin-bottom:3px">Focus del giorno</div>
+              <div style="font-size:16px;font-weight:700" id="dash-task-greeting">Ciao! Scegli le tue 3 sfide di oggi</div>
+            </div>
+            <div id="dash-streak-widget" style="text-align:center;background:rgba(255,255,255,0.18);border-radius:12px;padding:8px 14px;cursor:pointer" onclick="showPage('task')" title="Vai alla bacheca task">
+              <div style="font-size:22px" id="dash-streak-icon">🔥</div>
+              <div style="font-size:11px;font-weight:700;margin-top:2px" id="dash-streak-label">0 giorni</div>
+            </div>
+          </div>
         </div>
-        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
+
+        <div class="card-body" style="padding:14px 16px" onclick="event.stopPropagation()">
+          <!-- Progress bar -->
+          <div style="margin-bottom:14px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+              <span style="font-size:12px;font-weight:600;color:var(--text-2)" id="dash-task-progress-label">Scegli i tuoi task del giorno</span>
+              <span style="font-size:12px;font-weight:700;color:var(--brand)" id="dash-task-progress-count"></span>
+            </div>
+            <div style="height:7px;background:var(--surface-2);border-radius:99px;overflow:hidden">
+              <div id="dash-task-progress-bar" style="height:100%;width:0%;background:linear-gradient(90deg,var(--brand),#e8734a);border-radius:99px;transition:width .5s cubic-bezier(.4,0,.2,1)"></div>
+            </div>
+          </div>
+
+          <!-- Lista 3 task del giorno -->
+          <div id="dash-task-daily" style="display:flex;flex-direction:column;gap:8px;margin-bottom:12px"></div>
+
+          <!-- Link alla bacheca -->
+          <div style="text-align:right">
+            <span onclick="showPage('task')" style="font-size:12px;color:var(--brand);cursor:pointer;font-weight:600"><i class="ti ti-list-check" style="font-size:13px;vertical-align:-2px"></i> Vai alla bacheca task →</span>
+          </div>
+        </div>
       </div>
 
       <!-- Metriche -->
@@ -5111,84 +5153,206 @@ function renderTaskBoard(){
   });
 }
 
+// ── STREAK MANAGEMENT ─────────────────────────────────────────────────────
+function getStreakData() {
+  try {
+    return JSON.parse(localStorage.getItem('vv_streak_'+( currentUser?.username||'x')) || '{"days":0,"lastDate":""}');
+  } catch(e) { return {days:0, lastDate:''}; }
+}
+function saveStreakData(data) {
+  try { localStorage.setItem('vv_streak_'+(currentUser?.username||'x'), JSON.stringify(data)); } catch(e) {}
+}
+function aggiornaStreak(tutteCompletate) {
+  const oggi = new Date().toISOString().slice(0,10);
+  const data = getStreakData();
+  if (tutteCompletate) {
+    if (data.lastDate === oggi) {
+      // già aggiornato oggi, non fare nulla
+    } else {
+      const ieri = new Date(); ieri.setDate(ieri.getDate()-1);
+      const ieriStr = ieri.toISOString().slice(0,10);
+      if (data.lastDate === ieriStr) {
+        data.days = (data.days||0) + 1; // continua la scia
+      } else if (data.lastDate !== oggi) {
+        data.days = 1; // ricomincia
+      }
+      data.lastDate = oggi;
+      saveStreakData(data);
+    }
+  }
+  return data;
+}
+
+// ── CONFETTI ───────────────────────────────────────────────────────────────
+function lanceConfetti(originEl) {
+  const container = document.createElement('div');
+  container.className = 'confetti-container';
+  document.body.appendChild(container);
+  const colors = ['#A8412A','#f59e0b','#10b981','#6366f1','#ec4899','#f97316'];
+  const rect = originEl ? originEl.getBoundingClientRect() : {left: window.innerWidth/2, top: window.innerHeight/2};
+  for (let i = 0; i < 40; i++) {
+    const c = document.createElement('div');
+    const color = colors[Math.floor(Math.random()*colors.length)];
+    const size = Math.random()*8+4;
+    const angle = Math.random()*360;
+    const distance = Math.random()*200+80;
+    const dx = Math.cos(angle*Math.PI/180)*distance;
+    const dy = Math.sin(angle*Math.PI/180)*distance - 80;
+    c.style.cssText = `position:absolute;width:${size}px;height:${size}px;background:${color};
+      border-radius:${Math.random()>0.5?'50%':'2px'};
+      left:${rect.left + rect.width/2}px;top:${rect.top}px;
+      animation:none;transition:all ${0.6+Math.random()*0.4}s cubic-bezier(.25,.46,.45,.94);
+      transform:rotate(${Math.random()*360}deg);opacity:1`;
+    container.appendChild(c);
+    setTimeout(()=>{
+      c.style.transform = `translate(${dx}px,${dy}px) rotate(${Math.random()*720}deg)`;
+      c.style.opacity = '0';
+    }, 10+i*5);
+  }
+  setTimeout(()=>container.remove(), 1200);
+}
+
+// ── TASK GIORNALIERI (3 task del giorno) ──────────────────────────────────
+let _dailyTaskIds = []; // IDs dei 3 task selezionati per oggi
+let _dailyTaskChecked = {}; // completati oggi nella dashboard
+
+function getDailyTaskKey() {
+  const oggi = new Date().toISOString().slice(0,10);
+  return 'vv_daily_'+(currentUser?.username||'x')+'_'+oggi;
+}
+function loadDailyTasks() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(getDailyTaskKey())||'{}');
+    _dailyTaskIds = saved.ids||[];
+    _dailyTaskChecked = saved.checked||{};
+  } catch(e) { _dailyTaskIds=[]; _dailyTaskChecked={}; }
+}
+function saveDailyTasks() {
+  try { localStorage.setItem(getDailyTaskKey(), JSON.stringify({ids:_dailyTaskIds, checked:_dailyTaskChecked})); } catch(e) {}
+}
+
 function renderDashTask(){
-  const cont = document.getElementById('dash-task');
-  if(!cont || !currentUser) return;
+  if(!currentUser) return;
+  loadDailyTasks();
 
   const tutte = (state.tasks||[]).filter(t=>t.assegnata_a===currentUser.username);
-  const fatte = tutte.filter(t=>t.stato==='fatto').length;
-  const totale = tutte.length;
-  const mie = tutte.filter(t=>t.stato!=='fatto')
-    .sort((a,b)=>{
-      const priMap = {alta:0,media:1,bassa:2};
-      const pa = priMap[a.priorita]??1, pb = priMap[b.priorita]??1;
-      if(pa!==pb) return pa-pb;
-      const da = a.scadenza ? new Date(a.scadenza) : new Date('2099-01-01');
-      const db = b.scadenza ? new Date(b.scadenza) : new Date('2099-01-01');
-      return da-db;
-    }).slice(0,5);
+  const pending = tutte.filter(t=>t.stato!=='fatto').sort((a,b)=>{
+    const priMap={alta:0,media:1,bassa:2};
+    return (priMap[a.priorita]??1)-(priMap[b.priorita]??1);
+  });
 
-  const oggi = new Date(); oggi.setHours(0,0,0,0);
-  const domani = new Date(oggi); domani.setDate(domani.getDate()+1);
+  // Greeting personalizzato
+  const ora = new Date().getHours();
+  const saluto = ora<12?'Buongiorno':ora<18?'Buon pomeriggio':'Buonasera';
+  const nomeBreve = (currentUser.nome||'').split(' ')[0];
+  const greetingEl = document.getElementById('dash-task-greeting');
+  if(greetingEl) greetingEl.textContent = `${saluto} ${nomeBreve}! Ecco le tue 3 sfide 💪`;
 
-  if(!mie.length){
-    cont.innerHTML = `
-      <div style="text-align:center;padding:18px 0">
-        <div style="font-size:36px;margin-bottom:8px">🏆</div>
-        <div style="font-size:15px;font-weight:700;color:var(--green);margin-bottom:4px">Tutto completato!</div>
-        <div style="font-size:12px;color:var(--text-2)">Nessuna task in sospeso. Ottimo lavoro.</div>
-      </div>`;
+  // Rimuove task non più esistenti o già completati dai daily
+  _dailyTaskIds = _dailyTaskIds.filter(id => tutte.find(t=>t.id===id && t.stato!=='fatto'));
+
+  // Auto-popola con i task più urgenti se la lista è vuota
+  if(_dailyTaskIds.length === 0 && pending.length > 0) {
+    _dailyTaskIds = pending.slice(0,3).map(t=>t.id);
+    saveDailyTasks();
+  }
+
+  const dailyTasks = _dailyTaskIds.map(id=>tutte.find(t=>t.id===id)).filter(Boolean);
+  const completatiOggi = dailyTasks.filter(t=>_dailyTaskChecked[t.id]).length;
+  const totaleDaily = dailyTasks.length;
+  const pct = totaleDaily > 0 ? Math.round((completatiOggi/totaleDaily)*100) : 0;
+
+  // Progress bar e label motivazionale
+  const labels = {
+    0: totaleDaily===0 ? 'Nessuna task da fare oggi 🎉' : 'Pronto a spaccare? Completa il primo task!',
+    34: 'Ottimo inizio, continua così! 💪',
+    67: 'Metà strada fatta, stai andando alla grande! 🔥',
+    100: 'Obiettivo raggiunto! Sei un fulmine oggi! 🚀'
+  };
+  const labelKey = pct===100?100:pct>=67?67:pct>=34?34:0;
+  const labelEl = document.getElementById('dash-task-progress-label');
+  const countEl = document.getElementById('dash-task-progress-count');
+  const barEl = document.getElementById('dash-task-progress-bar');
+  if(labelEl) labelEl.textContent = labels[labelKey];
+  if(countEl) countEl.textContent = totaleDaily>0 ? `${completatiOggi}/${totaleDaily}` : '';
+  if(barEl){ barEl.style.width=pct+'%'; barEl.style.background=pct===100?'var(--green)':'linear-gradient(90deg,var(--brand),#e8734a)'; }
+
+  // Streak
+  if(pct===100 && totaleDaily>0) aggiornaStreak(true);
+  const streak = getStreakData();
+  const streakIcon = document.getElementById('dash-streak-icon');
+  const streakLabel = document.getElementById('dash-streak-label');
+  if(streakIcon) streakIcon.textContent = streak.days>=3?'🔥':'⚡';
+  if(streakLabel) streakLabel.textContent = streak.days===1?'1 giorno':streak.days>1?`${streak.days} giorni`:'Inizia!';
+
+  // Render task giornalieri
+  const cont = document.getElementById('dash-task-daily');
+  if(!cont) return;
+
+  if(totaleDaily===0 && pending.length===0){
+    cont.innerHTML=`<div style="text-align:center;padding:16px 0"><div style="font-size:32px;margin-bottom:6px">🏆</div><div style="font-size:14px;font-weight:700;color:var(--green)">Tutto completato!</div><div style="font-size:12px;color:var(--text-2);margin-top:3px">Nessuna task in sospeso.</div></div>`;
     return;
   }
 
-  // Progress bar
-  const pct = totale > 0 ? Math.round((fatte/totale)*100) : 0;
-  const progressHtml = totale > 0 ? `
-    <div style="margin-bottom:14px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
-        <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">Progresso obiettivi</span>
-        <span style="font-size:12px;font-weight:700;color:var(--brand)">${fatte}/${totale} completate</span>
+  const priConfig = {alta:{icon:'🔴',color:'#dc2626'},media:{icon:'🟡',color:'#d97706'},bassa:{icon:'🟢',color:'#16a34a'}};
+
+  cont.innerHTML = dailyTasks.map((t,i)=>{
+    const checked = !!_dailyTaskChecked[t.id];
+    const pri = priConfig[t.priorita]||priConfig.media;
+    return `<div class="dash-task-item ${checked?'completed':''}" style="animation-delay:${i*0.06}s" id="dti-${t.id}">
+      <div class="dash-task-check ${checked?'checked':''}" onclick="toggleDailyTask(${t.id},this)" title="${checked?'Segna come non fatto':'Segna come fatto'}">
+        ${checked?'<i class="ti ti-check" style="font-size:13px;color:#fff"></i>':''}
       </div>
-      <div style="height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden">
-        <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--brand)'};border-radius:99px;transition:width .4s ease"></div>
-      </div>
-    </div>` : '';
-
-  cont.innerHTML = progressHtml + mie.map(t=>{
-    const scad = t.scadenza ? new Date(t.scadenza) : null;
-    if(scad) scad.setHours(0,0,0,0);
-    const isScaduta = scad && scad < oggi;
-    const isOggi = scad && scad.getTime()===oggi.getTime();
-    const isDomani = scad && scad.getTime()===domani.getTime();
-
-    const scadLabel = scad
-      ? isScaduta ? `<span style="background:#fee2e2;color:#dc2626;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">⚠ SCADUTA</span>`
-      : isOggi ? `<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">OGGI</span>`
-      : isDomani ? `<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600">domani</span>`
-      : `<span style="font-size:11px;color:var(--text-3)">${scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})}</span>`
-      : '';
-
-    const priConfig = {
-      alta:  { bg:'#fee2e2', color:'#dc2626', icon:'🔴', label:'Alta' },
-      media: { bg:'#fef3c7', color:'#d97706', icon:'🟡', label:'Media' },
-      bassa: { bg:'#dcfce7', color:'#16a34a', icon:'🟢', label:'Bassa' }
-    };
-    const pri = priConfig[t.priorita] || priConfig.media;
-
-    return `
-      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r);background:var(--surface-2);margin-bottom:7px;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.boxShadow='none'" onclick="showPage('task')">
-        <div style="width:34px;height:34px;border-radius:50%;background:${pri.bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${pri.icon}</div>
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">${t.titolo}</div>
-          <div style="font-size:11px;color:var(--text-2);margin-top:1px">${t.descrizione ? t.descrizione.slice(0,45)+(t.descrizione.length>45?'…':'') : 'Nessuna descrizione'}</div>
-        </div>
-        <div style="flex-shrink:0">${scadLabel}</div>
-      </div>`;
-  }).join('') + `
-    <div style="text-align:center;padding-top:4px">
-      <span style="font-size:12px;color:var(--text-2)">${mie.length < (tutte.filter(t=>t.stato!=='fatto').length) ? `+${tutte.filter(t=>t.stato!=='fatto').length - mie.length} altre task →` : ''}</span>
+      <div style="font-size:16px;flex-shrink:0">${pri.icon}</div>
+      <div class="dash-task-title ${checked?'struck':''}" id="dtt-${t.id}">${t.titolo}</div>
+      ${t.scadenza?`<span style="font-size:10px;color:var(--text-3);flex-shrink:0">${new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})}</span>`:''}
     </div>`;
+  }).join('') + (pending.filter(t=>!_dailyTaskIds.includes(t.id)).length>0 && _dailyTaskIds.length<3 ? `
+    <div style="margin-top:4px">
+      <select onchange="aggiuntaDailyTask(this.value);this.value=''" style="width:100%;font-size:12px;padding:6px 10px;border:1.5px dashed var(--border);border-radius:var(--r);background:#fff;color:var(--text-2);cursor:pointer">
+        <option value="">+ Aggiungi un task al focus...</option>
+        ${pending.filter(t=>!_dailyTaskIds.includes(t.id)).slice(0,10).map(t=>`<option value="${t.id}">${t.titolo}</option>`).join('')}
+      </select>
+    </div>` : '');
 }
+
+function toggleDailyTask(id, el) {
+  const wasChecked = !!_dailyTaskChecked[id];
+  _dailyTaskChecked[id] = !wasChecked;
+  saveDailyTasks();
+
+  // Animazione check
+  const check = el;
+  const titleEl = document.getElementById('dtt-'+id);
+  const itemEl = document.getElementById('dti-'+id);
+
+  if(!wasChecked) {
+    check.classList.add('checked');
+    check.innerHTML = '<i class="ti ti-check" style="font-size:13px;color:#fff"></i>';
+    if(titleEl) titleEl.classList.add('struck');
+    if(itemEl){ itemEl.classList.add('completed'); itemEl.style.animation='taskComplete .3s ease'; }
+    lanceConfetti(el);
+  } else {
+    check.classList.remove('checked');
+    check.innerHTML = '';
+    if(titleEl) titleEl.classList.remove('struck');
+    if(itemEl){ itemEl.classList.remove('completed'); itemEl.style.animation=''; }
+    delete _dailyTaskChecked[id];
+    saveDailyTasks();
+  }
+
+  // Aggiorna progress bar
+  setTimeout(()=>renderDashTask(), 350);
+}
+
+function aggiuntaDailyTask(idStr) {
+  const id = parseInt(idStr);
+  if(!id || _dailyTaskIds.includes(id) || _dailyTaskIds.length>=3) return;
+  _dailyTaskIds.push(id);
+  saveDailyTasks();
+  renderDashTask();
+}
+
 
 let _dragTaskId = null;
 function dragTaskStart(e, id){ _dragTaskId = id; e.target.classList.add('dragging'); }
