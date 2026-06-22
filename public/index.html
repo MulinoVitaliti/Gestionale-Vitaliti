@@ -1580,14 +1580,39 @@ async function doLogin(){
     const data = await api.post('/api/login', {username:u, password:p});
     if(data.error){err.textContent=data.error;err.style.display='block';return;}
     currentUser=data.user;
+    // Salva la scadenza sessione (8 ore)
+    if(data.sessionExpiry) localStorage.setItem('vv_session_expiry', data.sessionExpiry);
     document.getElementById('login-screen').classList.add('hidden');
     document.getElementById('app-screen').style.display='flex';
     await loadAllData();
     applyPermissions(); renderDash();
+    // Avvia controllo scadenza sessione ogni minuto
+    iniziaControlloScadenza();
   } catch(e){err.textContent='Errore di connessione.';err.style.display='block';}
   finally{btn.textContent='Accedi';btn.disabled=false;}
 }
-function doLogout(){currentUser=null;document.getElementById('login-screen').classList.remove('hidden');document.getElementById('app-screen').style.display='none';document.getElementById('login-user').value='';document.getElementById('login-pass').value='';}
+
+function iniziaControlloScadenza(){
+  clearInterval(window._sessionCheckInterval);
+  window._sessionCheckInterval = setInterval(()=>{
+    const expiry = parseInt(localStorage.getItem('vv_session_expiry')||'0');
+    if(expiry && Date.now() > expiry){
+      clearInterval(window._sessionCheckInterval);
+      alert('La tua sessione è scaduta. Effettua di nuovo il login.');
+      doLogout();
+    }
+  }, 60000); // controlla ogni minuto
+}
+
+function doLogout(){
+  currentUser=null;
+  localStorage.removeItem('vv_session_expiry');
+  clearInterval(window._sessionCheckInterval);
+  document.getElementById('login-screen').classList.remove('hidden');
+  document.getElementById('app-screen').style.display='none';
+  document.getElementById('login-user').value='';
+  document.getElementById('login-pass').value='';
+}
 
 async function doRegister(){
   const nome=document.getElementById('reg-nome').value.trim(),user=document.getElementById('reg-user').value.trim().toLowerCase(),email=document.getElementById('reg-email').value.trim(),pass=document.getElementById('reg-pass').value,ruolo=document.getElementById('reg-role').value;
