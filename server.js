@@ -747,18 +747,30 @@ app.delete('/api/clienti/:id', async (req, res) => {
 app.post('/api/clienti/importa-fic', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
   try {
-    // Recupera tutti i clienti da FIC (con paginazione se necessario)
-    let tuttiClienti = [];
-    let page = 1;
-    while (true) {
-      const r = await ficFetch(`/c/${ficCompanyId}/entities/clients?per_page=100&page=${page}`);
-      const data = await r.json();
-      if (!r.ok) return res.json({ error: data.error?.message || 'Errore FIC' });
-      const items = data.data || [];
-      tuttiClienti = tuttiClienti.concat(items);
-      if (!data.next_page_url || items.length < 100) break;
-      page++;
+    // Recupera clienti E fornitori da FIC
+    async function fetchAll(endpoint) {
+      let lista = [], page = 1;
+      while (true) {
+        const r = await ficFetch(`/c/${ficCompanyId}/${endpoint}?per_page=100&page=${page}`);
+        const data = await r.json();
+        if (!r.ok || !data.data) break;
+        lista = lista.concat(data.data);
+        if (!data.next_page_url || data.data.length < 100) break;
+        page++;
+      }
+      return lista;
     }
+
+    const [ficClienti, ficFornitori] = await Promise.all([
+      fetchAll('entities/clients'),
+      fetchAll('entities/suppliers')
+    ]);
+
+    // Marca il tipo su ciascun record
+    const tuttiClienti = [
+      ...ficClienti.map(c => ({ ...c, _tipo: 'cliente' })),
+      ...ficFornitori.map(c => ({ ...c, _tipo: 'fornitore' }))
+    ];
 
     let importati = 0, conflitti = 0, saltati = 0;
 
@@ -766,8 +778,7 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
       if (!c.name) continue;
       const piva = c.vat_number || c.tax_code || null;
       const indirizzo = [c.address_street, c.address_city, c.address_postal_code, c.address_province].filter(Boolean).join(', ');
-      // FIC usa entity_type: 'client' o 'supplier' (o null)
-      const tipo = (c.entity_type === 'supplier') ? 'fornitore' : 'cliente';
+      const tipo = c._tipo || 'cliente';
       const prefisso = tipo === 'fornitore' ? 'F' : 'C';
 
       if (piva) {
@@ -797,7 +808,7 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
       importati++;
     }
 
-    res.json({ totale: tuttiClienti.length, importati, conflitti, saltati });
+    res.json({ totale: tuttiClienti.length, totaleClienti: ficClienti.length, totaleFornitori: ficFornitori.length, importati, conflitti, saltati });
   } catch (err) { res.json({ error: err.message }); }
 });
 
