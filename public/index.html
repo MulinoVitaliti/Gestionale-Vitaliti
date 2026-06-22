@@ -926,8 +926,16 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
-    <div class="form-group"><label class="form-label"><i class="ti ti-building" style="font-size:13px;color:var(--brand)"></i> Indirizzo legale (sede)</label><input type="text" id="cl-ind-legale" placeholder="Es. Via Roma 1, 00100 Roma (RM)"></div>
-    <div class="form-group"><label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label><input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)"></div>
+    <div class="form-group">
+      <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
+      <input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)" oninput="if(document.getElementById('cl-ind-same').checked){document.getElementById('cl-ind-legale').value=this.value}">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2)">
+        <input type="checkbox" id="cl-ind-same" onchange="if(this.checked){document.getElementById('cl-ind-legale').value=document.getElementById('cl-ind-consegna').value}else{document.getElementById('cl-ind-legale').value=''}">
+        <span>Indirizzo legale uguale all'indirizzo di consegna</span>
+      </label>
+      <input type="text" id="cl-ind-legale" placeholder="Es. Via Roma 1, 00100 Roma (RM)" style="margin-top:7px" oninput="document.getElementById('cl-ind-same').checked=false"></div>
     <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="cl-prod" placeholder="Es. Semola rimacinata, Farina 00"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="cl-note"></textarea></div>
@@ -941,8 +949,17 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
-    <div class="form-group"><label class="form-label"><i class="ti ti-building" style="font-size:13px;color:var(--brand)"></i> Indirizzo legale (sede)</label><input type="text" id="edit-cl-ind-legale"></div>
-    <div class="form-group"><label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label><input type="text" id="edit-cl-ind-consegna"></div>
+    <div class="form-group">
+      <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
+      <input type="text" id="edit-cl-ind-consegna" oninput="if(document.getElementById('edit-cl-ind-same').checked){document.getElementById('edit-cl-ind-legale').value=this.value}">
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;color:var(--text-2)">
+        <input type="checkbox" id="edit-cl-ind-same" onchange="if(this.checked){document.getElementById('edit-cl-ind-legale').value=document.getElementById('edit-cl-ind-consegna').value}else{document.getElementById('edit-cl-ind-legale').value=''}">
+        <span>Indirizzo legale uguale all'indirizzo di consegna</span>
+      </label>
+      <input type="text" id="edit-cl-ind-legale" placeholder="Es. Via Roma 1, 00100 Roma (RM)" style="margin-top:7px" oninput="document.getElementById('edit-cl-ind-same').checked=false">
+    </div>
     <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="edit-cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="edit-cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="edit-cl-prod"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-cl-note"></textarea></div>
@@ -2660,9 +2677,12 @@ async function salvaCliente(){
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  ['nome','ref','tel','email','citta','piva','ind_legale','ind_consegna','sdi','pec','prod','note'].forEach(f=>{
-    const el=document.getElementById('edit-cl-'+f.replace('_','-')); if(el) el.value=c[f]||'';
+  ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
+    const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
   });
+  // Imposta checkbox se indirizzi uguali
+  const same = document.getElementById('edit-cl-ind-same');
+  if(same) same.checked = !!(c.ind_legale && c.ind_consegna && c.ind_legale===c.ind_consegna);
   openModal('modal-edit-cliente');
 }
 async function aggiornaCliente(){
