@@ -943,9 +943,14 @@ tbody tr:hover{background:var(--surface-2)}
   </div></div>
 </div>
 <div class="modal-overlay" id="modal-edit-cliente">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Modifica cliente</div><button class="btn btn-icon" onclick="closeModal('modal-edit-cliente')"><i class="ti ti-x"></i></button></div>
+  <div class="modal"><div class="modal-header"><div class="modal-title">Modifica</div><button class="btn btn-icon" onclick="closeModal('modal-edit-cliente')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
     <input type="hidden" id="edit-cl-id">
+    <!-- Toggle Cliente / Fornitore -->
+    <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:18px">
+      <button id="edit-tipo-cliente" onclick="setEditTipo('cliente')" style="flex:1;padding:9px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:var(--brand);color:#fff;display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s"><i class="ti ti-users"></i>Cliente</button>
+      <button id="edit-tipo-fornitore" onclick="setEditTipo('fornitore')" style="flex:1;padding:9px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:var(--text-2);display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s"><i class="ti ti-building-factory-2"></i>Fornitore</button>
+    </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
@@ -2674,20 +2679,35 @@ async function salvaCliente(){
   ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
+function setEditTipo(tipo){
+  const btnC = document.getElementById('edit-tipo-cliente');
+  const btnF = document.getElementById('edit-tipo-fornitore');
+  if(tipo === 'fornitore'){
+    btnC.style.background='#fff'; btnC.style.color='var(--text-2)';
+    btnF.style.background='var(--orange)'; btnF.style.color='#fff';
+  } else {
+    btnC.style.background='var(--brand)'; btnC.style.color='#fff';
+    btnF.style.background='#fff'; btnF.style.color='var(--text-2)';
+  }
+  document.getElementById('modal-edit-cliente').dataset.tipo = tipo;
+}
+
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
   ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
     const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
   });
-  // Imposta checkbox se indirizzi uguali
   const same = document.getElementById('edit-cl-ind-same');
   if(same) same.checked = !!(c.ind_legale && c.ind_consegna && c.ind_legale===c.ind_consegna);
+  setEditTipo(c.tipo || 'cliente');
   openModal('modal-edit-cliente');
 }
 async function aggiornaCliente(){
   const id=parseInt(document.getElementById('edit-cl-id').value);
+  const tipo = document.getElementById('modal-edit-cliente').dataset.tipo || 'cliente';
   const body={
+    tipo,
     nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
     tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
     citta:document.getElementById('edit-cl-citta').value,
@@ -2700,7 +2720,8 @@ async function aggiornaCliente(){
   };
   await api.put('/api/clienti/'+id,body);
   const c=state.clienti.find(x=>x.id===id); if(c)Object.assign(c,body);
-  closeModal('modal-edit-cliente'); renderClienti(); showSave();
+  closeModal('modal-edit-cliente');
+  renderClienti(); renderFornitori(); showSave();
 }
 
 // ── SALVA ORDINE ──────────────────────────────────────────────────────────
