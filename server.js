@@ -3,9 +3,51 @@ const cors = require('cors');
 const path = require('path');
 const { google } = require('googleapis');
 const { Pool } = require('pg');
+const bcrypt = require('bcryptjs');
+const helmet = require('helmet');
+const rateLimit = require('express-rate-limit');
 
 const app = express();
-app.use(cors());
+
+// ── SICUREZZA: Helmet (header HTTP di sicurezza) ───────────────────────────
+app.use(helmet({
+  contentSecurityPolicy: false, // disabilitato per compatibilità con CDN esterne (Tabler, ecc.)
+  crossOriginEmbedderPolicy: false
+}));
+
+// ── SICUREZZA: CORS ristretto al dominio Railway ───────────────────────────
+const ALLOWED_ORIGINS = [
+  'https://gestionale-vitaliti-production.up.railway.app',
+  'http://localhost:3000' // solo per sviluppo locale
+];
+app.use(cors({
+  origin: function(origin, callback) {
+    if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+      callback(null, true);
+    } else {
+      callback(new Error('CORS non consentito'));
+    }
+  },
+  credentials: true
+}));
+
+// ── SICUREZZA: Rate limiting sul login (max 10 tentativi ogni 15 minuti) ──
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  message: { error: 'Troppi tentativi di accesso. Riprova tra 15 minuti.' },
+  standardHeaders: true,
+  legacyHeaders: false
+});
+
+// ── SICUREZZA: Rate limiting generale sulle API (max 200 req/min) ──────────
+const apiLimiter = rateLimit({
+  windowMs: 60 * 1000,
+  max: 200,
+  message: { error: 'Troppe richieste. Rallenta.' }
+});
+app.use('/api/', apiLimiter);
+
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
@@ -271,21 +313,48 @@ async function initDB() {
 }
 
 // ── AUTH API ──────────────────────────────────────────────────────────────
-app.post('/api/login', async (req, res) => {
+app.post('/api/login', loginLimiter, async (req, res) => {
   const { username, password } = req.body;
   try {
-    const r = await pool.query('SELECT * FROM utenti WHERE username=$1 AND password=$2', [username, password]);
+    // Cerca per username (non più confronto password in SQL)
+    const r = await pool.query('SELECT * FROM utenti WHERE username=$1', [username]);
     if (!r.rows.length) return res.json({ error: 'Credenziali non valide' });
     const u = r.rows[0];
     if (u.pending) return res.json({ error: 'Account in attesa di approvazione' });
-    res.json({ success: true, user: { id: u.id, nome: u.nome, username: u.username, ruolo: u.ruolo, email: u.email } });
+
+    // Verifica password: supporta sia bcrypt che testo chiaro (migrazione graduale)
+    let passwordOk = false;
+    if (u.password && u.password.startsWith('$2')) {
+      // Password già hashata con bcrypt
+      passwordOk = await bcrypt.compare(password, u.password);
+    } else {
+      // Password in testo chiaro (vecchio formato) — verifica e migra automaticamente
+      passwordOk = u.password === password;
+      if (passwordOk) {
+        // Migra la password a bcrypt silenziosamente
+        const hash = await bcrypt.hash(password, 12);
+        await pool.query('UPDATE utenti SET password=$1 WHERE id=$2', [hash, u.id]);
+      }
+    }
+
+    if (!passwordOk) return res.json({ error: 'Credenziali non valide' });
+
+    // Aggiunge scadenza sessione (token con timestamp, scade dopo 8 ore)
+    const sessionExpiry = Date.now() + (8 * 60 * 60 * 1000);
+    res.json({
+      success: true,
+      sessionExpiry,
+      user: { id: u.id, nome: u.nome, username: u.username, ruolo: u.ruolo, email: u.email }
+    });
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.post('/api/register', async (req, res) => {
   const { nome, username, password, ruolo, email } = req.body;
   try {
-    await pool.query('INSERT INTO utenti (nome, username, password, ruolo, email, pending) VALUES ($1,$2,$3,$4,$5,true)', [nome, username, password, ruolo || 'commerciale', email]);
+    // Hash della password prima di salvarla
+    const hash = await bcrypt.hash(password, 12);
+    await pool.query('INSERT INTO utenti (nome, username, password, ruolo, email, pending) VALUES ($1,$2,$3,$4,$5,true)', [nome, username, hash, ruolo || 'commerciale', email]);
     res.json({ success: true });
   } catch (err) {
     if (err.code === '23505') return res.json({ error: 'Username già esistente' });
@@ -296,7 +365,8 @@ app.post('/api/register', async (req, res) => {
 app.post('/api/reset-password', async (req, res) => {
   const { email, password } = req.body;
   try {
-    const r = await pool.query('UPDATE utenti SET password=$1 WHERE email=$2 RETURNING id', [password, email]);
+    const hash = await bcrypt.hash(password, 12);
+    const r = await pool.query('UPDATE utenti SET password=$1 WHERE email=$2 RETURNING id', [hash, email]);
     if (!r.rows.length) return res.json({ error: 'Nessun account trovato con questa email' });
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -313,8 +383,10 @@ app.get('/api/utenti', async (req, res) => {
 app.post('/api/utenti', async (req, res) => {
   const { nome, username, password, ruolo, email } = req.body;
   try {
-    const r = await pool.query('INSERT INTO utenti (nome, username, password, ruolo, email) VALUES ($1,$2,$3,$4,$5) RETURNING *', [nome, username, password, ruolo, email || '']);
-    res.json(r.rows[0]);
+    const hash = await bcrypt.hash(password, 12);
+    const r = await pool.query('INSERT INTO utenti (nome, username, password, ruolo, email) VALUES ($1,$2,$3,$4,$5) RETURNING *', [nome, username, hash, ruolo, email || '']);
+    const { password: _, ...userSafe } = r.rows[0];
+    res.json(userSafe);
   } catch (err) {
     if (err.code === '23505') return res.json({ error: 'Username già esistente' });
     res.json({ error: err.message });
