@@ -340,7 +340,6 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('spedizioni')" id="nav-spedizioni"><i class="ti ti-truck-delivery"></i><span>Spedizioni</span></div>
-      <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-finanza">
@@ -351,6 +350,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section" onclick="toggleSection('sec-admin')"><span>AI &amp; Admin</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-admin">
       <div class="nav-item" onclick="showPage('ai')" id="nav-ai"><i class="ti ti-robot"></i><span>Assistente AI</span></div>
+      <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
       <div class="nav-item" onclick="showPage('impostazioni')" id="nav-impostazioni"><i class="ti ti-settings"></i><span>Impostazioni</span></div>
     </div>
     <div class="s-footer"><div class="s-version">Mulino Vitaliti v2.1</div></div>
@@ -361,6 +361,30 @@ tbody tr:hover{background:var(--surface-2)}
         <div><div class="page-title">Dashboard</div><div style="font-size:12px;color:var(--text-2);margin-top:1px" id="dash-date"></div></div>
         <div id="dash-user-badge"></div>
       </div>
+
+      <!-- Task in cima -->
+      <div class="card" style="cursor:pointer;margin-bottom:14px" onclick="showPage('task')">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
+          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
+        </div>
+        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
+      </div>
+
+      <!-- Ricerca rapida -->
+      <div class="card" style="margin-bottom:14px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-search" style="color:var(--brand)"></i>Ricerca rapida</div>
+        </div>
+        <div style="padding:0 16px 14px">
+          <div style="display:flex;gap:8px;margin-bottom:10px">
+            <input type="text" id="dash-search-input" placeholder="Cerca cliente, ordine, contatto..." style="flex:1" oninput="ricercaRapida(this.value)" onkeydown="if(event.key==='Escape'){this.value='';ricercaRapida('')}">
+          </div>
+          <div id="dash-search-results" style="display:none;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
+        </div>
+      </div>
+
+      <!-- Metriche -->
       <div class="metrics-grid metrics-2">
         <div class="metric-card"><div class="metric-label"><i class="ti ti-users"></i>Clienti attivi</div><div class="metric-value" id="m-clienti">0</div><div class="metric-sub">in anagrafica</div></div>
         <div class="metric-card"><div class="metric-label"><i class="ti ti-clipboard-list"></i>Ordini aperti</div><div class="metric-value" id="m-ordini">0</div><div class="metric-sub">in lavorazione</div></div>
@@ -368,13 +392,6 @@ tbody tr:hover{background:var(--surface-2)}
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px">
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-layout-kanban" style="color:var(--brand)"></i>Pipeline recente</div></div><div class="card-body" id="dash-pipeline"></div></div>
         <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-clipboard-list" style="color:var(--brand)"></i>Ultimi ordini</div></div><div class="card-body" id="dash-ordini"></div></div>
-      </div>
-      <div class="card" style="cursor:pointer" onclick="showPage('task')">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
-          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
-        </div>
-        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
       </div>
     </div>
     <!-- ATTIVITÀ -->
@@ -2153,6 +2170,98 @@ async function eliminaMov(id){conferma(async()=>{await api.del('/api/movimenti/'
 function filterContab(f,el){state.contabFilter=f;document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');renderContab();}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────
+// ── RICERCA RAPIDA DASHBOARD ─────────────────────────────────────────────
+function ricercaRapida(q){
+  const cont = document.getElementById('dash-search-results');
+  if(!cont) return;
+  const query = (q||'').trim().toLowerCase();
+  if(!query){ cont.style.display='none'; cont.innerHTML=''; return; }
+
+  const risultati = [];
+
+  // Cerca tra clienti
+  (state.clienti||[]).forEach(c=>{
+    if(c.nome.toLowerCase().includes(query) || (c.tel||'').includes(query) || (c.email||'').toLowerCase().includes(query)){
+      risultati.push({
+        tipo: 'cliente', icon: 'ti-user', color: 'var(--brand)',
+        titolo: c.nome,
+        sub: [c.citta, c.tel].filter(Boolean).join(' · '),
+        azione: ()=>{ showPage('clienti'); setTimeout(()=>evidenziaCliente(c.id),300); }
+      });
+    }
+  });
+
+  // Cerca tra lead/pipeline
+  (state.leads||[]).forEach(l=>{
+    if(l.nome.toLowerCase().includes(query) || (l.citta||'').toLowerCase().includes(query) || (l.contatto||'').toLowerCase().includes(query)){
+      const fase = (state.fasi||[]).find(f=>f.id===l.stato);
+      risultati.push({
+        tipo: 'pipeline', icon: 'ti-layout-kanban', color: 'var(--orange)',
+        titolo: l.nome,
+        sub: [fase?.label, l.citta, l.prodotto].filter(Boolean).join(' · '),
+        azione: ()=>showPage('pipeline')
+      });
+    }
+  });
+
+  // Cerca tra ordini
+  (state.ordini||[]).forEach(o=>{
+    if((o.cliente||'').toLowerCase().includes(query) || (o.prodotto||'').toLowerCase().includes(query)){
+      risultati.push({
+        tipo: 'ordine', icon: 'ti-clipboard-list', color: 'var(--green)',
+        titolo: o.cliente,
+        sub: `Ordine · ${o.prodotto||''} · ${o.qty||''} kg`,
+        azione: ()=>showPage('ordini')
+      });
+    }
+  });
+
+  // Cerca tra attività
+  (state.attivita||[]).forEach(a=>{
+    if((a.titolo||'').toLowerCase().includes(query) || (a.cliente||'').toLowerCase().includes(query)){
+      risultati.push({
+        tipo: 'attività', icon: 'ti-checkbox', color: 'var(--blue)',
+        titolo: a.titolo,
+        sub: `Attività · ${a.cliente||''}`,
+        azione: ()=>showPage('attivita')
+      });
+    }
+  });
+
+  cont.style.display = risultati.length ? 'flex' : 'none';
+  if(!risultati.length){
+    cont.style.display='flex';
+    cont.innerHTML='<div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun risultato per "<strong>'+q+'</strong>"</div>';
+    return;
+  }
+  cont.innerHTML = risultati.slice(0,8).map((r,i)=>`
+    <div onclick="eseguiRicercaRapida(${i})" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s;background:#fff" onmouseover="this.style.borderColor='${r.color}'" onmouseout="this.style.borderColor='var(--border)'">
+      <i class="ti ${r.icon}" style="font-size:18px;color:${r.color};flex-shrink:0"></i>
+      <div style="min-width:0;flex:1">
+        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.titolo}</div>
+        <div style="font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.sub}</div>
+      </div>
+      <span style="font-size:10px;color:var(--text-3);background:var(--surface-2);padding:2px 7px;border-radius:20px;flex-shrink:0">${r.tipo}</span>
+    </div>`).join('');
+  window._searchResults = risultati;
+}
+
+function eseguiRicercaRapida(idx){
+  const r = (window._searchResults||[])[idx];
+  if(!r) return;
+  // Svuota la ricerca
+  const input = document.getElementById('dash-search-input');
+  if(input) input.value='';
+  const cont = document.getElementById('dash-search-results');
+  if(cont){ cont.innerHTML=''; cont.style.display='none'; }
+  r.azione();
+}
+
+function evidenziaCliente(id){
+  const el = document.getElementById('cl-row-'+id);
+  if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.background='var(--brand-light)'; setTimeout(()=>el.style.background='',1500); }
+}
+
 function renderDash(){
   if(!document.getElementById('m-clienti')) return;
   const today=new Date();
