@@ -371,17 +371,19 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
       </div>
 
-      <!-- Ricerca rapida -->
-      <div class="card" style="margin-bottom:14px">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-search" style="color:var(--brand)"></i>Ricerca rapida</div>
+      <!-- Ricerca rapida stile Pipedrive -->
+      <div style="position:relative;margin-bottom:18px" id="dash-search-wrap">
+        <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:var(--rl);padding:10px 16px;transition:border-color .15s;box-shadow:var(--shadow-sm)" id="dash-search-box">
+          <i class="ti ti-search" style="font-size:18px;color:var(--text-3);flex-shrink:0"></i>
+          <input type="text" id="dash-search-input" placeholder="Cerca clienti, ordini, attività..."
+            style="flex:1;border:none;background:transparent;font-size:14px;font-family:var(--font);color:var(--text);outline:none"
+            oninput="ricercaRapida(this.value)"
+            onkeydown="if(event.key==='Escape'){this.value='';chiudiRicercaRapida()}"
+            onfocus="document.getElementById('dash-search-box').style.borderColor='var(--brand)'"
+            onblur="setTimeout(()=>{document.getElementById('dash-search-box').style.borderColor='var(--border)'},200)">
+          <i class="ti ti-x" id="dash-search-clear" style="font-size:16px;color:var(--text-3);cursor:pointer;display:none" onclick="document.getElementById('dash-search-input').value='';chiudiRicercaRapida()"></i>
         </div>
-        <div style="padding:0 16px 14px">
-          <div style="display:flex;gap:8px;margin-bottom:10px">
-            <input type="text" id="dash-search-input" placeholder="Cerca cliente, ordine, contatto..." style="flex:1" oninput="ricercaRapida(this.value)" onkeydown="if(event.key==='Escape'){this.value='';ricercaRapida('')}">
-          </div>
-          <div id="dash-search-results" style="display:none;display:flex;flex-direction:column;gap:6px;max-height:280px;overflow-y:auto"></div>
-        </div>
+        <div id="dash-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-md);z-index:100;max-height:380px;overflow-y:auto"></div>
       </div>
 
       <!-- Metriche -->
@@ -2170,97 +2172,102 @@ async function eliminaMov(id){conferma(async()=>{await api.del('/api/movimenti/'
 function filterContab(f,el){state.contabFilter=f;document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');renderContab();}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────
-// ── RICERCA RAPIDA DASHBOARD ─────────────────────────────────────────────
+// ── RICERCA RAPIDA DASHBOARD (stile Pipedrive) ───────────────────────────
+function chiudiRicercaRapida(){
+  const cont = document.getElementById('dash-search-results');
+  const clear = document.getElementById('dash-search-clear');
+  if(cont){ cont.innerHTML=''; cont.style.display='none'; }
+  if(clear) clear.style.display='none';
+}
+
 function ricercaRapida(q){
   const cont = document.getElementById('dash-search-results');
+  const clear = document.getElementById('dash-search-clear');
   if(!cont) return;
   const query = (q||'').trim().toLowerCase();
-  if(!query){ cont.style.display='none'; cont.innerHTML=''; return; }
+  if(clear) clear.style.display = query ? 'block' : 'none';
+  if(!query){ chiudiRicercaRapida(); return; }
 
-  const risultati = [];
+  // Raccoglie risultati per categoria
+  const gruppi = [
+    { label: 'Clienti', icon: 'ti-user', color: '#6366f1', items: [] },
+    { label: 'Pipeline', icon: 'ti-layout-kanban', color: '#f59e0b', items: [] },
+    { label: 'Ordini',   icon: 'ti-clipboard-list', color: '#10b981', items: [] },
+    { label: 'Attività', icon: 'ti-checkbox',        color: '#3b82f6', items: [] },
+  ];
 
-  // Cerca tra clienti
   (state.clienti||[]).forEach(c=>{
-    if(c.nome.toLowerCase().includes(query) || (c.tel||'').includes(query) || (c.email||'').toLowerCase().includes(query)){
-      risultati.push({
-        tipo: 'cliente', icon: 'ti-user', color: 'var(--brand)',
-        titolo: c.nome,
-        sub: [c.citta, c.tel].filter(Boolean).join(' · '),
-        azione: ()=>{ showPage('clienti'); setTimeout(()=>evidenziaCliente(c.id),300); }
-      });
+    if(c.nome.toLowerCase().includes(query)||(c.tel||'').includes(query)||(c.email||'').toLowerCase().includes(query)){
+      gruppi[0].items.push({ titolo:c.nome, sub:[c.citta,c.tel].filter(Boolean).join(' · '), azione:()=>{ showPage('clienti'); setTimeout(()=>evidenziaCliente(c.id),300); } });
     }
   });
-
-  // Cerca tra lead/pipeline
   (state.leads||[]).forEach(l=>{
-    if(l.nome.toLowerCase().includes(query) || (l.citta||'').toLowerCase().includes(query) || (l.contatto||'').toLowerCase().includes(query)){
-      const fase = (state.fasi||[]).find(f=>f.id===l.stato);
-      risultati.push({
-        tipo: 'pipeline', icon: 'ti-layout-kanban', color: 'var(--orange)',
-        titolo: l.nome,
-        sub: [fase?.label, l.citta, l.prodotto].filter(Boolean).join(' · '),
-        azione: ()=>showPage('pipeline')
-      });
+    if(l.nome.toLowerCase().includes(query)||(l.citta||'').toLowerCase().includes(query)||(l.contatto||'').toLowerCase().includes(query)){
+      const fase=(state.fasi||[]).find(f=>f.id===l.stato);
+      gruppi[1].items.push({ titolo:l.nome, sub:[fase?.label,l.citta,l.prodotto].filter(Boolean).join(' · '), azione:()=>showPage('pipeline') });
     }
   });
-
-  // Cerca tra ordini
   (state.ordini||[]).forEach(o=>{
-    if((o.cliente||'').toLowerCase().includes(query) || (o.prodotto||'').toLowerCase().includes(query)){
-      risultati.push({
-        tipo: 'ordine', icon: 'ti-clipboard-list', color: 'var(--green)',
-        titolo: o.cliente,
-        sub: `Ordine · ${o.prodotto||''} · ${o.qty||''} kg`,
-        azione: ()=>showPage('ordini')
-      });
+    if((o.cliente||'').toLowerCase().includes(query)||(o.prodotto||'').toLowerCase().includes(query)){
+      gruppi[2].items.push({ titolo:o.cliente, sub:`${o.prodotto||''} · ${o.qty||''} kg`, azione:()=>showPage('ordini') });
     }
   });
-
-  // Cerca tra attività
   (state.attivita||[]).forEach(a=>{
-    if((a.titolo||'').toLowerCase().includes(query) || (a.cliente||'').toLowerCase().includes(query)){
-      risultati.push({
-        tipo: 'attività', icon: 'ti-checkbox', color: 'var(--blue)',
-        titolo: a.titolo,
-        sub: `Attività · ${a.cliente||''}`,
-        azione: ()=>showPage('attivita')
-      });
+    if((a.titolo||'').toLowerCase().includes(query)||(a.cliente||'').toLowerCase().includes(query)){
+      gruppi[3].items.push({ titolo:a.titolo, sub:a.cliente||'', azione:()=>showPage('attivita') });
     }
   });
 
-  cont.style.display = risultati.length ? 'flex' : 'none';
-  if(!risultati.length){
-    cont.style.display='flex';
-    cont.innerHTML='<div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun risultato per "<strong>'+q+'</strong>"</div>';
+  const tuttiItems = [];
+  gruppi.forEach(g=>g.items.forEach(it=>tuttiItems.push({...it, gruppo:g})));
+  window._searchResults = tuttiItems;
+
+  if(!tuttiItems.length){
+    cont.style.display='block';
+    cont.innerHTML=`<div style="padding:18px 16px;text-align:center;color:var(--text-2)"><i class="ti ti-mood-empty" style="font-size:24px;display:block;margin-bottom:6px"></i><div style="font-size:13px">Nessun risultato per <strong>"${q}"</strong></div></div>`;
     return;
   }
-  cont.innerHTML = risultati.slice(0,8).map((r,i)=>`
-    <div onclick="eseguiRicercaRapida(${i})" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid var(--border);border-radius:var(--r);cursor:pointer;transition:border-color .15s;background:#fff" onmouseover="this.style.borderColor='${r.color}'" onmouseout="this.style.borderColor='var(--border)'">
-      <i class="ti ${r.icon}" style="font-size:18px;color:${r.color};flex-shrink:0"></i>
-      <div style="min-width:0;flex:1">
-        <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.titolo}</div>
-        <div style="font-size:11px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.sub}</div>
-      </div>
-      <span style="font-size:10px;color:var(--text-3);background:var(--surface-2);padding:2px 7px;border-radius:20px;flex-shrink:0">${r.tipo}</span>
-    </div>`).join('');
-  window._searchResults = risultati;
+
+  // Render raggruppato stile Pipedrive
+  let html = '';
+  let idxGlobale = 0;
+  gruppi.forEach(g=>{
+    if(!g.items.length) return;
+    html += `<div style="padding:7px 14px 4px;font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;display:flex;align-items:center;gap:6px;border-top:${idxGlobale>0?'1px solid var(--border)':'none'}"><i class="ti ${g.icon}" style="font-size:13px;color:${g.color}"></i>${g.label}</div>`;
+    g.items.slice(0,4).forEach(it=>{
+      const idx = idxGlobale++;
+      html += `<div onclick="eseguiRicercaRapida(${idx})" style="display:flex;align-items:center;gap:11px;padding:9px 14px;cursor:pointer;transition:background .1s" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='transparent'">
+        <div style="width:32px;height:32px;border-radius:50%;background:${g.color}18;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+          <i class="ti ${g.icon}" style="font-size:15px;color:${g.color}"></i>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13.5px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.titolo}</div>
+          ${it.sub?`<div style="font-size:12px;color:var(--text-2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${it.sub}</div>`:''}
+        </div>
+        <i class="ti ti-arrow-right" style="font-size:14px;color:var(--text-3);flex-shrink:0"></i>
+      </div>`;
+    });
+  });
+  cont.style.display='block';
+  cont.innerHTML=html;
 }
 
 function eseguiRicercaRapida(idx){
-  const r = (window._searchResults||[])[idx];
-  if(!r) return;
-  // Svuota la ricerca
-  const input = document.getElementById('dash-search-input');
-  if(input) input.value='';
-  const cont = document.getElementById('dash-search-results');
-  if(cont){ cont.innerHTML=''; cont.style.display='none'; }
+  const r=(window._searchResults||[])[idx]; if(!r) return;
+  document.getElementById('dash-search-input').value='';
+  chiudiRicercaRapida();
   r.azione();
 }
 
 function evidenziaCliente(id){
-  const el = document.getElementById('cl-row-'+id);
+  const el=document.getElementById('cl-row-'+id);
   if(el){ el.scrollIntoView({behavior:'smooth',block:'center'}); el.style.background='var(--brand-light)'; setTimeout(()=>el.style.background='',1500); }
 }
+
+// Chiudi dropdown cliccando fuori
+document.addEventListener('click', e=>{
+  if(!document.getElementById('dash-search-wrap')?.contains(e.target)) chiudiRicercaRapida();
+});
 
 function renderDash(){
   if(!document.getElementById('m-clienti')) return;
