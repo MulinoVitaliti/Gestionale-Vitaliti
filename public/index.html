@@ -478,8 +478,18 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="page-title">Clienti</div>
         <button class="btn btn-primary" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
       </div>
-      <div class="search-wrap"><i class="ti ti-search"></i><input type="text" placeholder="Cerca..." id="search-clienti" oninput="renderClienti()"></div>
-      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Città</th><th>Telefono</th><th>Prodotti</th><th>Stato</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+      <div style="position:relative;margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:var(--rl);padding:9px 16px;transition:border-color .15s" id="clienti-search-box">
+          <i class="ti ti-search" style="font-size:17px;color:var(--text-3);flex-shrink:0"></i>
+          <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti"
+            style="flex:1;border:none;background:transparent;font-size:14px;font-family:var(--font);color:var(--text);outline:none"
+            oninput="renderClienti()"
+            onfocus="document.getElementById('clienti-search-box').style.borderColor='var(--brand)'"
+            onblur="document.getElementById('clienti-search-box').style.borderColor='var(--border)'">
+          <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+        </div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
     </div>
     <div class="page" id="page-ordini">
       <div class="page-header">
@@ -881,6 +891,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="cl-ind"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="cl-prod" placeholder="Es. Semola rimacinata, Farina 00"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="cl-note"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-cliente')">Annulla</button><button class="btn btn-primary" onclick="salvaCliente()"><i class="ti ti-check"></i>Salva</button></div>
@@ -893,6 +904,7 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="edit-cl-ind"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="edit-cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="edit-cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="edit-cl-prod"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-cl-note"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-cliente')">Annulla</button><button class="btn btn-primary" onclick="aggiornaCliente()"><i class="ti ti-check"></i>Salva</button></div>
@@ -1953,12 +1965,15 @@ async function eliminaFaseConCheck(id){
 // ── CLIENTI ───────────────────────────────────────────────────────────────
 function renderClienti(){
   const q=(document.getElementById('search-clienti').value||'').toLowerCase();
-  const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q));
+  const list=state.clienti.filter(c=>c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q));
+  const cnt=document.getElementById('clienti-count');
+  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${state.clienti.length} clienti`;
   const tb=document.getElementById('tbl-clienti'); tb.innerHTML='';
   if(!list.length){tb.innerHTML='<tr><td colspan="6"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
-    const tr=document.createElement('tr');
-    tr.innerHTML=`<td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td><td>${c.citta||'—'}</td><td>${c.tel||'—'}</td><td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td><td><span class="badge badge-acq">Attivo</span></td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="apriDettaglio(${c.id})" style="margin-right:4px"><i class="ti ti-eye"></i></button><button class="btn btn-sm" onclick="editCliente(${c.id})"><i class="ti ti-pencil"></i></button></td>`;
+    const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
+    const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
+    tr.innerHTML=`<td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td><td>${c.citta||'—'}</td><td>${c.tel||'—'}</td><td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td><td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="apriDettaglio(${c.id})" style="margin-right:4px"><i class="ti ti-eye"></i></button><button class="btn btn-sm" onclick="editCliente(${c.id})"><i class="ti ti-pencil"></i></button></td>`;
     tb.appendChild(tr);
   });
 }
@@ -1977,6 +1992,8 @@ function apriDettaglio(id){
       <tr><td style="color:var(--text-2);padding:5px 0">Telefono</td><td>${c.tel||'—'}</td></tr>
       <tr><td style="color:var(--text-2);padding:5px 0">Email</td><td>${c.email||'—'}</td></tr>
       <tr><td style="color:var(--text-2);padding:5px 0">Indirizzo</td><td>${c.ind||'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">SDI</td><td>${c.sdi?`<span style="font-family:monospace;background:var(--brand-light);color:var(--brand);padding:1px 6px;border-radius:4px;font-size:12px">${c.sdi}</span>`:'—'}</td></tr>
+      <tr><td style="color:var(--text-2);padding:5px 0">PEC</td><td style="font-size:13px">${c.pec||'—'}</td></tr>
       <tr><td style="color:var(--text-2);padding:5px 0">Prodotti</td><td>${c.prod||'—'}</td></tr>
     </table></div></div>
     <div class="card" style="margin-bottom:11px">
@@ -2388,26 +2405,48 @@ function selezionaAziendaGoogle(prefix, idx){
   document.getElementById(prefix+'-ind').value = r.indirizzo || '';
   const telEl = document.getElementById(prefix+'-tel');
   if(telEl && r.telefono) telEl.value = r.telefono;
-  document.getElementById(prefix+'-risultati-ricerca').innerHTML = `<div style="font-size:12px;color:var(--green);padding:6px 0"><i class="ti ti-check"></i> Dati compilati da Google</div>`;
+  // PEC: Google Places a volte espone email certificate nei siti web
+  // Se nei dati Google c'è una email che contiene "pec" nel dominio la inseriamo automaticamente
+  const pecEl = document.getElementById(prefix+'-pec');
+  if(pecEl && r.email && r.email.toLowerCase().includes('pec')) pecEl.value = r.email;
+  document.getElementById(prefix+'-risultati-ricerca').innerHTML = `<div style="font-size:12px;color:var(--green);padding:6px 0"><i class="ti ti-check"></i> Dati compilati da Google${pecEl&&pecEl.value?' (inclusa PEC)':''}</div>`;
   document.getElementById(prefix+'-ricerca-azienda').value = '';
 }
 
 // ── SALVA CLIENTE ─────────────────────────────────────────────────────────
 async function salvaCliente(){
   const nome=document.getElementById('cl-nome').value.trim(); if(!nome)return alert('Inserisci la ragione sociale');
-  const data=await api.post('/api/clienti',{nome,ref:document.getElementById('cl-ref').value,tel:document.getElementById('cl-tel').value,email:document.getElementById('cl-email').value,citta:document.getElementById('cl-citta').value,ind:document.getElementById('cl-ind').value,prod:document.getElementById('cl-prod').value,note:document.getElementById('cl-note').value});
+  const data=await api.post('/api/clienti',{
+    nome, ref:document.getElementById('cl-ref').value,
+    tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
+    citta:document.getElementById('cl-citta').value, ind:document.getElementById('cl-ind').value,
+    sdi:document.getElementById('cl-sdi').value.toUpperCase().trim(),
+    pec:document.getElementById('cl-pec').value.trim(),
+    prod:document.getElementById('cl-prod').value, note:document.getElementById('cl-note').value
+  });
   if(!data.error) state.clienti.push(data);
   closeModal('modal-cliente'); renderClienti(); renderDash(); showSave();
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-ind','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
+
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  ['nome','ref','tel','email','citta','ind','prod','note'].forEach(f=>document.getElementById('edit-cl-'+f).value=c[f]||'');
+  ['nome','ref','tel','email','citta','ind','sdi','pec','prod','note'].forEach(f=>{
+    const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f]||'';
+  });
   openModal('modal-edit-cliente');
 }
 async function aggiornaCliente(){
   const id=parseInt(document.getElementById('edit-cl-id').value);
-  const body={nome:document.getElementById('edit-cl-nome').value,ref:document.getElementById('edit-cl-ref').value,tel:document.getElementById('edit-cl-tel').value,email:document.getElementById('edit-cl-email').value,citta:document.getElementById('edit-cl-citta').value,ind:document.getElementById('edit-cl-ind').value,prod:document.getElementById('edit-cl-prod').value,note:document.getElementById('edit-cl-note').value};
+  const body={
+    nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
+    tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
+    citta:document.getElementById('edit-cl-citta').value, ind:document.getElementById('edit-cl-ind').value,
+    sdi:document.getElementById('edit-cl-sdi').value.toUpperCase().trim(),
+    pec:document.getElementById('edit-cl-pec').value.trim(),
+    prod:document.getElementById('edit-cl-prod').value, note:document.getElementById('edit-cl-note').value
+  };
   await api.put('/api/clienti/'+id,body);
   const c=state.clienti.find(x=>x.id===id); if(c)Object.assign(c,body);
   closeModal('modal-edit-cliente'); renderClienti(); showSave();
