@@ -362,17 +362,8 @@ tbody tr:hover{background:var(--surface-2)}
         <div id="dash-user-badge"></div>
       </div>
 
-      <!-- Task in cima -->
-      <div class="card" style="cursor:pointer;margin-bottom:14px" onclick="showPage('task')">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
-          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
-        </div>
-        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
-      </div>
-
       <!-- Ricerca rapida stile Pipedrive -->
-      <div style="position:relative;margin-bottom:18px" id="dash-search-wrap">
+      <div style="position:relative;margin-bottom:18px;max-width:600px" id="dash-search-wrap">
         <div style="display:flex;align-items:center;gap:10px;background:#fff;border:1.5px solid var(--border);border-radius:var(--rl);padding:10px 16px;transition:border-color .15s;box-shadow:var(--shadow-sm)" id="dash-search-box">
           <i class="ti ti-search" style="font-size:18px;color:var(--text-3);flex-shrink:0"></i>
           <input type="text" id="dash-search-input" placeholder="Cerca clienti, ordini, attività..."
@@ -384,6 +375,15 @@ tbody tr:hover{background:var(--surface-2)}
           <i class="ti ti-x" id="dash-search-clear" style="font-size:16px;color:var(--text-3);cursor:pointer;display:none" onclick="document.getElementById('dash-search-input').value='';chiudiRicercaRapida()"></i>
         </div>
         <div id="dash-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-md);z-index:100;max-height:380px;overflow-y:auto"></div>
+      </div>
+
+      <!-- Task -->
+      <div class="card" style="cursor:pointer;margin-bottom:14px" onclick="showPage('task')">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-list-check" style="color:var(--brand)"></i>Le mie task<span class="nav-badge" id="task-badge" style="display:none;margin-left:7px"></span></div>
+          <span style="font-size:12px;color:var(--text-2)">Vai alla bacheca <i class="ti ti-arrow-right" style="font-size:11px"></i></span>
+        </div>
+        <div class="card-body" id="dash-task" onclick="event.stopPropagation()"></div>
       </div>
 
       <!-- Metriche -->
