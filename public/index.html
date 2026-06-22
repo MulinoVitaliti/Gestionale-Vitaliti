@@ -2718,8 +2718,10 @@ async function aggiornaCliente(){
     pec:document.getElementById('edit-cl-pec').value.trim(),
     prod:document.getElementById('edit-cl-prod').value, note:document.getElementById('edit-cl-note').value
   };
-  await api.put('/api/clienti/'+id,body);
-  const c=state.clienti.find(x=>x.id===id); if(c)Object.assign(c,body);
+  await api.put('/api/clienti/'+id, body);
+  // Ricarica dal server per avere la lista aggiornata e corretta
+  const aggiornati = await api.get('/api/clienti');
+  if(!aggiornati.error) state.clienti = aggiornati;
   closeModal('modal-edit-cliente');
   renderClienti(); renderFornitori(); showSave();
 }
