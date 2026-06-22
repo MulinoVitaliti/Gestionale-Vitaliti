@@ -336,11 +336,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="s-section" onclick="toggleSection('sec-principale')"><span>Principale</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-principale">
       <div class="nav-item active" onclick="showPage('dashboard')" id="nav-dashboard"><i class="ti ti-layout-dashboard"></i><span>Dashboard</span></div>
-      <div class="nav-item" onclick="showPage('clienti')" id="nav-clienti"><i class="ti ti-users"></i><span>Clienti</span></div>
-      <div class="nav-item" onclick="showPage('fornitori')" id="nav-fornitori"><i class="ti ti-building-factory-2"></i><span>Fornitori</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-vendita')"><span>Vendita</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-vendita">
+      <div class="nav-item" onclick="showPage('contatti')" id="nav-contatti"><i class="ti ti-address-book"></i><span>Contatti</span></div>
       <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i><span>Pipeline vendite</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
@@ -476,40 +475,46 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
       <div class="pipeline-wrap"><div class="pipeline" id="pipeline-board"></div></div>
     </div>
-    <div class="page" id="page-clienti">
+    <!-- CONTATTI (Clienti + Fornitori) -->
+    <div class="page" id="page-contatti">
       <div class="page-header">
-        <div class="page-title">Clienti</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="btn-importa-fic" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
-          <button class="btn btn-primary" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
+        <div class="page-title">Contatti</div>
+        <div style="display:flex;gap:8px" id="contatti-header-actions">
+          <button class="btn" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
+          <button class="btn" id="btn-export-contatti" onclick="esportaContatti()"><i class="ti ti-download"></i>Esporta</button>
+          <button class="btn btn-primary" id="btn-nuovo-contatto" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
         </div>
       </div>
-      <div class="search-bar-wrap" style="margin:0 auto 18px">
-        <div class="search-bar-box">
-          <i class="ti ti-search search-icon"></i>
-          <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
-          <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
-        </div>
+
+      <!-- Tab switcher -->
+      <div class="pills" style="margin-bottom:14px" id="contatti-tabs">
+        <div class="pill active" onclick="switchContattiTab('clienti',this)"><i class="ti ti-users" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Clienti</div>
+        <div class="pill" onclick="switchContattiTab('fornitori',this)"><i class="ti ti-building-factory-2" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Fornitori</div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
-    </div>
-    <!-- FORNITORI -->
-    <div class="page" id="page-fornitori">
-      <div class="page-header">
-        <div class="page-title">Fornitori</div>
-        <div style="display:flex;gap:8px">
-          <button class="btn" id="btn-importa-fic-fornitori" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
-          <button class="btn btn-primary" onclick="apriModalNuovoFornitore()"><i class="ti ti-plus"></i>Nuovo fornitore</button>
+
+      <!-- Vista Clienti -->
+      <div id="contatti-vista-clienti">
+        <div class="search-bar-wrap" style="margin:0 auto 18px">
+          <div class="search-bar-box">
+            <i class="ti ti-search search-icon"></i>
+            <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
+            <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+          </div>
         </div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
       </div>
-      <div class="search-bar-wrap" style="margin:0 auto 18px">
-        <div class="search-bar-box">
-          <i class="ti ti-search search-icon"></i>
-          <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
-          <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+
+      <!-- Vista Fornitori -->
+      <div id="contatti-vista-fornitori" style="display:none">
+        <div class="search-bar-wrap" style="margin:0 auto 18px">
+          <div class="search-bar-box">
+            <i class="ti ti-search search-icon"></i>
+            <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
+            <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+          </div>
         </div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
       </div>
-      <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
     </div>
 
     <div class="page" id="page-ordini">
@@ -1448,14 +1453,14 @@ tbody tr:hover{background:var(--surface-2)}
 <script>
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,clienti:true,fornitori:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
-  commerciale: {dashboard:true,pipeline:true,clienti:true,fornitori:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
-  contabile:   {dashboard:true,pipeline:false,clienti:false,fornitori:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
-  magazzino:   {dashboard:true,pipeline:false,clienti:false,fornitori:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
+  admin:       {dashboard:true,pipeline:true,contatti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
+  commerciale: {dashboard:true,pipeline:true,contatti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
+  contabile:   {dashboard:true,pipeline:false,contatti:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
+  magazzino:   {dashboard:true,pipeline:false,contatti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',clienti:'Clienti',fornitori:'Fornitori',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',contatti:'Contatti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
 
 let currentUser = null;
 let usersDB = [
@@ -1614,7 +1619,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','clienti','fornitori','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
+  ['pipeline','contatti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -1633,8 +1638,7 @@ function showPage(id){
   if(id==='statistiche')renderStatistiche();
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline'){ initPipelinePage(); }
-  if(id==='clienti')renderClienti();
-  if(id==='fornitori')renderFornitori();
+  if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
   if(id==='dashboard')renderDash();
@@ -2022,6 +2026,44 @@ async function eliminaFaseConCheck(id){
     renderPipeline();
     showSave();
   });
+}
+
+// ── CONTATTI (Clienti + Fornitori) ───────────────────────────────────────
+let contattiTabCorrente = 'clienti';
+
+function switchContattiTab(tab, el){
+  contattiTabCorrente = tab;
+  document.querySelectorAll('#contatti-tabs .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.getElementById('contatti-vista-clienti').style.display = tab==='clienti' ? 'block' : 'none';
+  document.getElementById('contatti-vista-fornitori').style.display = tab==='fornitori' ? 'block' : 'none';
+  // Aggiorna il pulsante "Nuovo"
+  const btn = document.getElementById('btn-nuovo-contatto');
+  if(btn){
+    if(tab==='fornitori'){ btn.innerHTML='<i class="ti ti-plus"></i>Nuovo fornitore'; btn.onclick=()=>apriModalNuovoFornitore(); }
+    else { btn.innerHTML='<i class="ti ti-plus"></i>Nuovo cliente'; btn.onclick=()=>openModal('modal-cliente'); }
+  }
+}
+
+function esportaContatti(){
+  const tab = contattiTabCorrente;
+  const lista = tab==='fornitori'
+    ? (state.clienti||[]).filter(c=>c.tipo==='fornitore')
+    : (state.clienti||[]).filter(c=>c.tipo!=='fornitore');
+  if(!lista.length){ alert('Nessun contatto da esportare'); return; }
+
+  // Esporta come CSV scaricabile
+  const cols = tab==='fornitori'
+    ? ['codice','nome','citta','tel','piva','sdi','pec','email','ind_legale','ind_consegna']
+    : ['codice','nome','citta','tel','email','sdi','pec','piva','prod','ind_legale','ind_consegna','note'];
+  const intestazione = cols.join(';');
+  const righe = lista.map(c=>cols.map(k=>`"${(c[k]||'').toString().replace(/"/g,'""')}"`).join(';'));
+  const csv = [intestazione, ...righe].join('\n');
+  const blob = new Blob(['\uFEFF'+csv], {type:'text/csv;charset=utf-8;'});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href=url; a.download=(tab==='fornitori'?'fornitori':'clienti')+'_'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
