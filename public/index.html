@@ -2097,7 +2097,7 @@ async function importaClientiDaFic(){
     if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
     renderClienti();
     // Mostra il riepilogo
-    let msg = `✅ Importazione completata!\n\n• ${r.importati} clienti nuovi aggiunti\n• ${r.saltati} già presenti (senza P.IVA, ignorati)\n• ${r.conflitti} conflitti da risolvere`;
+    let msg = `✅ Importazione completata!\n\n📥 Da FIC: ${r.totaleClienti||0} clienti + ${r.totaleFornitori||0} fornitori\n\n• ${r.importati} record nuovi aggiunti\n• ${r.saltati} già presenti (ignorati)\n• ${r.conflitti} conflitti da risolvere`;
     if(r.conflitti > 0) msg += '\n\n⚠️ Vai su Impostazioni per gestire i conflitti.';
     alert(msg);
     if(r.conflitti > 0) aggiornaConflittiBadge(r.conflitti);
