@@ -339,12 +339,12 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="s-section" onclick="toggleSection('sec-vendita')"><span>Vendita</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-vendita">
-      <div class="nav-item" onclick="showPage('contatti')" id="nav-contatti"><i class="ti ti-address-book"></i><span>Contatti</span></div>
       <div class="nav-item" onclick="showPage('pipeline')" id="nav-pipeline"><i class="ti ti-layout-kanban"></i><span>Pipeline vendite</span></div>
       <div class="nav-item" onclick="showPage('ordini')" id="nav-ordini"><i class="ti ti-clipboard-list"></i><span>Ordini</span></div>
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('spedizioni')" id="nav-spedizioni"><i class="ti ti-truck-delivery"></i><span>Spedizioni</span></div>
+      <div class="nav-item" onclick="showPage('contatti')" id="nav-contatti"><i class="ti ti-address-book"></i><span>Contatti</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-finanza">
@@ -5089,28 +5089,80 @@ function renderTaskBoard(){
 function renderDashTask(){
   const cont = document.getElementById('dash-task');
   if(!cont || !currentUser) return;
-  const mie = (state.tasks||[]).filter(t=>t.assegnata_a===currentUser.username && t.stato!=='fatto')
+
+  const tutte = (state.tasks||[]).filter(t=>t.assegnata_a===currentUser.username);
+  const fatte = tutte.filter(t=>t.stato==='fatto').length;
+  const totale = tutte.length;
+  const mie = tutte.filter(t=>t.stato!=='fatto')
     .sort((a,b)=>{
+      const priMap = {alta:0,media:1,bassa:2};
+      const pa = priMap[a.priorita]??1, pb = priMap[b.priorita]??1;
+      if(pa!==pb) return pa-pb;
       const da = a.scadenza ? new Date(a.scadenza) : new Date('2099-01-01');
       const db = b.scadenza ? new Date(b.scadenza) : new Date('2099-01-01');
       return da-db;
-    }).slice(0,4);
+    }).slice(0,5);
+
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+  const domani = new Date(oggi); domani.setDate(domani.getDate()+1);
+
   if(!mie.length){
-    cont.innerHTML = '<div class="empty-state" style="padding:10px 0"><p>Nessuna task da fare 🎉</p></div>';
+    cont.innerHTML = `
+      <div style="text-align:center;padding:18px 0">
+        <div style="font-size:36px;margin-bottom:8px">🏆</div>
+        <div style="font-size:15px;font-weight:700;color:var(--green);margin-bottom:4px">Tutto completato!</div>
+        <div style="font-size:12px;color:var(--text-2)">Nessuna task in sospeso. Ottimo lavoro.</div>
+      </div>`;
     return;
   }
-  cont.innerHTML = mie.map(t=>{
-    const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
-    const isScaduta = t.scadenza && new Date(t.scadenza) < new Date(new Date().toDateString());
+
+  // Progress bar
+  const pct = totale > 0 ? Math.round((fatte/totale)*100) : 0;
+  const progressHtml = totale > 0 ? `
+    <div style="margin-bottom:14px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:5px">
+        <span style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">Progresso obiettivi</span>
+        <span style="font-size:12px;font-weight:700;color:var(--brand)">${fatte}/${totale} completate</span>
+      </div>
+      <div style="height:6px;background:var(--surface-2);border-radius:99px;overflow:hidden">
+        <div style="height:100%;width:${pct}%;background:${pct===100?'var(--green)':'var(--brand)'};border-radius:99px;transition:width .4s ease"></div>
+      </div>
+    </div>` : '';
+
+  cont.innerHTML = progressHtml + mie.map(t=>{
+    const scad = t.scadenza ? new Date(t.scadenza) : null;
+    if(scad) scad.setHours(0,0,0,0);
+    const isScaduta = scad && scad < oggi;
+    const isOggi = scad && scad.getTime()===oggi.getTime();
+    const isDomani = scad && scad.getTime()===domani.getTime();
+
+    const scadLabel = scad
+      ? isScaduta ? `<span style="background:#fee2e2;color:#dc2626;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">⚠ SCADUTA</span>`
+      : isOggi ? `<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:700">OGGI</span>`
+      : isDomani ? `<span style="background:#fef3c7;color:#d97706;padding:2px 7px;border-radius:99px;font-size:10px;font-weight:600">domani</span>`
+      : `<span style="font-size:11px;color:var(--text-3)">${scad.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})}</span>`
+      : '';
+
+    const priConfig = {
+      alta:  { bg:'#fee2e2', color:'#dc2626', icon:'🔴', label:'Alta' },
+      media: { bg:'#fef3c7', color:'#d97706', icon:'🟡', label:'Media' },
+      bassa: { bg:'#dcfce7', color:'#16a34a', icon:'🟢', label:'Bassa' }
+    };
+    const pri = priConfig[t.priorita] || priConfig.media;
+
     return `
-      <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
-        <span style="width:8px;height:8px;border-radius:50%;background:${t.priorita==='alta'?'var(--red)':t.priorita==='bassa'?'var(--green)':'var(--orange)'};flex-shrink:0"></span>
+      <div style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-radius:var(--r);background:var(--surface-2);margin-bottom:7px;cursor:pointer;transition:box-shadow .15s" onmouseover="this.style.boxShadow='var(--shadow-md)'" onmouseout="this.style.boxShadow='none'" onclick="showPage('task')">
+        <div style="width:34px;height:34px;border-radius:50%;background:${pri.bg};display:flex;align-items:center;justify-content:center;font-size:16px;flex-shrink:0">${pri.icon}</div>
         <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${t.titolo}</div>
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;color:var(--text)">${t.titolo}</div>
+          <div style="font-size:11px;color:var(--text-2);margin-top:1px">${t.descrizione ? t.descrizione.slice(0,45)+(t.descrizione.length>45?'…':'') : 'Nessuna descrizione'}</div>
         </div>
-        ${scadenzaFmt?`<span style="font-size:11px;color:${isScaduta?'var(--red)':'var(--text-2)'};flex-shrink:0">${scadenzaFmt}</span>`:''}
+        <div style="flex-shrink:0">${scadLabel}</div>
       </div>`;
-  }).join('');
+  }).join('') + `
+    <div style="text-align:center;padding-top:4px">
+      <span style="font-size:12px;color:var(--text-2)">${mie.length < (tutte.filter(t=>t.stato!=='fatto').length) ? `+${tutte.filter(t=>t.stato!=='fatto').length - mie.length} altre task →` : ''}</span>
+    </div>`;
 }
 
 let _dragTaskId = null;
