@@ -6311,6 +6311,27 @@ async function eliminaTask(id){
 if('serviceWorker' in navigator) navigator.serviceWorker.register('/sw.js').catch(()=>{});
 initSidebarState();
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));chiudiDettaglio();}});
+
+// ── AUTO-RELOAD: controlla ogni 60 secondi se il server è stato aggiornato ──
+(async function avviaAutoReload(){
+  let versioneAttuale = null;
+  try {
+    const r = await fetch('/api/version');
+    const d = await r.json();
+    versioneAttuale = d.v;
+  } catch(e) { return; } // se fallisce non fa nulla
+
+  setInterval(async ()=>{
+    try {
+      const r = await fetch('/api/version');
+      const d = await r.json();
+      if(versioneAttuale && d.v !== versioneAttuale){
+        // Nuova versione rilevata — ricarica silenziosamente
+        window.location.reload();
+      }
+    } catch(e) {} // ignora errori di rete
+  }, 60000); // ogni 60 secondi
+})();
 </script>
 </body>
 </html>
