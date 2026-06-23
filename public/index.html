@@ -2888,6 +2888,17 @@ function toggleLeadPanel(nome){
   const chevron = document.getElementById('chevron-'+nome);
   if(!panel) return;
   const aperto = panel.style.display !== 'none';
+
+  // Se lo sto aprendo, chiudo l'altro
+  if(!aperto){
+    ['info','pipeline'].filter(n=>n!==nome).forEach(n=>{
+      const p=document.getElementById('lead-panel-'+n);
+      const c=document.getElementById('chevron-'+n);
+      if(p) p.style.display='none';
+      if(c) c.style.transform='';
+    });
+  }
+
   panel.style.display = aperto ? 'none' : 'block';
   if(chevron) chevron.style.transform = aperto ? '' : 'rotate(180deg)';
   if(!aperto && nome==='pipeline') caricaPipelinePerSpostamento();
