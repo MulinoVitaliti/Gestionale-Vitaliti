@@ -2717,25 +2717,46 @@ function renderLeadDetailFeed(leadId){
     const lab=labMap[a.tipo]||a.tipo;
     const dataCreata = a.created_at ? new Date(a.created_at).toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'}) : '';
     const oraCreata = a.created_at ? new Date(a.created_at).toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) : '';
+
+    // Per email completate: mostra anteprima sintetica con espandibile
+    const isEmail = a.tipo==='email' && completata;
+    const emailPreview = isEmail && a.note ? `
+      <div id="email-preview-${a.id}" style="margin-top:6px">
+        <div style="font-size:12px;color:var(--text-2);background:var(--surface-2);border-radius:var(--r);padding:8px 10px;cursor:pointer;border-left:3px solid var(--orange)" onclick="toggleEmailExpand(${a.id})">
+          <div style="display:flex;align-items:center;justify-content:space-between">
+            <span style="font-size:11px;font-weight:600;color:var(--orange)">✉ Email inviata — clicca per vedere</span>
+            <i class="ti ti-chevron-down" id="email-chevron-${a.id}" style="font-size:12px;transition:transform .2s"></i>
+          </div>
+          <div id="email-body-${a.id}" style="display:none;margin-top:8px;font-size:12px;color:var(--text);border-top:1px solid var(--border);padding-top:8px;white-space:pre-line">${a.note}</div>
+        </div>
+      </div>` : '';
+
     return `
-      <div style="display:flex;gap:10px;margin-bottom:12px;${completata?'opacity:0.65':''}">
+      <div style="display:flex;gap:10px;margin-bottom:12px;${completata?'opacity:0.75':''}" id="att-item-${a.id}">
         <div style="flex-shrink:0;width:30px;height:30px;border-radius:50%;background:${completata?'var(--surface-2)':col+'22'};border:2px solid ${completata?'var(--border)':col};display:flex;align-items:center;justify-content:center;margin-top:2px">
           <i class="ti ${completata?'ti-check':icn}" style="font-size:13px;color:${completata?'var(--text-3)':col}"></i>
         </div>
         <div style="flex:1;min-width:0">
           <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-            <div>
+            <div style="flex:1;min-width:0">
               <span style="font-size:11px;font-weight:700;color:${col};text-transform:uppercase;letter-spacing:0.4px">${lab}</span>
               ${completata?'<span style="font-size:10px;background:#dcfce7;color:var(--green);padding:1px 6px;border-radius:99px;font-weight:700;margin-left:6px">✓ Fatto</span>':''}
-              <div style="font-size:13px;font-weight:600;margin-top:2px;${completata?'text-decoration:line-through;color:var(--text-3)':'color:var(--text)'}">${a.titolo||lab}</div>
-              ${a.note?`<div style="font-size:12px;color:var(--text-2);margin-top:3px;white-space:pre-line">${a.note}</div>`:''}
+              <div style="font-size:13px;font-weight:600;margin-top:2px;${completata&&!isEmail?'text-decoration:line-through;color:var(--text-3)':'color:var(--text)'}">${a.titolo||lab}</div>
+              ${!isEmail&&a.note?`<div style="font-size:12px;color:var(--text-2);margin-top:3px;white-space:pre-line">${a.note}</div>`:''}
+              ${emailPreview}
             </div>
-            <div style="flex-shrink:0;display:flex;gap:4px;align-items:center">
-              ${!completata?`<button class="btn btn-sm btn-icon" onclick="completaAttivitaDettaglio(${a.id})" title="Segna come fatto" style="padding:3px 6px"><i class="ti ti-check" style="color:var(--green);font-size:13px"></i></button>`:''}
+            <div style="flex-shrink:0;display:flex;gap:4px;align-items:flex-start">
+              ${!completata?`
+                <button class="btn btn-sm btn-icon" onclick="modificaAttivitaDettaglio(${a.id})" title="Modifica" style="padding:3px 6px"><i class="ti ti-pencil" style="font-size:12px"></i></button>
+                <button class="btn btn-sm btn-icon" onclick="completaAttivitaDettaglio(${a.id})" title="Segna come fatto" style="padding:3px 6px"><i class="ti ti-check" style="color:var(--green);font-size:13px"></i></button>
+              `:`
+                <button class="btn btn-sm btn-icon" onclick="riattivaAttivitaDettaglio(${a.id})" title="Riapri attività" style="padding:3px 6px" title="Riattiva"><i class="ti ti-refresh" style="color:var(--orange);font-size:12px"></i></button>
+                <button class="btn btn-sm btn-icon" onclick="modificaAttivitaDettaglio(${a.id})" title="Modifica" style="padding:3px 6px"><i class="ti ti-pencil" style="font-size:12px"></i></button>
+              `}
               <button class="btn btn-sm btn-icon btn-danger" onclick="eliminaAttivitaDettaglio(${a.id})" title="Elimina" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:11px"></i></button>
             </div>
           </div>
-          <div style="font-size:10px;color:var(--text-3);margin-top:4px;display:flex;align-items:center;gap:8px">
+          <div style="font-size:10px;color:var(--text-3);margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap">
             ${a.data_scadenza?`<span style="color:${cls==='scaduta'?'var(--red)':cls==='oggi'?'var(--orange)':'var(--text-3)'}">📅 ${txt}${a.ora?' · '+a.ora:''}</span>`:''}
             ${dataCreata?`<span>Creata il ${dataCreata} alle ${oraCreata}</span>`:''}
           </div>
@@ -2759,6 +2780,44 @@ function renderLeadDetailFeed(leadId){
        </div>`
     : '<div style="padding:10px 0;text-align:center;color:var(--text-3);font-size:13px">Nessuna attività completata ancora</div>';
 }
+
+function toggleEmailExpand(attId){
+  const body = document.getElementById('email-body-'+attId);
+  const chevron = document.getElementById('email-chevron-'+attId);
+  if(!body) return;
+  const open = body.style.display==='block';
+  body.style.display = open?'none':'block';
+  if(chevron) chevron.style.transform = open?'':'rotate(180deg)';
+}
+
+async function modificaAttivitaDettaglio(attId){
+  const a=(state.attivita||[]).find(x=>x.id===attId); if(!a) return;
+  // Apri modal modifica attività precompilato
+  document.getElementById('att-id').value=a.id;
+  document.getElementById('att-titolo').value=a.titolo||'';
+  document.getElementById('att-note').value=a.note||'';
+  document.getElementById('att-data').value=(a.data_scadenza||'').slice(0,10);
+  document.getElementById('att-ora').value=a.ora||'';
+  document.getElementById('modal-att-title').textContent='Modifica attività';
+  setTipoAtt(a.tipo||'chiamata');
+  popolaPipelineModal();
+  if(a.pipeline_id){
+    document.getElementById('att-pipeline').value=a.pipeline_id;
+    onAttPipelineChange();
+    setTimeout(()=>{ if(a.lead_id) document.getElementById('att-lead').value=a.lead_id; },60);
+  }
+  openModal('modal-attivita');
+}
+
+async function riattivaAttivitaDettaglio(attId){
+  await api.put('/api/attivita/'+attId,{completata:false});
+  if(state.attivita){const a=state.attivita.find(x=>x.id===attId);if(a)a.completata=false;}
+  aggiornaAttBadge();
+  if(_currentLeadDetailId) renderLeadDetailFeed(_currentLeadDetailId);
+  showSave();
+}
+
+
 
 function tornaAllaPipeline(){
   _currentLeadDetailId = null;
@@ -2786,6 +2845,19 @@ async function eliminaAttivitaDettaglio(attId){
 function apriAttivitaInLeadDetail(tipo){
   if(!_currentLeadDetailId) return;
   const l=state.leads.find(x=>x.id===_currentLeadDetailId); if(!l) return;
+  if(tipo==='email'){
+    // Apri composer Gmail precompilato con email del lead
+    const emailTo = l.email||'';
+    apriComposer({
+      to: emailTo,
+      subject: '',
+      title: 'Email a '+l.nome,
+    });
+    // Intercetta inviaEmail per salvare nella cronologia del lead dopo invio
+    window._emailLeadPendingId = _currentLeadDetailId;
+    window._emailLeadPendingNome = l.nome;
+    return;
+  }
   apriAttivitaInLead(_currentLeadDetailId, l.nome, tipo);
 }
 
@@ -3922,6 +3994,30 @@ async function inviaEmail(){
       // Elimina bozza se esisteva
       const draftId=document.getElementById('composer-draft-id').value;
       if(draftId) await eliminaBozzaDB(draftId);
+      // Se email inviata dal dettaglio lead, salva nella cronologia
+      if(window._emailLeadPendingId){
+        const leadId = window._emailLeadPendingId;
+        const leadNome = window._emailLeadPendingNome||'';
+        const bodyTesto = document.createElement('div');
+        bodyTesto.innerHTML = body;
+        const testoSemplice = bodyTesto.textContent||bodyTesto.innerText||'';
+        const attEmail = {
+          tipo:'email',
+          titolo:'Email a '+leadNome+' — '+subject,
+          note: 'A: '+to+'\nOggetto: '+subject+'\n\n'+testoSemplice.slice(0,2000),
+          lead_id:leadId,
+          pipeline_id:currentPipelineId||'default',
+          collegata_tipo:'lead', collegata_id:leadId, collegata_nome:leadNome,
+          completata:true,
+          data_scadenza:new Date().toISOString().slice(0,10),
+          ora:new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})
+        };
+        const attData = await api.post('/api/attivita', attEmail);
+        if(!attData.error){ state.attivita=state.attivita||[]; state.attivita.unshift({...attData}); }
+        if(_currentLeadDetailId===leadId) renderLeadDetailFeed(leadId);
+        window._emailLeadPendingId = null;
+        window._emailLeadPendingNome = null;
+      }
       showSave();
     } else {
       document.getElementById('composer-status').textContent='Errore: '+(data.error||'invio fallito');
