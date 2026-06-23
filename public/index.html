@@ -538,25 +538,37 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
       </div>
 
-      <div style="display:grid;grid-template-columns:320px 1fr;gap:18px;margin-top:18px;align-items:start" id="lead-detail-grid">
+      <div style="margin-top:18px" id="lead-detail-grid">
 
-        <!-- COLONNA SINISTRA: Info contatto -->
-        <div>
-          <!-- Card info -->
-          <div class="card" style="margin-bottom:12px">
-            <div class="card-header"><div class="card-title"><i class="ti ti-info-circle" style="color:var(--brand)"></i>Informazioni</div></div>
-            <div class="card-body" id="lead-detail-info" style="padding:0 16px 14px"></div>
+        <!-- PANNELLI COLLASSABILI (full width) -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;margin-bottom:16px">
+
+          <!-- Card Informazioni (collassabile) -->
+          <div class="card" style="margin:0">
+            <div class="card-header" onclick="toggleLeadPanel('info')" style="cursor:pointer;user-select:none">
+              <div class="card-title"><i class="ti ti-info-circle" style="color:var(--brand)"></i>Informazioni</div>
+              <i class="ti ti-chevron-down" id="chevron-info" style="font-size:14px;color:var(--text-3);transition:transform .2s"></i>
+            </div>
+            <div id="lead-panel-info" style="display:none;overflow:hidden">
+              <div class="card-body" id="lead-detail-info" style="padding:0 16px 14px"></div>
+            </div>
           </div>
-          <!-- Card pipeline -->
-          <div class="card">
-            <div class="card-header"><div class="card-title"><i class="ti ti-layout-kanban" style="color:var(--brand)"></i>Pipeline</div></div>
-            <div class="card-body" id="lead-detail-pipeline" style="padding:0 16px 14px"></div>
+
+          <!-- Card Pipeline (collassabile) -->
+          <div class="card" style="margin:0">
+            <div class="card-header" onclick="toggleLeadPanel('pipeline')" style="cursor:pointer;user-select:none">
+              <div class="card-title"><i class="ti ti-layout-kanban" style="color:var(--brand)"></i>Pipeline & Spostamento</div>
+              <i class="ti ti-chevron-down" id="chevron-pipeline" style="font-size:14px;color:var(--text-3);transition:transform .2s"></i>
+            </div>
+            <div id="lead-panel-pipeline" style="display:none;overflow:hidden">
+              <div class="card-body" id="lead-detail-pipeline" style="padding:0 16px 14px"></div>
+            </div>
           </div>
         </div>
 
-        <!-- COLONNA DESTRA: Attività + Cronologia -->
+        <!-- SEZIONE ATTIVITÀ (sempre visibile, full width) -->
         <div>
-          <!-- Pulsanti azione rapida stile Pipedrive -->
+          <!-- Pulsanti azione rapida -->
           <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:16px;background:#fff">
             <button id="ldp-btn-chiamata" onclick="apriAttivitaInLeadDetail('chiamata')" style="flex:1;padding:13px 8px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .15s;font-family:inherit" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
               <i class="ti ti-phone" style="font-size:20px;color:var(--blue)"></i>
@@ -593,9 +605,9 @@ tbody tr:hover{background:var(--surface-2)}
             </div>
             <div id="lead-detail-history" style="padding:12px 14px"></div>
           </div>
-        </div>
-      </div>
-    </div>
+        </div><!-- fine sezione attività -->
+      </div><!-- fine lead-detail-grid -->
+    </div><!-- fine page-lead-detail -->
 
     <div class="page" id="page-pipeline">
       <div class="page-header">
@@ -2862,6 +2874,17 @@ async function riattivaAttivitaDettaglio(attId){
 }
 
 
+
+function toggleLeadPanel(nome){
+  const panel = document.getElementById('lead-panel-'+nome);
+  const chevron = document.getElementById('chevron-'+nome);
+  if(!panel) return;
+  const aperto = panel.style.display !== 'none';
+  panel.style.display = aperto ? 'none' : 'block';
+  if(chevron) chevron.style.transform = aperto ? '' : 'rotate(180deg)';
+  // Se stiamo aprendo Pipeline, carica dati freschi
+  if(!aperto && nome==='pipeline') caricaPipelinePerSpostamento();
+}
 
 function tornaAllaPipeline(){
   _currentLeadDetailId = null;
