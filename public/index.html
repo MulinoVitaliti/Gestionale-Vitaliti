@@ -2737,19 +2737,16 @@ function apriDettaglioLead(id){
       <div style="font-size:13px;color:var(--text-2)">${l.created_at?new Date(l.created_at).toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'}):'—'}</div>
     </div>`;
 
-  // Carica pipeline aggiornate dal server e popola il menu
-  caricaPipelinePerSpostamento();
-
-  // Attività: separo future da completate (cronologia)
-  renderLeadDetailFeed(id);
-
-  // Assicura che i pannelli partano chiusi
+  // Prima chiudi TUTTI i pannelli, poi carica i dati e mostra la pagina
   ['info','pipeline'].forEach(n=>{
     const p=document.getElementById('lead-panel-'+n);
     const c=document.getElementById('chevron-'+n);
     if(p) p.style.display='none';
     if(c) c.style.transform='';
   });
+
+  // Carica attività
+  renderLeadDetailFeed(id);
 
   showPage('lead-detail');
 }
