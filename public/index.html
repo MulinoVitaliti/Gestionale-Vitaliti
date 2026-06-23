@@ -2881,24 +2881,17 @@ async function riattivaAttivitaDettaglio(attId){
 
 
 function toggleLeadPanel(nome){
-  const panel = document.getElementById('lead-panel-'+nome);
-  const chevron = document.getElementById('chevron-'+nome);
-  if(!panel) return;
-  const aperto = panel.style.display !== 'none';
+  const apertoInfo = document.getElementById('lead-panel-info')?.style.display !== 'none';
+  const nuovoStato = apertoInfo ? 'none' : 'block';
 
-  // Se lo sto aprendo, chiudo l'altro
-  if(!aperto){
-    ['info','pipeline'].filter(n=>n!==nome).forEach(n=>{
-      const p=document.getElementById('lead-panel-'+n);
-      const c=document.getElementById('chevron-'+n);
-      if(p) p.style.display='none';
-      if(c) c.style.transform='';
-    });
-  }
+  ['info','pipeline'].forEach(n=>{
+    const p = document.getElementById('lead-panel-'+n);
+    const c = document.getElementById('chevron-'+n);
+    if(p) p.style.display = nuovoStato;
+    if(c) c.style.transform = nuovoStato==='block' ? 'rotate(180deg)' : '';
+  });
 
-  panel.style.display = aperto ? 'none' : 'block';
-  if(chevron) chevron.style.transform = aperto ? '' : 'rotate(180deg)';
-  if(!aperto && nome==='pipeline') caricaPipelinePerSpostamento();
+  if(nuovoStato==='block') caricaPipelinePerSpostamento();
 }
 
 function tornaAllaPipeline(){
