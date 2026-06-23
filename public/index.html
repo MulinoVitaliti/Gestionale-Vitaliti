@@ -2135,7 +2135,16 @@ function renderPipeline(){
     const header = document.createElement('div');
     header.className = 'pl-col-header';
     header.style.borderBottomColor = fase.color;
-    header.innerHTML = `<span class="pl-col-title" style="color:${fase.color};cursor:pointer" onclick="apriRinominaFase('${fase.id}')">${fase.label}</span><span class="pl-col-count">${items.length}</span>`;
+    header.innerHTML = `
+      <span class="pl-col-title" id="fase-title-${fase.id}" style="color:${fase.color};cursor:pointer" title="Doppio click per rinominare" ondblclick="iniziaRinominaFaseInline('${fase.id}')">
+        ${fase.label}
+      </span>
+      <div style="display:flex;align-items:center;gap:4px">
+        <button onclick="iniziaRinominaFaseInline('${fase.id}')" title="Rinomina fase" style="background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.5;transition:opacity .15s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+          <i class="ti ti-pencil" style="font-size:13px;color:${fase.color}"></i>
+        </button>
+        <span class="pl-col-count">${items.length}</span>
+      </div>`;
     col.appendChild(header);
 
     if(!items.length){
@@ -2250,19 +2259,34 @@ async function dropLeadInFase(e, faseId, col){
   }
 }
 
-// ── RINOMINA / ELIMINA FASE (click sul titolo colonna) ───────────────────
-function apriRinominaFase(faseId){
-  const fase = state.fasi.find(f=>f.id===faseId);
-  if(!fase) return;
-  const nuovoNome = prompt('Rinomina fase:', fase.label);
-  if(nuovoNome === null) return; // annullato
-  const nomeTrim = nuovoNome.trim();
-  if(!nomeTrim){
-    // Nome vuoto = proponi eliminazione
-    eliminaFaseConCheck(faseId);
-    return;
-  }
-  if(nomeTrim !== fase.label) rinominaFase(faseId, nomeTrim);
+// ── RINOMINA FASE INLINE ───────────────────────────────────────────────────
+function iniziaRinominaFaseInline(faseId){
+  const fase = state.fasi.find(f=>f.id===faseId); if(!fase) return;
+  const titleEl = document.getElementById('fase-title-'+faseId); if(!titleEl) return;
+  const colore = fase.color || 'var(--brand)';
+
+  // Sostituisce il testo con un input
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.value = fase.label;
+  input.style.cssText = `color:${colore};font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;border:none;border-bottom:2px solid ${colore};outline:none;background:transparent;width:120px;font-family:var(--font)`;
+  titleEl.innerHTML = '';
+  titleEl.appendChild(input);
+  input.focus();
+  input.select();
+
+  const confermaRinomina = async()=>{
+    const nuovoNome = input.value.trim();
+    if(!nuovoNome){ titleEl.textContent = fase.label; return; }
+    if(nuovoNome !== fase.label) await rinominaFase(faseId, nuovoNome);
+    else titleEl.textContent = fase.label;
+  };
+
+  input.onblur = confermaRinomina;
+  input.onkeydown = (e)=>{
+    if(e.key==='Enter'){ e.preventDefault(); input.blur(); }
+    if(e.key==='Escape'){ input.onblur=null; titleEl.textContent=fase.label; }
+  };
 }
 
 async function rinominaFase(id,nome){
@@ -2670,14 +2694,36 @@ function apriDettaglioLead(id){
       ${infoRows.map(([k,v])=>`<tr><td style="color:var(--text-3);padding:6px 0;width:80px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px">${k}</td><td style="font-weight:500;padding:6px 0">${v}</td></tr>`).join('')}
     </table>` : '<div style="color:var(--text-3);font-size:13px;padding:6px 0">Nessuna informazione aggiuntiva</div>';
 
-  // Pipeline sinistra
-  const pipe = (state.pipelines||[]).find(p=>p.id===currentPipelineId)||{nome:'Pipeline principale'};
+  // Pipeline + fase con spostamento
+  const pipe = (state.pipelines||[]).find(p=>p.id===currentPipelineId)||{id:'default',nome:'Pipeline principale'};
+  const tutte_pipelines = state.pipelines||[{id:'default',nome:'Pipeline principale'}];
+  const fasiDellaCorrente = (state.fasi||[]).filter(f=>f.pipeline_id===currentPipelineId||(!f.pipeline_id&&currentPipelineId==='default'));
+  const altreOpzioni = tutte_pipelines.map(p=>`<option value="${p.id}"${p.id===currentPipelineId?' selected':''}>${p.nome}</option>`).join('');
+  const fasiOpzioni = fasiDellaCorrente.map(f=>`<option value="${f.id}"${f.id===l.stato?' selected':''}>${f.label}</option>`).join('');
+
   document.getElementById('lead-detail-pipeline').innerHTML = `
     <div style="padding-top:4px">
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:4px">Pipeline</div>
-      <div style="font-weight:600;font-size:13px">${pipe.nome}</div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin:10px 0 4px">Fase attuale</div>
-      <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-light);color:var(--brand);padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700">
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:6px">Sposta lead</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <div>
+          <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:3px">Pipeline</label>
+          <select id="ld-move-pipeline" onchange="aggiornaFasiSpostamento()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;background:#fff">
+            ${altreOpzioni}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:3px">Fase</label>
+          <select id="ld-move-fase" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;background:#fff">
+            ${fasiOpzioni}
+          </select>
+        </div>
+        <button class="btn btn-primary" onclick="spostaLeadPipelineFase(${id})" style="width:100%;justify-content:center">
+          <i class="ti ti-arrows-right-left"></i>Sposta
+        </button>
+      </div>
+      <div style="height:1px;background:var(--border);margin:14px 0"></div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:4px">Fase attuale</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-light);color:var(--brand);padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700" id="ld-fase-corrente">
         <span class="status-dot" style="background:var(--brand)"></span>${faseLabel}
       </div>
       <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin:10px 0 4px">Aggiunto</div>
@@ -2823,6 +2869,58 @@ function tornaAllaPipeline(){
   _currentLeadDetailId = null;
   showPage('pipeline');
 }
+
+function aggiornaFasiSpostamento(){
+  const pipId = document.getElementById('ld-move-pipeline')?.value;
+  if(!pipId) return;
+  const fasi = (state.fasi||[]).filter(f=>f.pipeline_id===pipId||(!f.pipeline_id&&pipId==='default'));
+  const sel = document.getElementById('ld-move-fase');
+  if(!sel) return;
+  sel.innerHTML = fasi.length
+    ? fasi.map(f=>`<option value="${f.id}">${f.label}</option>`).join('')
+    : '<option value="">Nessuna fase disponibile</option>';
+}
+
+async function spostaLeadPipelineFase(leadId){
+  const nuovaPipeline = document.getElementById('ld-move-pipeline')?.value;
+  const nuovaFase = document.getElementById('ld-move-fase')?.value;
+  if(!nuovaPipeline||!nuovaFase) return alert('Seleziona pipeline e fase');
+
+  const l = state.leads.find(x=>x.id===leadId); if(!l) return;
+  const btn = document.querySelector('#lead-detail-pipeline button');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Spostamento...'; }
+
+  try{
+    if(nuovaPipeline==='default'){
+      // Pipeline default: aggiorna stato direttamente sul lead
+      await api.put('/api/leads/'+leadId, {...l, stato:nuovaFase});
+      l.stato = nuovaFase;
+    } else {
+      // Pipeline custom: aggiorna lead_pipeline_stato
+      const esistente = (state.leadPipelineStato||[]).find(s=>s.lead_id===leadId&&s.pipeline_id===nuovaPipeline);
+      if(esistente){
+        await api.put('/api/lead-pipeline-stato/'+esistente.id, {stato:nuovaFase});
+        esistente.stato = nuovaFase;
+      } else {
+        const r = await api.post('/api/lead-pipeline-stato', {lead_id:leadId, pipeline_id:nuovaPipeline, stato:nuovaFase});
+        if(!r.error) state.leadPipelineStato.push(r);
+      }
+      l.stato = nuovaFase;
+    }
+
+    // Aggiorna fase corrente mostrata
+    const faseLabel = (state.fasi.find(f=>f.id===nuovaFase)||{}).label||nuovaFase;
+    const faseEl = document.getElementById('ld-fase-corrente');
+    if(faseEl) faseEl.innerHTML = `<span class="status-dot" style="background:var(--brand)"></span>${faseLabel}`;
+
+    renderPipeline();
+    showSave();
+    alert(`✅ Lead spostato in "${faseLabel}"`);
+  }catch(e){ alert('Errore: '+e.message); }
+  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-arrows-right-left"></i>Sposta'; }
+}
+
+
 
 async function completaAttivitaDettaglio(attId){
   await api.put('/api/attivita/'+attId,{completata:true});
