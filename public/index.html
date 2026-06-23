@@ -136,17 +136,21 @@ tbody tr:hover{background:var(--surface-2)}
 .add-col-btn{width:235px;flex-shrink:0;border:2px dashed var(--border);border-radius:var(--rl);display:flex;align-items:center;justify-content:center;gap:6px;cursor:pointer;color:var(--text-3);font-size:13px;font-weight:500;transition:all .15s;background:transparent;height:56px;font-family:var(--font)}
 .add-col-btn:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light)}
 .task-col{background:var(--surface-2);border:1px solid var(--border);border-radius:var(--rl);padding:11px;min-height:200px}
-.task-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;border-bottom:2px solid var(--border);font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
-.task-col-count{background:#fff;border:1px solid var(--border);border-radius:20px;padding:1px 7px;font-size:11px;font-weight:600;color:var(--text-2)}
+.task-col-header{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;padding-bottom:8px;font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px}
+.task-col-count{border-radius:20px;padding:2px 9px;font-size:11px;font-weight:700}
 .task-col-body{min-height:80px}
-.task-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:11px;margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:grab;transition:all .15s}
+.task-card{background:#fff;border:1px solid var(--border);border-radius:var(--r);padding:12px 12px 10px 15px;margin-bottom:8px;box-shadow:var(--shadow-sm);cursor:grab;transition:all .18s;position:relative;overflow:hidden}
+.task-card::before{content:'';position:absolute;left:0;top:0;bottom:0;width:4px;border-radius:4px 0 0 4px}
 .task-card:hover{box-shadow:var(--shadow-md);transform:translateY(-1px)}
 .task-card.dragging{opacity:0.4}
 .task-card-title{font-size:13px;font-weight:600;margin-bottom:5px;line-height:1.3}
 .task-card-meta{display:flex;align-items:center;justify-content:space-between;font-size:11px;color:var(--text-2)}
-.task-priority-alta{border-left:3px solid var(--red)}
-.task-priority-media{border-left:3px solid var(--orange)}
-.task-priority-bassa{border-left:3px solid var(--green)}
+.task-priority-alta::before{background:var(--red)}
+.task-priority-alta{border-left:none}
+.task-priority-media::before{background:var(--orange)}
+.task-priority-media{border-left:none}
+.task-priority-bassa::before{background:var(--green)}
+.task-priority-bassa{border-left:none}
 .ac-item{padding:9px 13px;cursor:pointer;border-bottom:1px solid var(--border);transition:background .1s}
 .ac-item:last-child{border-bottom:none}
 .ac-item:hover{background:var(--brand-light)}
@@ -477,28 +481,43 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
         <button class="btn btn-primary" onclick="apriModalTask()"><i class="ti ti-plus"></i>Nuova task</button>
       </div>
-      <div class="pills">
-        <div class="pill active" onclick="filterTask('tutte',this)">Tutte</div>
+      <div class="pills" id="task-pills">
+        <div class="pill active" id="pill-task-tutte" onclick="filterTask('tutte',this)">Tutte</div>
         <div class="pill" onclick="filterTask('mie',this)"><i class="ti ti-user" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Le mie</div>
         <div class="pill" onclick="filterTask('assegnate',this)"><i class="ti ti-send" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Assegnate da me</div>
       </div>
       <div id="task-board" style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:14px;margin-top:14px">
         <div class="task-col" data-stato="da_fare">
-          <div class="task-col-header" style="border-top:3px solid var(--text-3)">
-            <span>Da fare</span><span class="task-col-count" id="task-count-da_fare">0</span>
+          <div class="task-col-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--text-3)"></div>
+              <span style="color:var(--text-2)">Da fare</span>
+            </div>
+            <span class="task-col-count" id="task-count-da_fare" style="background:var(--surface-2);color:var(--text-2);border:1px solid var(--border)">0</span>
           </div>
+          <div style="height:3px;background:var(--text-3);border-radius:99px;margin-bottom:10px;opacity:0.4"></div>
           <div class="task-col-body" id="task-list-da_fare" ondrop="dropTask(event,'da_fare')" ondragover="event.preventDefault()"></div>
         </div>
         <div class="task-col" data-stato="in_corso">
-          <div class="task-col-header" style="border-top:3px solid var(--orange)">
-            <span>In corso</span><span class="task-col-count" id="task-count-in_corso">0</span>
+          <div class="task-col-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--orange)"></div>
+              <span style="color:var(--orange)">In corso</span>
+            </div>
+            <span class="task-col-count" id="task-count-in_corso" style="background:#fff7ed;color:var(--orange);border:1px solid #fed7aa">0</span>
           </div>
+          <div style="height:3px;background:var(--orange);border-radius:99px;margin-bottom:10px"></div>
           <div class="task-col-body" id="task-list-in_corso" ondrop="dropTask(event,'in_corso')" ondragover="event.preventDefault()"></div>
         </div>
         <div class="task-col" data-stato="fatto">
-          <div class="task-col-header" style="border-top:3px solid var(--green)">
-            <span>Fatto</span><span class="task-col-count" id="task-count-fatto">0</span>
+          <div class="task-col-header">
+            <div style="display:flex;align-items:center;gap:8px">
+              <div style="width:10px;height:10px;border-radius:50%;background:var(--green)"></div>
+              <span style="color:var(--green)">Fatto</span>
+            </div>
+            <span class="task-col-count" id="task-count-fatto" style="background:#f0fdf4;color:var(--green);border:1px solid #bbf7d0">0</span>
           </div>
+          <div style="height:3px;background:var(--green);border-radius:99px;margin-bottom:10px"></div>
           <div class="task-col-body" id="task-list-fatto" ondrop="dropTask(event,'fatto')" ondragover="event.preventDefault()"></div>
         </div>
       </div>
@@ -527,6 +546,18 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="pipeline-wrap"><div class="pipeline" id="pipeline-board"></div></div>
     </div>
     <!-- CONTATTI (Clienti + Fornitori) -->
+    <!-- PAGINA DETTAGLIO CLIENTE -->
+    <div class="page" id="page-cliente-detail">
+      <div class="page-header">
+        <div style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-icon" onclick="showPage('contatti')" title="Torna ai contatti"><i class="ti ti-arrow-left"></i></button>
+          <div class="page-title" id="cliente-detail-title" style="margin:0">Cliente</div>
+        </div>
+        <button class="btn" id="btn-edit-cliente-detail" onclick=""><i class="ti ti-pencil"></i>Modifica</button>
+      </div>
+      <div id="cliente-detail-body"></div>
+    </div>
+
     <div class="page" id="page-contatti">
       <div class="page-header">
         <div class="page-title">Contatti</div>
@@ -1299,7 +1330,8 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" placeholder="Es. Chiamata di follow-up"></div>
     <div class="form-row">
-      <div class="form-group"><label class="form-label">Data scadenza</label><input type="date" id="att-data"></div>
+      <div class="form-group"><label class="form-label">Data</label><input type="date" id="att-data"></div>
+      <div class="form-group"><label class="form-label">Orario</label><input type="time" id="att-ora"></div>
     </div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="att-note" style="min-height:60px"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-attivita')">Annulla</button><button class="btn btn-primary" onclick="salvaAttivita()"><i class="ti ti-check"></i>Salva</button></div>
@@ -1719,7 +1751,21 @@ function showPage(id){
   const navEl = document.getElementById('nav-'+id);
   if(navEl) navEl.classList.add('active');
   if(id==='attivita')renderPageAttivita();
-  if(id==='task')renderTaskBoard();
+  if(id==='task'){
+    // Pill "Tutte" visibile solo per admin
+    const pillTutte = document.getElementById('pill-task-tutte');
+    if(pillTutte){
+      const isAdmin = currentUser?.ruolo === 'admin';
+      pillTutte.style.display = isAdmin ? '' : 'none';
+      // Se non admin e il filtro attivo è "tutte", passa a "mie"
+      if(!isAdmin && taskFilter === 'tutte'){
+        taskFilter = 'mie';
+        document.querySelectorAll('#task-pills .pill').forEach(p=>p.classList.remove('active'));
+        document.querySelectorAll('#task-pills .pill')[1]?.classList.add('active');
+      }
+    }
+    renderTaskBoard();
+  }
   if(id==='statistiche')renderStatistiche();
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline'){ initPipelinePage(); }
@@ -2347,36 +2393,150 @@ async function eliminaCliente(id, nome){
   });
 }
 function apriDettaglio(id){
-  const c=state.clienti.find(x=>x.id===id); if(!c)return;
-  const ordini=state.ordini.filter(o=>o.cliente===c.nome);
-  const tot=ordini.reduce((s,o)=>s+o.importo,0);
-  document.getElementById('detail-panel').innerHTML=`
-    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:18px">
-      <div class="flex-row"><div class="avatar" style="width:40px;height:40px;font-size:12px">${ini(c.nome)}</div><div><div style="font-weight:700;font-size:15px">${c.nome}</div><div style="font-size:12px;color:var(--text-2)">${c.citta||''}</div></div></div>
-      <button class="btn btn-icon" onclick="chiudiDettaglio()"><i class="ti ti-x"></i></button>
-    </div>
-    <div class="card" style="margin-bottom:11px"><div class="card-header"><div class="card-title"><i class="ti ti-info-circle" style="color:var(--brand)"></i>Dati contatto</div></div>
-    <div class="card-body"><table style="width:100%;font-size:13px">
-      <tr><td style="color:var(--text-2);padding:5px 0;width:90px">Referente</td><td style="font-weight:500">${c.ref||'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">Telefono</td><td>${c.tel||'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">Email</td><td>${c.email||'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">Indirizzo</td><td>${c.ind||'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">SDI</td><td>${c.sdi?`<span style="font-family:monospace;background:var(--brand-light);color:var(--brand);padding:1px 6px;border-radius:4px;font-size:12px">${c.sdi}</span>`:'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">PEC</td><td style="font-size:13px">${c.pec||'—'}</td></tr>
-      <tr><td style="color:var(--text-2);padding:5px 0">Prodotti</td><td>${c.prod||'—'}</td></tr>
-    </table></div></div>
-    <div class="card" style="margin-bottom:11px">
-      <div class="card-header">
-        <div class="card-title"><i class="ti ti-checkbox" style="color:var(--brand)"></i>Attività</div>
-        <button class="btn btn-sm btn-primary" onclick="openModalAttivita('cliente',${c.id},'${c.nome.replace(/'/g,"\\'")}')"><i class="ti ti-plus"></i>Aggiungi</button>
-      </div>
-      <div class="card-body" id="att-cliente-${c.id}">${renderAttivitaPerEntita('cliente',c.id)}</div>
-    </div>
-    <div class="card"><div class="card-header"><div class="card-title"><i class="ti ti-clipboard-list" style="color:var(--brand)"></i>Storico ordini <span style="font-size:11px;font-weight:400;color:var(--text-3)">${ordini.length} ordini · ${fmt(tot)}</span></div></div>
-    <div class="card-body">${ordini.length?ordini.map(o=>`<div class="storico-item"><div><div style="font-weight:600">${o.prodotto}</div><div style="color:var(--text-2)">${o.data} · ${o.qty} kg</div></div><div style="text-align:right"><div style="font-weight:600">${fmt(o.importo)}</div><span class="badge badge-${o.stato}">${o.stato}</span></div></div>`).join(''):'<div class="empty-state" style="padding:12px 0">Nessun ordine</div>'}</div></div>`;
-  document.getElementById('detail-overlay').classList.add('open');
-  document.getElementById('detail-panel').classList.add('open');
+  apriDettaglioCliente(id);
 }
+
+async function apriDettaglioCliente(id){
+  const c = state.clienti.find(x=>x.id===id); if(!c) return;
+  const ordini = (state.ordini||[]).filter(o=>o.cliente===c.nome);
+  const tot = ordini.reduce((s,o)=>s+(parseFloat(o.importo)||0),0);
+  const attivita = (state.attivita||[]).filter(a=>a.collegata_id===id&&a.collegata_tipo==='cliente'||a.lead_id===id);
+
+  // Aggiorna titolo e pulsante modifica
+  document.getElementById('cliente-detail-title').textContent = c.nome;
+  document.getElementById('btn-edit-cliente-detail').onclick = ()=>editCliente(id);
+
+  // Carica note dal server
+  let note = [];
+  try { const r = await api.get('/api/clienti/'+id+'/note'); note = r.error?[]:r; } catch(e){}
+
+  const tipoColor = c.tipo==='fornitore' ? 'var(--green)' : 'var(--brand)';
+  const tipoLabel = c.tipo==='fornitore' ? 'Fornitore' : 'Cliente';
+
+  document.getElementById('cliente-detail-body').innerHTML = `
+    <!-- Header cliente -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-body" style="padding:18px">
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:16px">
+          <div class="avatar" style="width:52px;height:52px;font-size:16px;background:${tipoColor};color:#fff">${ini(c.nome)}</div>
+          <div style="flex:1">
+            <div style="font-size:20px;font-weight:700">${c.nome}</div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px">
+              <span style="font-size:11px;font-weight:700;color:${tipoColor};background:${c.tipo==='fornitore'?'var(--green-light)':'var(--brand-light)'};padding:2px 8px;border-radius:99px">${tipoLabel}</span>
+              ${c.codice?`<span style="font-family:monospace;font-size:11px;color:var(--text-2)">${c.codice}</span>`:''}
+              ${c.citta?`<span style="font-size:12px;color:var(--text-2)"><i class="ti ti-map-pin" style="font-size:11px"></i> ${c.citta}</span>`:''}
+            </div>
+          </div>
+          <div style="text-align:right">
+            <div style="font-size:22px;font-weight:700;color:var(--brand)">€${tot.toLocaleString('it-IT',{minimumFractionDigits:0})}</div>
+            <div style="font-size:11px;color:var(--text-2)">${ordini.length} ordini totali</div>
+          </div>
+        </div>
+        <!-- Info rapide -->
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          ${c.tel?`<a href="tel:${c.tel}" style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r);text-decoration:none;color:var(--text)"><i class="ti ti-phone" style="color:var(--blue);font-size:16px"></i><div><div style="font-size:10px;color:var(--text-3)">Telefono</div><div style="font-size:13px;font-weight:600">${c.tel}</div></div></a>`:''}
+          ${c.email?`<a href="mailto:${c.email}" style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r);text-decoration:none;color:var(--text)"><i class="ti ti-mail" style="color:var(--orange);font-size:16px"></i><div><div style="font-size:10px;color:var(--text-3)">Email</div><div style="font-size:13px;font-weight:600">${c.email}</div></div></a>`:''}
+          ${c.piva?`<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r)"><i class="ti ti-file-invoice" style="color:var(--brand);font-size:16px"></i><div><div style="font-size:10px;color:var(--text-3)">P.IVA</div><div style="font-size:13px;font-weight:600">${c.piva}</div></div></div>`:''}
+          ${c.sdi?`<div style="display:flex;align-items:center;gap:8px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r)"><i class="ti ti-send" style="color:var(--green);font-size:16px"></i><div><div style="font-size:10px;color:var(--text-3)">SDI / PEC</div><div style="font-size:13px;font-weight:600;font-family:monospace">${c.sdi}${c.pec?` · ${c.pec}`:''}</div></div></div>`:''}
+        </div>
+        ${c.ind_consegna?`<div style="margin-top:10px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r);font-size:13px"><i class="ti ti-truck-delivery" style="color:var(--brand);font-size:13px"></i> <strong>Consegna:</strong> ${c.ind_consegna}</div>`:''}
+        ${c.ind_legale&&c.ind_legale!==c.ind_consegna?`<div style="margin-top:6px;padding:9px 12px;background:var(--surface-2);border-radius:var(--r);font-size:13px"><i class="ti ti-building" style="color:var(--text-2);font-size:13px"></i> <strong>Sede legale:</strong> ${c.ind_legale}</div>`:''}
+      </div>
+    </div>
+
+    <!-- Sezione Note (stile Pipedrive) -->
+    <div class="card" style="margin-bottom:14px">
+      <div class="card-header">
+        <div class="card-title"><i class="ti ti-notes" style="color:var(--brand)"></i>Note & Cronologia</div>
+      </div>
+      <div class="card-body" style="padding:14px">
+        <!-- Input nuova nota -->
+        <div style="display:flex;gap:10px;margin-bottom:16px">
+          <div class="avatar" style="flex-shrink:0">${ini(currentUser?.nome||'?')}</div>
+          <div style="flex:1">
+            <textarea id="nota-input-${id}" placeholder="Scrivi una nota su questo cliente..." style="width:100%;min-height:70px;padding:10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;resize:vertical;font-family:inherit" onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--border)'"></textarea>
+            <div style="display:flex;justify-content:flex-end;margin-top:6px">
+              <button class="btn btn-primary btn-sm" onclick="salvaNota(${id})"><i class="ti ti-check"></i>Salva nota</button>
+            </div>
+          </div>
+        </div>
+        <!-- Cronologia note -->
+        <div id="note-feed-${id}">${renderNoteFeed(note, id)}</div>
+      </div>
+    </div>
+
+    <!-- Ultimi ordini -->
+    ${ordini.length?`
+    <div class="card">
+      <div class="card-header"><div class="card-title"><i class="ti ti-package" style="color:var(--brand)"></i>Ultimi ordini</div></div>
+      <div style="padding:0">
+        ${ordini.slice(0,5).map(o=>`
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:10px 16px;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:13px;font-weight:600">${o.prodotto||'—'}</div>
+              <div style="font-size:11px;color:var(--text-2)">${o.data||''} · ${o.quantita||''} ${o.um||''}</div>
+            </div>
+            <div style="font-size:14px;font-weight:700;color:var(--brand)">€${(parseFloat(o.importo)||0).toLocaleString('it-IT')}</div>
+          </div>`).join('')}
+      </div>
+    </div>`:''
+  }`;
+
+  showPage('cliente-detail');
+}
+
+function renderNoteFeed(note, clienteId){
+  if(!note.length) return `<div style="text-align:center;padding:16px 0;color:var(--text-3);font-size:13px"><i class="ti ti-notes" style="font-size:24px;display:block;margin-bottom:8px;opacity:0.3"></i>Nessuna nota ancora</div>`;
+  return `<div style="position:relative;padding-left:28px">
+    <div style="position:absolute;left:11px;top:0;bottom:0;width:2px;background:var(--border)"></div>
+    ${note.map((n,i)=>{
+      const data = new Date(n.created_at);
+      const dataFmt = data.toLocaleDateString('it-IT',{day:'2-digit',month:'long',year:'numeric'});
+      const oraFmt = data.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'});
+      return `
+      <div style="position:relative;margin-bottom:${i<note.length-1?'14px':'0'}">
+        <div style="position:absolute;left:-22px;top:10px;width:22px;height:22px;border-radius:50%;background:var(--brand-light);border:2px solid var(--brand);display:flex;align-items:center;justify-content:center">
+          <i class="ti ti-note" style="font-size:10px;color:var(--brand)"></i>
+        </div>
+        <div style="background:var(--surface-2);border-radius:var(--r);padding:11px 13px;border-left:3px solid var(--brand-light)">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+            <div style="font-size:11px;color:var(--text-3)">
+              <strong style="color:var(--text-2)">${n.autore||'—'}</strong>
+              · ${dataFmt} alle ${oraFmt}
+            </div>
+            <button class="btn btn-sm btn-icon btn-danger" onclick="eliminaNota(${n.id},${clienteId})" style="padding:2px 5px"><i class="ti ti-trash" style="font-size:11px"></i></button>
+          </div>
+          <div style="font-size:13px;color:var(--text);white-space:pre-line;line-height:1.5">${n.testo}</div>
+        </div>
+      </div>`;
+    }).join('')}
+  </div>`;
+}
+
+async function salvaNota(clienteId){
+  const inp = document.getElementById('nota-input-'+clienteId);
+  const testo = inp?.value.trim();
+  if(!testo) return;
+  const r = await api.post('/api/clienti/'+clienteId+'/note', {testo, autore: currentUser?.nome||currentUser?.username||''});
+  if(r.error){ alert('Errore: '+r.error); return; }
+  inp.value='';
+  // Ricarica note e aggiorna feed
+  const note = await api.get('/api/clienti/'+clienteId+'/note');
+  const feed = document.getElementById('note-feed-'+clienteId);
+  if(feed) feed.innerHTML = renderNoteFeed(note.error?[]:note, clienteId);
+}
+
+async function eliminaNota(notaId, clienteId){
+  conferma(async()=>{
+    await api.del('/api/clienti/note/'+notaId);
+    const note = await api.get('/api/clienti/'+clienteId+'/note');
+    const feed = document.getElementById('note-feed-'+clienteId);
+    if(feed) feed.innerHTML = renderNoteFeed(note.error?[]:note, clienteId);
+  });
+}
+
+
+
 
 function apriDettaglioLead(id){
   const l=state.leads.find(x=>x.id===id); if(!l)return;
@@ -4859,6 +5019,7 @@ async function salvaAttivita(){
     tipo:document.getElementById('att-tipo').value,
     titolo, note:document.getElementById('att-note').value,
     data_scadenza:document.getElementById('att-data').value||null,
+    ora:document.getElementById('att-ora')?.value||null,
     lead_id:leadId, pipeline_id:pipelineId,
     collegata_tipo:'lead', collegata_id:leadId, collegata_nome:lead?.nome||'',
     completata:false
@@ -4896,6 +5057,7 @@ function editAttivita(id){
   document.getElementById('att-titolo').value=a.titolo||'';
   document.getElementById('att-note').value=a.note||'';
   document.getElementById('att-data').value=(a.data_scadenza||a.scadenza||'').slice(0,10);
+  document.getElementById('att-ora').value=a.ora||'';
   document.getElementById('modal-att-title').textContent='Modifica attività';
   setTipoAtt(a.tipo||'chiamata');
   popolaPipelineModal();
@@ -4961,7 +5123,7 @@ function renderAttivitaPerEntita(tipo, id){
               ${a.note?`<div style="font-size:12px;color:var(--text-2);white-space:pre-line">${a.note}</div>`:''}
             </div>
             <div style="display:flex;flex-direction:column;align-items:flex-end;gap:4px;flex-shrink:0">
-              ${a.data_scadenza?`<span style="font-size:10px;font-weight:600;color:${cls==='scaduta'?'var(--red)':cls==='oggi'?'var(--orange)':'var(--text-3)'};background:${cls==='scaduta'?'#fee2e2':cls==='oggi'?'#fef3c7':'var(--surface-2)'};padding:2px 6px;border-radius:99px">${cls==='scaduta'?'⚠ '+txt:cls==='oggi'?'Oggi':txt}</span>`:''}
+              ${a.data_scadenza?`<span style="font-size:10px;font-weight:600;color:${cls==='scaduta'?'var(--red)':cls==='oggi'?'var(--orange)':'var(--text-3)'};background:${cls==='scaduta'?'#fee2e2':cls==='oggi'?'#fef3c7':'var(--surface-2)'};padding:2px 6px;border-radius:99px">${cls==='scaduta'?'⚠ '+txt:cls==='oggi'?'Oggi':txt}${a.ora?' · '+a.ora:''}</span>`:''}
               <div style="display:flex;gap:4px">
                 ${!completata?`<button class="btn btn-sm btn-icon" onclick="completaAttivitaLead(${a.id},${id})" title="Segna come fatto" style="padding:3px 6px"><i class="ti ti-check" style="color:var(--green);font-size:13px"></i></button>`:''}
                 <button class="btn btn-sm btn-icon btn-danger" onclick="eliminaAttivitaLead(${a.id},${id})" title="Elimina" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:13px"></i></button>
@@ -5366,19 +5528,28 @@ function renderTaskCard(t){
   const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
   const isScaduta = t.scadenza && new Date(t.scadenza) < new Date(new Date().toDateString()) && t.stato!=='fatto';
   const assegnatario = (state.utentiList||[]).find(u=>u.username===t.assegnata_a);
-  const nomeAssegnatario = assegnatario?.nome?.replace(' (io)','') || t.assegnata_a;
+  const nomeAssegnatario = assegnatario?.nome?.split(' ')[0] || t.assegnata_a || '';
+  const priColors = {alta:'var(--red)',media:'var(--orange)',bassa:'var(--green)'};
+  const priLabels = {alta:'Alta',media:'Media',bassa:'Bassa'};
+  const priCol = priColors[t.priorita||'media'];
+  const priLab = priLabels[t.priorita||'media'];
   return `
     <div class="task-card task-priority-${t.priorita||'media'}" draggable="true" id="task-card-${t.id}"
       ondragstart="dragTaskStart(event,${t.id})" ondragend="dragTaskEnd(event)"
       onclick="apriModalTask(${JSON.stringify(t).replace(/"/g,'&quot;')})">
-      <div class="task-card-title">${t.titolo}</div>
-      ${t.descrizione?`<div style="font-size:11px;color:var(--text-2);margin-bottom:6px;line-height:1.4">${t.descrizione.slice(0,80)}${t.descrizione.length>80?'...':''}</div>`:''}
-      <div class="task-card-meta">
-        <span style="display:flex;align-items:center;gap:4px"><i class="ti ti-user" style="font-size:13px"></i>${nomeAssegnatario}</span>
-        ${scadenzaFmt?`<span style="color:${isScaduta?'var(--red)':'var(--text-2)'};font-weight:${isScaduta?'700':'400'}">${isScaduta?'⚠️ ':''}${scadenzaFmt}</span>`:''}
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:6px;margin-bottom:5px">
+        <div class="task-card-title" style="margin:0">${t.titolo}</div>
+        <span style="font-size:10px;font-weight:700;color:${priCol};background:${t.priorita==='alta'?'#fee2e2':t.priorita==='bassa'?'#dcfce7':'#fef3c7'};padding:2px 7px;border-radius:99px;white-space:nowrap;flex-shrink:0">${priLab}</span>
       </div>
-      <div style="display:flex;justify-content:flex-end;margin-top:6px">
-        <button class="btn btn-icon btn-sm btn-danger" onclick="event.stopPropagation();eliminaTask(${t.id})" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:12px"></i></button>
+      ${t.descrizione?`<div style="font-size:11px;color:var(--text-2);margin-bottom:7px;line-height:1.4">${t.descrizione.slice(0,80)}${t.descrizione.length>80?'…':''}</div>`:''}
+      <div class="task-card-meta" style="margin-top:7px">
+        <span style="display:flex;align-items:center;gap:4px;background:var(--surface-2);padding:2px 7px;border-radius:99px">
+          <i class="ti ti-user" style="font-size:11px"></i>${nomeAssegnatario}
+        </span>
+        <div style="display:flex;align-items:center;gap:6px">
+          ${scadenzaFmt?`<span style="color:${isScaduta?'var(--red)':'var(--text-3)'};font-weight:${isScaduta?'700':'400'};font-size:11px">${isScaduta?'⚠ ':''}${scadenzaFmt}</span>`:''}
+          <button class="btn btn-icon btn-sm btn-danger" onclick="event.stopPropagation();eliminaTask(${t.id})" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:11px"></i></button>
+        </div>
       </div>
     </div>`;
 }
