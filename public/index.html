@@ -2743,6 +2743,14 @@ function apriDettaglioLead(id){
   // Attività: separo future da completate (cronologia)
   renderLeadDetailFeed(id);
 
+  // Assicura che i pannelli partano chiusi
+  ['info','pipeline'].forEach(n=>{
+    const p=document.getElementById('lead-panel-'+n);
+    const c=document.getElementById('chevron-'+n);
+    if(p) p.style.display='none';
+    if(c) c.style.transform='';
+  });
+
   showPage('lead-detail');
 }
 
@@ -2882,7 +2890,6 @@ function toggleLeadPanel(nome){
   const aperto = panel.style.display !== 'none';
   panel.style.display = aperto ? 'none' : 'block';
   if(chevron) chevron.style.transform = aperto ? '' : 'rotate(180deg)';
-  // Se stiamo aprendo Pipeline, carica dati freschi
   if(!aperto && nome==='pipeline') caricaPipelinePerSpostamento();
 }
 
