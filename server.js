@@ -2166,6 +2166,11 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+
+// ── AUTO-RELOAD: timestamp avvio server ───────────────────────────────────
+const SERVER_START_TIME = Date.now().toString();
+app.get('/api/version', (req, res) => res.json({ v: SERVER_START_TIME }));
+
 const PORT = process.env.PORT || 3000;
 initDB().then(async () => {
   await loadGmailTokens();
