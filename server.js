@@ -156,6 +156,14 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS note_clienti (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER REFERENCES clienti(id) ON DELETE CASCADE,
+        testo TEXT NOT NULL,
+        autore TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS ordini (
         id SERIAL PRIMARY KEY,
         cliente TEXT NOT NULL,
@@ -192,6 +200,7 @@ async function initDB() {
         titolo TEXT NOT NULL,
         note TEXT,
         data_scadenza DATE,
+        ora TEXT,
         collegata_tipo TEXT,
         collegata_id INTEGER,
         collegata_nome TEXT,
@@ -837,7 +846,30 @@ app.delete('/api/clienti/:id', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// ── IMPORTAZIONE CLIENTI DA FATTURE IN CLOUD ─────────────────────────────
+// ── NOTE CLIENTI ──────────────────────────────────────────────────────────
+app.get('/api/clienti/:id/note', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM note_clienti WHERE cliente_id=$1 ORDER BY created_at DESC', [req.params.id]);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/clienti/:id/note', async (req, res) => {
+  const { testo, autore } = req.body;
+  try {
+    const r = await pool.query('INSERT INTO note_clienti (cliente_id,testo,autore) VALUES ($1,$2,$3) RETURNING *', [req.params.id, testo, autore||'']);
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/clienti/note/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM note_clienti WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+
 app.post('/api/clienti/importa-fic', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
   try {
@@ -1044,22 +1076,22 @@ app.get('/api/attivita', async (req, res) => {
 });
 
 app.post('/api/attivita', async (req, res) => {
-  const { tipo, titolo, note, data_scadenza, collegata_tipo, collegata_id, collegata_nome, lead_id, pipeline_id, completata } = req.body;
+  const { tipo, titolo, note, data_scadenza, ora, collegata_tipo, collegata_id, collegata_nome, lead_id, pipeline_id, completata } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO attivita (tipo,titolo,note,data_scadenza,collegata_tipo,collegata_id,collegata_nome,lead_id,pipeline_id,completata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *',
-      [tipo, titolo, note, data_scadenza||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, lead_id||null, pipeline_id||null, completata||false]
+      'INSERT INTO attivita (tipo,titolo,note,data_scadenza,ora,collegata_tipo,collegata_id,collegata_nome,lead_id,pipeline_id,completata) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *',
+      [tipo, titolo, note, data_scadenza||null, ora||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, lead_id||null, pipeline_id||null, completata||false]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/attivita/:id', async (req, res) => {
-  const { tipo, titolo, note, data_scadenza, collegata_tipo, collegata_id, collegata_nome, lead_id, pipeline_id, completata } = req.body;
+  const { tipo, titolo, note, data_scadenza, ora, collegata_tipo, collegata_id, collegata_nome, lead_id, pipeline_id, completata } = req.body;
   try {
     await pool.query(
-      'UPDATE attivita SET tipo=$1,titolo=$2,note=$3,data_scadenza=$4,collegata_tipo=$5,collegata_id=$6,collegata_nome=$7,lead_id=$8,pipeline_id=$9,completata=$10 WHERE id=$11',
-      [tipo, titolo, note, data_scadenza||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, lead_id||null, pipeline_id||null, completata||false, req.params.id]
+      'UPDATE attivita SET tipo=$1,titolo=$2,note=$3,data_scadenza=$4,ora=$5,collegata_tipo=$6,collegata_id=$7,collegata_nome=$8,lead_id=$9,pipeline_id=$10,completata=$11 WHERE id=$12',
+      [tipo, titolo, note, data_scadenza||null, ora||null, collegata_tipo||null, collegata_id||null, collegata_nome||null, lead_id||null, pipeline_id||null, completata||false, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
