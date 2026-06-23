@@ -2694,41 +2694,38 @@ function apriDettaglioLead(id){
       ${infoRows.map(([k,v])=>`<tr><td style="color:var(--text-3);padding:6px 0;width:80px;font-size:11px;text-transform:uppercase;letter-spacing:0.3px">${k}</td><td style="font-weight:500;padding:6px 0">${v}</td></tr>`).join('')}
     </table>` : '<div style="color:var(--text-3);font-size:13px;padding:6px 0">Nessuna informazione aggiuntiva</div>';
 
-  // Pipeline + fase con spostamento
+  // Pipeline + fase con spostamento — carica sempre dal server
   const pipe = (state.pipelines||[]).find(p=>p.id===currentPipelineId)||{id:'default',nome:'Pipeline principale'};
-  const tutte_pipelines = state.pipelines||[{id:'default',nome:'Pipeline principale'}];
-  const fasiDellaCorrente = (state.fasi||[]).filter(f=>f.pipeline_id===currentPipelineId||(!f.pipeline_id&&currentPipelineId==='default'));
-  const altreOpzioni = tutte_pipelines.map(p=>`<option value="${p.id}"${p.id===currentPipelineId?' selected':''}>${p.nome}</option>`).join('');
-  const fasiOpzioni = fasiDellaCorrente.map(f=>`<option value="${f.id}"${f.id===l.stato?' selected':''}>${f.label}</option>`).join('');
-
   document.getElementById('lead-detail-pipeline').innerHTML = `
     <div style="padding-top:4px">
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:6px">Sposta lead</div>
-      <div style="display:flex;flex-direction:column;gap:8px">
-        <div>
-          <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:3px">Pipeline</label>
-          <select id="ld-move-pipeline" onchange="aggiornaFasiSpostamento()" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;background:#fff">
-            ${altreOpzioni}
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:6px">Posizione attuale</div>
+      <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-light);color:var(--brand);padding:5px 12px;border-radius:99px;font-size:12px;font-weight:700;margin-bottom:16px" id="ld-fase-corrente">
+        <span class="status-dot" style="background:var(--brand)"></span>${pipe.nome} → ${faseLabel}
+      </div>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:8px">Sposta in</div>
+      <div style="border:1.5px solid var(--border);border-radius:var(--r);overflow:hidden;background:#fff;margin-bottom:10px">
+        <div style="padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:8px">
+          <i class="ti ti-layout-kanban" style="font-size:14px;color:var(--brand);flex-shrink:0"></i>
+          <select id="ld-move-pipeline" onchange="aggiornaFasiSpostamento()" style="flex:1;border:none;outline:none;font-size:13px;background:transparent;color:var(--text);font-family:var(--font)">
+            <option value="">Caricamento...</option>
           </select>
         </div>
-        <div>
-          <label style="font-size:11px;color:var(--text-3);display:block;margin-bottom:3px">Fase</label>
-          <select id="ld-move-fase" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;background:#fff">
-            ${fasiOpzioni}
+        <div style="padding:10px 12px;display:flex;align-items:center;gap:8px">
+          <i class="ti ti-flag" style="font-size:14px;color:var(--orange);flex-shrink:0"></i>
+          <select id="ld-move-fase" style="flex:1;border:none;outline:none;font-size:13px;background:transparent;color:var(--text);font-family:var(--font)">
+            <option value="">— scegli prima la pipeline —</option>
           </select>
         </div>
-        <button class="btn btn-primary" onclick="spostaLeadPipelineFase(${id})" style="width:100%;justify-content:center">
-          <i class="ti ti-arrows-right-left"></i>Sposta
-        </button>
       </div>
-      <div style="height:1px;background:var(--border);margin:14px 0"></div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin-bottom:4px">Fase attuale</div>
-      <div style="display:inline-flex;align-items:center;gap:6px;background:var(--brand-light);color:var(--brand);padding:4px 12px;border-radius:99px;font-size:12px;font-weight:700" id="ld-fase-corrente">
-        <span class="status-dot" style="background:var(--brand)"></span>${faseLabel}
-      </div>
-      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin:10px 0 4px">Aggiunto</div>
+      <button class="btn btn-primary" onclick="spostaLeadPipelineFase(${id})" style="width:100%;justify-content:center">
+        <i class="ti ti-arrows-right-left"></i>Sposta
+      </button>
+      <div style="font-size:11px;text-transform:uppercase;letter-spacing:0.3px;color:var(--text-3);margin:14px 0 4px">Aggiunto</div>
       <div style="font-size:13px;color:var(--text-2)">${l.created_at?new Date(l.created_at).toLocaleDateString('it-IT',{day:'numeric',month:'long',year:'numeric'}):'—'}</div>
     </div>`;
+
+  // Carica pipeline aggiornate dal server e popola il menu
+  caricaPipelinePerSpostamento();
 
   // Attività: separo future da completate (cronologia)
   renderLeadDetailFeed(id);
@@ -2870,12 +2867,49 @@ function tornaAllaPipeline(){
   showPage('pipeline');
 }
 
-function aggiornaFasiSpostamento(){
+async function caricaPipelinePerSpostamento(){
+  const sel = document.getElementById('ld-move-pipeline');
+  if(!sel) return;
+  try{
+    // Carica pipeline aggiornate dal server
+    const pipes = await api.get('/api/pipelines');
+    const tuttiPipes = (pipes.error||!pipes.length)
+      ? [{id:'default',nome:'Pipeline principale'}]
+      : [{id:'default',nome:'Pipeline principale'}, ...pipes];
+
+    // Aggiorna state con pipeline fresche
+    state.pipelines = tuttiPipes;
+
+    sel.innerHTML = tuttiPipes.map(p=>`<option value="${p.id}">${p.nome}</option>`).join('');
+    // Seleziona di default la pipeline corrente
+    sel.value = currentPipelineId;
+    // Carica le fasi di quella pipeline
+    await aggiornaFasiSpostamento();
+  }catch(e){
+    sel.innerHTML = '<option value="">Errore caricamento</option>';
+  }
+}
+
+async function aggiornaFasiSpostamento(){
   const pipId = document.getElementById('ld-move-pipeline')?.value;
   if(!pipId) return;
-  const fasi = (state.fasi||[]).filter(f=>f.pipeline_id===pipId||(!f.pipeline_id&&pipId==='default'));
   const sel = document.getElementById('ld-move-fase');
   if(!sel) return;
+  sel.innerHTML = '<option value="">Caricamento...</option>';
+
+  // Prova prima dalla memoria locale
+  let fasi = (state.fasi||[]).filter(f=>
+    f.pipeline_id===pipId || (!f.pipeline_id && pipId==='default')
+  );
+
+  // Se non trova nulla (pipeline diversa da quella corrente), carica dal server
+  if(!fasi.length){
+    try{
+      const r = await api.get('/api/fasi?pipeline_id='+pipId);
+      if(!r.error && r.length) fasi = r;
+    }catch(e){ fasi=[]; }
+  }
+
   sel.innerHTML = fasi.length
     ? fasi.map(f=>`<option value="${f.id}">${f.label}</option>`).join('')
     : '<option value="">Nessuna fase disponibile</option>';
@@ -2891,33 +2925,65 @@ async function spostaLeadPipelineFase(leadId){
   if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Spostamento...'; }
 
   try{
+    // Aggiorna sul server
     if(nuovaPipeline==='default'){
-      // Pipeline default: aggiorna stato direttamente sul lead
       await api.put('/api/leads/'+leadId, {...l, stato:nuovaFase});
       l.stato = nuovaFase;
     } else {
-      // Pipeline custom: aggiorna lead_pipeline_stato
+      // Prima rimuovi da eventuali altri stati di questa pipeline
       const esistente = (state.leadPipelineStato||[]).find(s=>s.lead_id===leadId&&s.pipeline_id===nuovaPipeline);
       if(esistente){
         await api.put('/api/lead-pipeline-stato/'+esistente.id, {stato:nuovaFase});
         esistente.stato = nuovaFase;
       } else {
         const r = await api.post('/api/lead-pipeline-stato', {lead_id:leadId, pipeline_id:nuovaPipeline, stato:nuovaFase});
-        if(!r.error) state.leadPipelineStato.push(r);
+        if(!r.error) { state.leadPipelineStato = state.leadPipelineStato||[]; state.leadPipelineStato.push(r); }
       }
       l.stato = nuovaFase;
     }
 
-    // Aggiorna fase corrente mostrata
-    const faseLabel = (state.fasi.find(f=>f.id===nuovaFase)||{}).label||nuovaFase;
-    const faseEl = document.getElementById('ld-fase-corrente');
-    if(faseEl) faseEl.innerHTML = `<span class="status-dot" style="background:var(--brand)"></span>${faseLabel}`;
+    // Recupera label fase dalla select (già caricata dal server)
+    const faseSelOpt = document.getElementById('ld-move-fase');
+    const faseLabel = faseSelOpt?.options[faseSelOpt.selectedIndex]?.text || nuovaFase;
+    const pipelineLabel = (state.pipelines||[]).find(p=>p.id===nuovaPipeline)?.nome || 'Pipeline principale';
 
+    // Aggiorna badge posizione attuale nella pagina dettaglio
+    const faseEl = document.getElementById('ld-fase-corrente');
+    if(faseEl) faseEl.innerHTML = `<span class="status-dot" style="background:var(--brand)"></span>${pipelineLabel} → ${faseLabel}`;
+
+    // Switcha alla pipeline di destinazione e ridisegna — così vedi subito il lead nella nuova colonna
+    if(nuovaPipeline !== currentPipelineId){
+      currentPipelineId = nuovaPipeline;
+      renderPipelineDropdownButton();
+      await loadFasiPerPipeline(nuovaPipeline);
+    }
     renderPipeline();
     showSave();
-    alert(`✅ Lead spostato in "${faseLabel}"`);
+
+    // Toast invece di alert
+    mostraToast(`✅ Spostato in ${pipelineLabel} → ${faseLabel}`);
+
   }catch(e){ alert('Errore: '+e.message); }
   if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-arrows-right-left"></i>Sposta'; }
+}
+
+function mostraToast(msg, tipo='success'){
+  let toast = document.getElementById('vv-toast');
+  if(!toast){
+    toast = document.createElement('div');
+    toast.id='vv-toast';
+    toast.style.cssText='position:fixed;bottom:24px;left:50%;transform:translateX(-50%) translateY(20px);background:var(--text);color:#fff;padding:10px 20px;border-radius:99px;font-size:13px;font-weight:600;z-index:9999;opacity:0;transition:all .25s ease;pointer-events:none;white-space:nowrap';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = msg;
+  toast.style.background = tipo==='error'?'var(--red)':tipo==='warning'?'var(--orange)':'#1a1a2e';
+  toast.style.opacity='1';
+  toast.style.transform='translateX(-50%) translateY(0)';
+  clearTimeout(toast._timer);
+  toast._timer = setTimeout(()=>{
+    toast.style.opacity='0';
+    toast.style.transform='translateX(-50%) translateY(20px)';
+  }, 2800);
 }
 
 
