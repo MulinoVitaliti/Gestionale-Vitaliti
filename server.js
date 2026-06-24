@@ -2331,29 +2331,65 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
       const dateStr = headers.find(h=>h.name==='Date')?.value || '';
       const dataEmail = dateStr ? new Date(dateStr).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
 
-      // Trova l'allegato PDF
+      console.log(`[ASSICURAZIONI] Elaboro email: ${subject}`);
+
+      // Cerca allegato PDF ricorsivamente in tutte le parti
       let testoPdf = '';
-      const parts = full.data.payload.parts || [];
-      for (const part of parts) {
-        if (part.filename && part.filename.endsWith('.pdf') && part.body?.attachmentId) {
-          try {
-            const att = await gmail.users.messages.attachments.get({
-              userId: 'me', messageId: msg.id, id: part.body.attachmentId
-            });
-            const pdfBuffer = Buffer.from(att.data.data, 'base64');
-            // Estrai testo dal PDF cercando le stringhe leggibili nel buffer
-            const raw = pdfBuffer.toString('latin1');
-            const matches = raw.match(/\(([^\)]{3,})\)/g) || [];
-            const testoGrezzo = matches.map(m=>m.slice(1,-1)).join(' ');
-            // Alternativa: cerca blocchi di testo ASCII leggibile
-            const ascii = raw.replace(/[^\x20-\x7E\xC0-\xFF\n\r]/g,' ').replace(/\s+/g,' ');
-            testoPdf = testoGrezzo.length > 100 ? testoGrezzo : ascii;
-            break;
-          } catch(e) { console.error('Errore lettura PDF:', e.message); }
+      let attachmentId = null;
+      let msgId = msg.id;
+
+      function cercaAttachment(parts) {
+        if (!parts) return;
+        for (const part of parts) {
+          console.log(`[ASSICURAZIONI] Parte: filename="${part.filename}" mimeType="${part.mimeType}"`);
+          if (part.body?.attachmentId && (
+            (part.filename && part.filename.toLowerCase().includes('.pdf')) ||
+            part.mimeType === 'application/pdf' ||
+            part.mimeType === 'application/octet-stream'
+          )) {
+            attachmentId = part.body.attachmentId;
+            return;
+          }
+          if (part.parts) cercaAttachment(part.parts);
         }
       }
 
-      if (!testoPdf) { skip++; continue; }
+      const allParts = full.data.payload.parts || [];
+      // Controlla anche se l'allegato è direttamente nel body
+      if (full.data.payload.body?.attachmentId) {
+        attachmentId = full.data.payload.body.attachmentId;
+      } else {
+        cercaAttachment(allParts);
+      }
+
+      console.log(`[ASSICURAZIONI] AttachmentId trovato: ${attachmentId}`);
+
+      if (attachmentId) {
+        try {
+          const att = await gmail.users.messages.attachments.get({
+            userId: 'me', messageId: msgId, id: attachmentId
+          });
+          const pdfBuffer = Buffer.from(att.data.data, 'base64');
+          console.log(`[ASSICURAZIONI] PDF scaricato: ${pdfBuffer.length} bytes`);
+          const raw = pdfBuffer.toString('latin1');
+          const matches = raw.match(/\(([^\)]{3,})\)/g) || [];
+          const testoGrezzo = matches.map(m=>m.slice(1,-1)).join(' ');
+          const ascii = raw.replace(/[^\x20-\x7E\xC0-\xFF\n\r]/g,' ').replace(/\s+/g,' ');
+          testoPdf = testoGrezzo.length > 100 ? testoGrezzo : ascii;
+          console.log(`[ASSICURAZIONI] Testo PDF estratto: ${testoPdf.slice(0,200)}`);
+        } catch(e) { console.error('Errore lettura PDF:', e.message); }
+      }
+
+      if (!testoPdf || testoPdf.length < 50) {
+        console.log(`[ASSICURAZIONI] Testo PDF insufficiente, uso solo soggetto email`);
+        // Crea pratica con solo i dati dell'email senza PDF
+        await pool.query(
+          `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) VALUES ($1,$2,$3,'aperta',$4,$5)`,
+          [subject, '', dataEmail, 'Importo danno da inserire manualmente.', msg.id]
+        );
+        create++;
+        continue;
+      }
 
       // Passa il testo all'AI per estrarre i dati
       const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
