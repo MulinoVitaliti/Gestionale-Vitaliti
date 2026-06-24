@@ -2307,13 +2307,13 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Cerca solo email RICEVUTE da Nina con PDF Savise (non le risposte "R:")
+    // Cerca email da Nina con allegato PDF che contiene SAVISE nel nome
     const search = await gmail.users.messages.list({
       userId: 'me',
-      q: 'from:nina.larosa@saviseexpress.it has:attachment SAVISE_EXPRESS_DOC',
+      q: 'from:nina.larosa@saviseexpress.it filename:SAVISE_EXPRESS_DOC',
       maxResults: 30
     });
-    console.log(`[ASSICURAZIONI] Query Gmail: from:nina.larosa@saviseexpress.it has:attachment SAVISE_EXPRESS_DOC`);
+    console.log(`[ASSICURAZIONI] Query Gmail: from:nina.larosa@saviseexpress.it filename:SAVISE_EXPRESS_DOC`);
 
     const messages = search.data.messages || [];
     console.log(`[ASSICURAZIONI] Trovate ${messages.length} email`);
