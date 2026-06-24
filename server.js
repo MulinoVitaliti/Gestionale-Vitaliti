@@ -164,6 +164,25 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      CREATE TABLE IF NOT EXISTS assicurazioni (
+        id SERIAL PRIMARY KEY,
+        cliente TEXT NOT NULL,
+        ddt TEXT,
+        data_danno DATE,
+        importo NUMERIC(10,2) DEFAULT 0,
+        rimborso_max NUMERIC(10,2) DEFAULT 0,
+        importo_rimborsato NUMERIC(10,2) DEFAULT 0,
+        modalita_rimborso TEXT,
+        stato TEXT DEFAULT 'aperta',
+        note TEXT,
+        doc_1 BOOLEAN DEFAULT FALSE,
+        doc_2 BOOLEAN DEFAULT FALSE,
+        doc_3 BOOLEAN DEFAULT FALSE,
+        doc_4 BOOLEAN DEFAULT FALSE,
+        doc_5 BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS ordini (
         id SERIAL PRIMARY KEY,
         cliente TEXT NOT NULL,
@@ -2240,6 +2259,44 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
+
+// ── ASSICURAZIONI ─────────────────────────────────────────────────────────
+app.get('/api/assicurazioni', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM assicurazioni ORDER BY created_at DESC');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/assicurazioni', async (req, res) => {
+  const { cliente, ddt, data_danno, importo, rimborso_max, importo_rimborsato, modalita_rimborso, stato, note, doc_1, doc_2, doc_3, doc_4, doc_5 } = req.body;
+  try {
+    const r = await pool.query(
+      `INSERT INTO assicurazioni (cliente,ddt,data_danno,importo,rimborso_max,importo_rimborsato,modalita_rimborso,stato,note,doc_1,doc_2,doc_3,doc_4,doc_5)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [cliente, ddt, data_danno||null, importo||0, rimborso_max||0, importo_rimborsato||0, modalita_rimborso||null, stato||'aperta', note, !!doc_1, !!doc_2, !!doc_3, !!doc_4, !!doc_5]
+    );
+    res.json(r.rows[0]);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/assicurazioni/:id', async (req, res) => {
+  const { cliente, ddt, data_danno, importo, rimborso_max, importo_rimborsato, modalita_rimborso, stato, note, doc_1, doc_2, doc_3, doc_4, doc_5 } = req.body;
+  try {
+    await pool.query(
+      `UPDATE assicurazioni SET cliente=$1,ddt=$2,data_danno=$3,importo=$4,rimborso_max=$5,importo_rimborsato=$6,modalita_rimborso=$7,stato=$8,note=$9,doc_1=$10,doc_2=$11,doc_3=$12,doc_4=$13,doc_5=$14 WHERE id=$15`,
+      [cliente, ddt, data_danno||null, importo||0, rimborso_max||0, importo_rimborsato||0, modalita_rimborso||null, stato||'aperta', note, !!doc_1, !!doc_2, !!doc_3, !!doc_4, !!doc_5, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/assicurazioni/:id', async (req, res) => {
+  try {
+    await pool.query('DELETE FROM assicurazioni WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
 
 // ── AUTO-RELOAD: timestamp avvio server ───────────────────────────────────
 const SERVER_START_TIME = Date.now().toString();
