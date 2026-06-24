@@ -2454,7 +2454,10 @@ function calcolaRimborsoMax(){
 
 async function renderAssicurazioni(){
   const r = await api.get('/api/assicurazioni');
+  console.log('[ASS] Risposta API:', r);
   state.assicurazioni = r.error ? [] : r;
+  console.log('[ASS] Pratiche:', state.assicurazioni.length);
+  console.log('[ASS] ass-list elemento:', document.getElementById('ass-list'));
   renderAssicurazioniList();
 }
 
