@@ -2670,7 +2670,9 @@ async function sincronizzaEmailSavise(){
     const r = await api.post('/api/assicurazioni/scan-email', {});
     if(r.error){ mostraToast('Errore: '+r.error, 'error'); return; }
     mostraToast(`✅ ${r.nuove} nuove pratiche trovate · ${r.saltate} già presenti`);
-    await renderAssicurazioni();
+    // Switcha alla tab assicurazioni e renderizza
+    const tabEl = document.querySelectorAll('#sped-tabs .pill')[1];
+    switchSpedizioniTab('assicurazioni', tabEl);
   }catch(e){ mostraToast('Errore di rete', 'error'); }
   finally{
     if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-mail-search"></i>Sincronizza email'; }
