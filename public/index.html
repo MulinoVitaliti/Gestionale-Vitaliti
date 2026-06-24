@@ -980,8 +980,11 @@ tbody tr:hover{background:var(--surface-2)}
       <!-- VISTA ASSICURAZIONI -->
       <div id="sped-vista-assicurazioni" style="display:none">
         <div class="page-header" style="padding:0;margin-bottom:16px">
-          <div style="font-size:13px;color:var(--text-2)">Pratiche rimborso danni spedizioni · 60gg per documenti · 80% rimborso massimo</div>
-          <button class="btn btn-primary" onclick="openModal('modal-assicurazione')"><i class="ti ti-plus"></i>Nuova pratica</button>
+          <div style="font-size:13px;color:var(--text-2)">Pratiche rimborso danni · 60gg per documenti · 80% rimborso massimo</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn" id="btn-sync-ass" onclick="sincronizzaEmailSavise()"><i class="ti ti-mail-search"></i>Sincronizza email</button>
+            <button class="btn btn-primary" onclick="openModal('modal-assicurazione')"><i class="ti ti-plus"></i>Nuova pratica</button>
+          </div>
         </div>
 
         <!-- Stats rapide -->
@@ -1508,6 +1511,15 @@ tbody tr:hover{background:var(--surface-2)}
           <option value="bonifico">Bonifico totale</option>
           <option value="detrazione">Detrazione dalla fattura corriere</option>
         </select>
+      </div>
+
+      <!-- Campo email risposta -->
+      <div style="border-top:1px solid var(--border);margin:16px 0 14px"></div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Email all'ufficio contabile Savise</div>
+      <div class="form-group"><label class="form-label">Destinatario</label><input type="text" id="ass-email-to" placeholder="Es. contabilita@saviseexpress.it" value="infocl@saviseexpress.it"></div>
+      <div class="form-group"><label class="form-label">Testo email</label><textarea id="ass-email-body" style="min-height:90px" placeholder="Scrivi il messaggio..."></textarea></div>
+      <div style="display:flex;justify-content:flex-end">
+        <button class="btn" onclick="inviaEmailSavise()"><i class="ti ti-send"></i>Invia email</button>
       </div>
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
@@ -2651,8 +2663,35 @@ async function eliminaAssicurazione(id){
   });
 }
 
+async function sincronizzaEmailSavise(){
+  const btn = document.getElementById('btn-sync-ass');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Scansione...'; }
+  try{
+    const r = await api.post('/api/assicurazioni/scan-email', {});
+    if(r.error){ mostraToast('Errore: '+r.error, 'error'); return; }
+    mostraToast(`✅ ${r.nuove} nuove pratiche trovate · ${r.saltate} già presenti`);
+    await renderAssicurazioni();
+  }catch(e){ mostraToast('Errore di rete', 'error'); }
+  finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-mail-search"></i>Sincronizza email'; }
+  }
+}
 
-let contattiTabCorrente = 'clienti';
+async function inviaEmailSavise(){
+  const to = document.getElementById('ass-email-to')?.value.trim();
+  const body = document.getElementById('ass-email-body')?.value.trim();
+  const cliente = document.getElementById('ass-cliente')?.value.trim();
+  const ddt = document.getElementById('ass-ddt')?.value.trim();
+  if(!to||!body){ alert('Inserisci destinatario e testo email'); return; }
+  apriComposer({
+    to,
+    subject: `Richiesta rimborso danno – ${cliente||''}${ddt?' – DDT '+ddt:''}`,
+    bodyHtml: body.replace(/\n/g,'<br>')
+  });
+  mostraToast('Composer email aperto');
+}
+
+
 
 function switchContattiTab(tab, el){
   contattiTabCorrente = tab;
