@@ -2420,36 +2420,59 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
         console.log(`[ASSICURAZIONI] Testo PDF insufficiente, uso solo soggetto email`);
         // Crea pratica con solo i dati dell'email senza PDF
         await pool.query(
-          `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) VALUES ($1,$2,$3,'aperta',$4,$5)`,
+          `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) 
+           VALUES ($1,$2,$3,'aperta',$4,$5)
+           ON CONFLICT (gmail_msg_id) DO NOTHING`,
           [subject, '', dataEmail, 'Importo danno da inserire manualmente.', msg.id]
         );
         create++;
         continue;
       }
 
-      // Passa il testo all'AI per estrarre i dati
-      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: { 'Content-Type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
-        body: JSON.stringify({
-          model: 'claude-sonnet-4-6',
-          max_tokens: 500,
-          messages: [{
-            role: 'user',
-            content: `Estrai da questo documento Savise Express i seguenti dati e rispondimi SOLO con JSON valido senza markdown:\n{"cliente":"nome destinatario","ddt":"riferimento mittente (rif. mitt.)","numero_spedizione":"numero sped.n.","data_spedizione":"data in formato YYYY-MM-DD","data_danno":"data lettera in formato YYYY-MM-DD","descrizione_danno":"descrizione del danno"}\n\nDOCUMENTO:\n${testoPdf.slice(0,2000)}`
-          }]
-        })
-      });
-      const aiData = await aiResp.json();
-      let parsed = {};
-      try {
-        const testo = aiData.content?.[0]?.text || '{}';
-        parsed = JSON.parse(testo.replace(/```json|```/g,'').trim());
-      } catch(e) { parsed = {}; }
+      // Estrai dati dal testo con regex (formato Savise Express sempre uguale)
+      let parsed = { cliente: '', ddt: '', numero_spedizione: '', data_spedizione: '', data_danno: '', descrizione_danno: '' };
 
-      // Crea la pratica
+      if (testoPdf && testoPdf.length > 50) {
+        // Data lettera (es: "PALERMO 18.05.2026")
+        const dataMatch = testoPdf.match(/PALERMO\s+(\d{1,2}\.\d{2}\.\d{4})/);
+        if (dataMatch) {
+          const p = dataMatch[1].split('.');
+          parsed.data_danno = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+        // Numero spedizione (es: "Sped.n. 2026-115- 16577")
+        const spedMatch = testoPdf.match(/Sped\.n\.\s*([\d\-\s]+)del/);
+        if (spedMatch) parsed.numero_spedizione = spedMatch[1].replace(/\s/g,'').trim();
+        // Data spedizione
+        const dataSpedMatch = testoPdf.match(/del\s+(\d{1,2}\.\d{2}\.\d{4})/);
+        if (dataSpedMatch) {
+          const p = dataSpedMatch[1].split('.');
+          parsed.data_spedizione = `${p[2]}-${p[1]}-${p[0]}`;
+        }
+        // Destinatario (cliente)
+        const destMatch = testoPdf.match(/dest\.\s+([^\-\n]{5,50})\s*-/);
+        if (destMatch) parsed.cliente = destMatch[1].trim();
+        // Rif. mittente (DDT)
+        const rifMatch = testoPdf.match(/rif\.\s*mitt\.\s+(\S+)/i);
+        if (rifMatch) parsed.ddt = rifMatch[1].trim();
+        // Descrizione danno
+        const dannoMatch = testoPdf.match(/riscontrato il seguete danno[:\s]*([^\n]+(?:\n[^\n]+)?)/i) ||
+                           testoPdf.match(/ete danno[:\s]*([^\n]+)/i);
+        if (dannoMatch) parsed.descrizione_danno = dannoMatch[1].trim();
+      }
+
+      // Fallback: usa il nome file per estrarre cliente e DDT
+      if (!parsed.cliente) {
+        const fileMatch = subject.match(/SAVISE_EXPRESS_DOC_[^_]+_[^_]+_([^_]+)_\s*(\d+)/);
+        if (fileMatch) { parsed.cliente = fileMatch[1].trim(); parsed.ddt = fileMatch[2].trim(); }
+      }
+
+      console.log(`[ASSICURAZIONI] Dati estratti: cliente="${parsed.cliente}" ddt="${parsed.ddt}" data_danno="${parsed.data_danno}"`);
+
+      // Crea la pratica — ignora se già esiste (ON CONFLICT)
       await pool.query(
-        `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) VALUES ($1,$2,$3,'aperta',$4,$5)`,
+        `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) 
+         VALUES ($1,$2,$3,'aperta',$4,$5)
+         ON CONFLICT (gmail_msg_id) DO NOTHING`,
         [
           parsed.cliente || subject,
           parsed.ddt || '',
