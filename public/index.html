@@ -948,24 +948,55 @@ tbody tr:hover{background:var(--surface-2)}
         <div id="spedizioni-header-actions"></div>
       </div>
 
-      <!-- Non connesso -->
-      <div id="sped-non-connesso" style="display:none">
-        <div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:36px 28px">
-          <i class="ti ti-mail" style="font-size:46px;color:var(--brand);margin-bottom:14px"></i>
-          <div style="font-size:17px;font-weight:700;margin-bottom:8px">Collega la casella spedizioni</div>
-          <div style="font-size:13px;color:var(--text-2);margin-bottom:6px;line-height:1.6">Connetti <strong>spedizioni.mulinovitaliti@gmail.com</strong> per leggere automaticamente le notifiche di tracking One Express.</div>
-          <div style="font-size:12px;color:var(--text-3);margin-bottom:22px">Durante l'autorizzazione assicurati di accedere con QUEL specifico account Google, non con quello principale.</div>
-          <button class="btn btn-primary" onclick="window.location.href='/auth/spedizioni/login'" style="margin:0 auto"><i class="ti ti-plug"></i>Connetti casella spedizioni</button>
+      <!-- Tab switcher -->
+      <div class="pills" style="margin-bottom:16px" id="sped-tabs">
+        <div class="pill active" onclick="switchSpedizioniTab('spedizioni',this)"><i class="ti ti-truck-delivery" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Spedizioni</div>
+        <div class="pill" onclick="switchSpedizioniTab('assicurazioni',this)"><i class="ti ti-shield-check" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Assicurazioni <span class="nav-badge" id="ass-badge" style="display:none;margin-left:4px">0</span></div>
+      </div>
+
+      <!-- VISTA SPEDIZIONI -->
+      <div id="sped-vista-spedizioni">
+        <!-- Non connesso -->
+        <div id="sped-non-connesso" style="display:none">
+          <div class="card" style="max-width:480px;margin:40px auto;text-align:center;padding:36px 28px">
+            <i class="ti ti-mail" style="font-size:46px;color:var(--brand);margin-bottom:14px"></i>
+            <div style="font-size:17px;font-weight:700;margin-bottom:8px">Collega la casella spedizioni</div>
+            <div style="font-size:13px;color:var(--text-2);margin-bottom:6px;line-height:1.6">Connetti <strong>spedizioni.mulinovitaliti@gmail.com</strong> per leggere automaticamente le notifiche di tracking One Express.</div>
+            <div style="font-size:12px;color:var(--text-3);margin-bottom:22px">Durante l'autorizzazione assicurati di accedere con QUEL specifico account Google, non con quello principale.</div>
+            <button class="btn btn-primary" onclick="window.location.href='/auth/spedizioni/login'" style="margin:0 auto"><i class="ti ti-plug"></i>Connetti casella spedizioni</button>
+          </div>
+        </div>
+
+        <!-- Connesso -->
+        <div id="sped-connesso" style="display:none">
+          <div style="background:var(--brand-light);border:1px solid var(--brand);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--brand);display:flex;align-items:center;gap:10px">
+            <i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>
+            <div>Le spedizioni vengono lette automaticamente dalle email di One Express ricevute su <strong>spedizioni.mulinovitaliti@gmail.com</strong>. Clicca "Sincronizza" per cercare nuove notifiche.</div>
+          </div>
+          <div id="spedizioni-list" style="display:flex;flex-direction:column;gap:10px"></div>
         </div>
       </div>
 
-      <!-- Connesso -->
-      <div id="sped-connesso" style="display:none">
-        <div style="background:var(--brand-light);border:1px solid var(--brand);border-radius:var(--r);padding:12px 16px;margin-bottom:18px;font-size:13px;color:var(--brand);display:flex;align-items:center;gap:10px">
-          <i class="ti ti-info-circle" style="font-size:18px;flex-shrink:0"></i>
-          <div>Le spedizioni vengono lette automaticamente dalle email di One Express ricevute su <strong>spedizioni.mulinovitaliti@gmail.com</strong>. Clicca "Sincronizza" per cercare nuove notifiche.</div>
+      <!-- VISTA ASSICURAZIONI -->
+      <div id="sped-vista-assicurazioni" style="display:none">
+        <div class="page-header" style="padding:0;margin-bottom:16px">
+          <div style="font-size:13px;color:var(--text-2)">Pratiche rimborso danni spedizioni · 60gg per documenti · 80% rimborso massimo</div>
+          <button class="btn btn-primary" onclick="openModal('modal-assicurazione')"><i class="ti ti-plus"></i>Nuova pratica</button>
         </div>
-        <div id="spedizioni-list" style="display:flex;flex-direction:column;gap:10px"></div>
+
+        <!-- Stats rapide -->
+        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px" id="ass-stats"></div>
+
+        <!-- Filtri -->
+        <div class="pills" style="margin-bottom:14px" id="ass-pills">
+          <div class="pill active" onclick="filterAssicurazioni('tutte',this)">Tutte</div>
+          <div class="pill" onclick="filterAssicurazioni('aperta',this)"><span class="status-dot" style="background:var(--orange)"></span>Aperte</div>
+          <div class="pill" onclick="filterAssicurazioni('documenti_inviati',this)"><span class="status-dot" style="background:var(--blue)"></span>Documenti inviati</div>
+          <div class="pill" onclick="filterAssicurazioni('in_attesa_rimborso',this)"><span class="status-dot" style="background:var(--gold)"></span>In attesa rimborso</div>
+          <div class="pill" onclick="filterAssicurazioni('chiusa',this)"><span class="status-dot" style="background:var(--green)"></span>Chiuse</div>
+        </div>
+
+        <div id="ass-list"></div>
       </div>
     </div>
 
@@ -1428,6 +1459,65 @@ tbody tr:hover{background:var(--surface-2)}
   </div></div>
 </div>
 <!-- Modal Attività -->
+<div class="modal-overlay" id="modal-assicurazione">
+  <div class="modal" style="max-width:560px">
+    <div class="modal-header">
+      <div class="modal-title" id="modal-ass-title"><i class="ti ti-shield-check" style="color:var(--brand);margin-right:6px"></i>Nuova pratica assicurazione</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-assicurazione')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="ass-edit-id">
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Cliente *</label><input type="text" id="ass-cliente" placeholder="Es. Panificio Rossi"></div>
+        <div class="form-group"><label class="form-label">N° DDT / Spedizione *</label><input type="text" id="ass-ddt" placeholder="Es. 73, 76, 78"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data email danno *</label><input type="date" id="ass-data-danno"></div>
+        <div class="form-group"><label class="form-label">Valore merce danneggiata (€) *</label><input type="number" id="ass-importo" placeholder="Es. 250.00" step="0.01" oninput="calcolaRimborsoMax()"></div>
+      </div>
+      <div style="background:var(--brand-light);border-radius:var(--r);padding:10px 14px;margin-bottom:14px;display:flex;align-items:center;justify-content:space-between">
+        <span style="font-size:13px;color:var(--brand)"><i class="ti ti-calculator" style="font-size:14px"></i> Rimborso massimo (80%)</span>
+        <span style="font-size:16px;font-weight:700;color:var(--brand)" id="ass-rimborso-max">€ 0,00</span>
+      </div>
+      <div class="form-group"><label class="form-label">Note / Descrizione danno</label><textarea id="ass-note" style="min-height:60px" placeholder="Descrivi il danno ricevuto..."></textarea></div>
+
+      <!-- Checklist documenti -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Documenti da inviare al corriere</div>
+      <div style="display:flex;flex-direction:column;gap:8px;margin-bottom:16px">
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px"><input type="checkbox" id="ass-doc-1"><span>Fattura di vendita</span></label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px"><input type="checkbox" id="ass-doc-2"><span>Nota di credito / DDT di reintegro emesso al cliente</span></label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px"><input type="checkbox" id="ass-doc-3"><span>DDT della spedizione</span></label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px"><input type="checkbox" id="ass-doc-4"><span>Nota di addebito esente IVA (art.2) + nota di credito franchigia 20%</span></label>
+        <label style="display:flex;align-items:center;gap:10px;cursor:pointer;font-size:13px"><input type="checkbox" id="ass-doc-5"><span>Mandato assicurativo 2026</span></label>
+      </div>
+
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Stato pratica</label>
+          <select id="ass-stato">
+            <option value="aperta">🟠 Aperta — raccolta documenti</option>
+            <option value="documenti_inviati">🔵 Documenti inviati</option>
+            <option value="in_attesa_rimborso">🟡 In attesa rimborso</option>
+            <option value="chiusa">🟢 Chiusa</option>
+          </select>
+        </div>
+        <div class="form-group"><label class="form-label">Importo rimborsato (€)</label><input type="number" id="ass-rimborsato" placeholder="0.00" step="0.01"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Modalità rimborso</label>
+        <select id="ass-modalita">
+          <option value="">— Da definire —</option>
+          <option value="bonifico">Bonifico totale</option>
+          <option value="detrazione">Detrazione dalla fattura corriere</option>
+        </select>
+      </div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="closeModal('modal-assicurazione')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaAssicurazione()"><i class="ti ti-check"></i>Salva pratica</button>
+      </div>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="modal-attivita">
   <div class="modal"><div class="modal-header"><div class="modal-title" id="modal-att-title">Nuova attività</div><button class="btn btn-icon" onclick="closeModal('modal-attivita')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
@@ -1907,7 +1997,11 @@ function showPage(id){
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
-  if(id==='spedizioni') initPaginaSpedizioni();
+  if(id==='spedizioni'){ 
+    // Reset alla tab Spedizioni ogni volta che si apre la pagina
+    switchSpedizioniTab('spedizioni', document.querySelector('#sped-tabs .pill'));
+    initPaginaSpedizioni(); 
+  }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); }
 }
@@ -2328,7 +2422,236 @@ async function eliminaFaseConCheck(id){
   });
 }
 
-// ── CONTATTI (Clienti + Fornitori) ───────────────────────────────────────
+// ── ASSICURAZIONI ─────────────────────────────────────────────────────────
+let assFilter = 'tutte';
+
+function switchSpedizioniTab(tab, el){
+  document.querySelectorAll('#sped-tabs .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  document.getElementById('sped-vista-spedizioni').style.display = tab==='spedizioni' ? 'block' : 'none';
+  document.getElementById('sped-vista-assicurazioni').style.display = tab==='assicurazioni' ? 'block' : 'none';
+  if(tab==='assicurazioni') renderAssicurazioni();
+}
+
+function calcolaRimborsoMax(){
+  const imp = parseFloat(document.getElementById('ass-importo')?.value)||0;
+  const max = (imp * 0.8).toFixed(2);
+  const el = document.getElementById('ass-rimborso-max');
+  if(el) el.textContent = '€ '+parseFloat(max).toLocaleString('it-IT',{minimumFractionDigits:2});
+}
+
+async function renderAssicurazioni(){
+  const r = await api.get('/api/assicurazioni');
+  state.assicurazioni = r.error ? [] : r;
+  renderAssicurazioniList();
+}
+
+function renderAssicurazioniList(){
+  const lista = (state.assicurazioni||[]);
+  const aperte = lista.filter(a=>a.stato!=='chiusa').length;
+  const badge = document.getElementById('ass-badge');
+  if(badge){ badge.textContent=aperte; badge.style.display=aperte?'':'none'; }
+
+  // Stats
+  const statsEl = document.getElementById('ass-stats');
+  if(statsEl){
+    const totImporto = lista.reduce((s,a)=>s+(parseFloat(a.importo)||0),0);
+    const totRimborsoMax = lista.reduce((s,a)=>s+(parseFloat(a.rimborso_max)||0),0);
+    const totRimborsato = lista.reduce((s,a)=>s+(parseFloat(a.importo_rimborsato)||0),0);
+    const scadenzaAlert = lista.filter(a=>{
+      if(a.stato!=='aperta'||!a.data_danno) return false;
+      const scad = new Date(a.data_danno); scad.setDate(scad.getDate()+60);
+      const diff = Math.ceil((scad-new Date())/(1000*60*60*24));
+      return diff<=10 && diff>=0;
+    }).length;
+    statsEl.innerHTML = [
+      {label:'Pratiche aperte', val:lista.filter(a=>a.stato==='aperta').length, color:'var(--orange)', icon:'ti-shield'},
+      {label:'Valore danni', val:'€'+totImporto.toLocaleString('it-IT',{minimumFractionDigits:2}), color:'var(--red)', icon:'ti-alert-triangle'},
+      {label:'Rimborso atteso', val:'€'+totRimborsoMax.toLocaleString('it-IT',{minimumFractionDigits:2}), color:'var(--blue)', icon:'ti-coin'},
+      {label:'Scadenza imminente', val:scadenzaAlert+' pratiche', color:scadenzaAlert>0?'var(--red)':'var(--green)', icon:'ti-clock'},
+    ].map(s=>`
+      <div class="card" style="margin:0;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div style="width:36px;height:36px;border-radius:50%;background:${s.color}22;display:flex;align-items:center;justify-content:center;flex-shrink:0">
+            <i class="ti ${s.icon}" style="color:${s.color};font-size:18px"></i>
+          </div>
+          <div>
+            <div style="font-size:16px;font-weight:700">${s.val}</div>
+            <div style="font-size:11px;color:var(--text-2)">${s.label}</div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  // Lista
+  const listEl = document.getElementById('ass-list'); if(!listEl) return;
+  let items = assFilter==='tutte' ? lista : lista.filter(a=>a.stato===assFilter);
+
+  if(!items.length){
+    listEl.innerHTML='<div class="empty-state"><i class="ti ti-shield-check" style="font-size:34px;opacity:0.3;display:block;margin-bottom:8px"></i><p>Nessuna pratica trovata</p></div>';
+    return;
+  }
+
+  const statiCfg = {
+    aperta:{label:'Aperta',color:'var(--orange)',bg:'#fff7ed'},
+    documenti_inviati:{label:'Documenti inviati',color:'var(--blue)',bg:'#eff6ff'},
+    in_attesa_rimborso:{label:'In attesa rimborso',color:'var(--gold)',bg:'#fefce8'},
+    chiusa:{label:'Chiusa',color:'var(--green)',bg:'#f0fdf4'}
+  };
+  const docLabels = ['Fattura di vendita','Nota credito / DDT reintegro','DDT spedizione','Nota addebito (art.2) + nota credito franchigia 20%','Mandato assicurativo 2026'];
+
+  listEl.innerHTML = items.map(a=>{
+    const cfg = statiCfg[a.stato]||statiCfg.aperta;
+    const docsCompletati = [a.doc_1,a.doc_2,a.doc_3,a.doc_4,a.doc_5].filter(Boolean).length;
+    const scadenza = a.data_danno ? new Date(a.data_danno) : null;
+    if(scadenza) scadenza.setDate(scadenza.getDate()+60);
+    const giorniRimasti = scadenza ? Math.ceil((scadenza-new Date())/(1000*60*60*24)) : null;
+    const scadStr = scadenza ? scadenza.toLocaleDateString('it-IT',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+    const scadAlert = giorniRimasti!==null && giorniRimasti<=10 && giorniRimasti>=0 && a.stato==='aperta';
+    const scadScaduta = giorniRimasti!==null && giorniRimasti<0 && a.stato==='aperta';
+
+    return `
+    <div class="card" style="margin-bottom:12px;border-left:4px solid ${cfg.color}">
+      <div class="card-body" style="padding:14px 16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div style="flex:1">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">
+              <span style="font-weight:700;font-size:15px">${a.cliente}</span>
+              <span style="font-size:11px;font-weight:700;color:${cfg.color};background:${cfg.bg};padding:2px 10px;border-radius:99px">${cfg.label}</span>
+              ${a.ddt?`<span style="font-size:12px;color:var(--text-2)">DDT: <strong>${a.ddt}</strong></span>`:''}
+            </div>
+            <div style="display:flex;gap:16px;flex-wrap:wrap;font-size:12px;color:var(--text-2)">
+              ${a.data_danno?`<span><i class="ti ti-calendar" style="font-size:11px"></i> Email danno: ${new Date(a.data_danno).toLocaleDateString('it-IT')}</span>`:''}
+              <span style="color:${scadScaduta?'var(--red)':scadAlert?'var(--orange)':'var(--text-2)'};font-weight:${scadAlert||scadScaduta?'700':'400'}">
+                <i class="ti ti-clock" style="font-size:11px"></i> 
+                Scadenza 60gg: ${scadStr}
+                ${scadScaduta?' ⚠ SCADUTA':scadAlert?` · ${giorniRimasti}gg rimasti`:''}
+              </span>
+            </div>
+          </div>
+          <div style="text-align:right;flex-shrink:0">
+            <div style="font-size:11px;color:var(--text-3)">Valore danno</div>
+            <div style="font-size:18px;font-weight:700;color:var(--red)">€${parseFloat(a.importo||0).toLocaleString('it-IT',{minimumFractionDigits:2})}</div>
+            <div style="font-size:11px;color:var(--text-3)">Max rimborso (80%)</div>
+            <div style="font-size:14px;font-weight:700;color:var(--brand)">€${parseFloat(a.rimborso_max||0).toLocaleString('it-IT',{minimumFractionDigits:2})}</div>
+            ${a.importo_rimborsato>0?`<div style="font-size:11px;color:var(--green);font-weight:600;margin-top:2px">✓ Rimborsato: €${parseFloat(a.importo_rimborsato).toLocaleString('it-IT',{minimumFractionDigits:2})}</div>`:''}
+          </div>
+        </div>
+
+        <!-- Checklist documenti -->
+        <div style="background:var(--surface-2);border-radius:var(--r);padding:10px 12px;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;margin-bottom:8px">
+            Documenti (${docsCompletati}/5)
+            <div style="display:inline-block;margin-left:8px;height:6px;width:80px;background:var(--border);border-radius:99px;vertical-align:middle">
+              <div style="height:100%;width:${docsCompletati/5*100}%;background:${docsCompletati===5?'var(--green)':'var(--brand)'};border-radius:99px"></div>
+            </div>
+          </div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px">
+            ${[a.doc_1,a.doc_2,a.doc_3,a.doc_4,a.doc_5].map((v,i)=>`
+              <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:${v?'var(--green)':'var(--text-3)'}">
+                <i class="ti ${v?'ti-circle-check':'ti-circle'}" style="font-size:14px"></i>
+                ${docLabels[i]}
+              </div>`).join('')}
+          </div>
+        </div>
+
+        ${a.note?`<div style="font-size:12px;color:var(--text-2);margin-bottom:10px;font-style:italic">${a.note}</div>`:''}
+        ${a.modalita_rimborso?`<div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Modalità rimborso: <strong>${a.modalita_rimborso==='bonifico'?'Bonifico totale':'Detrazione fattura corriere'}</strong></div>`:''}
+
+        <div style="display:flex;gap:8px;justify-content:flex-end">
+          <button class="btn btn-sm" onclick="editAssicurazione(${a.id})"><i class="ti ti-pencil"></i>Modifica</button>
+          <button class="btn btn-sm btn-danger" onclick="eliminaAssicurazione(${a.id})"><i class="ti ti-trash"></i></button>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function filterAssicurazioni(f, el){
+  assFilter = f;
+  document.querySelectorAll('#ass-pills .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  renderAssicurazioniList();
+}
+
+function openModal_assicurazione_reset(){
+  document.getElementById('ass-edit-id').value='';
+  document.getElementById('ass-cliente').value='';
+  document.getElementById('ass-ddt').value='';
+  document.getElementById('ass-data-danno').value=new Date().toISOString().slice(0,10);
+  document.getElementById('ass-importo').value='';
+  document.getElementById('ass-rimborso-max').textContent='€ 0,00';
+  document.getElementById('ass-note').value='';
+  document.getElementById('ass-stato').value='aperta';
+  document.getElementById('ass-rimborsato').value='';
+  document.getElementById('ass-modalita').value='';
+  [1,2,3,4,5].forEach(i=>{ document.getElementById('ass-doc-'+i).checked=false; });
+  document.getElementById('modal-ass-title').innerHTML='<i class="ti ti-shield-check" style="color:var(--brand);margin-right:6px"></i>Nuova pratica assicurazione';
+}
+
+async function salvaAssicurazione(){
+  const cliente = document.getElementById('ass-cliente').value.trim();
+  if(!cliente) return alert('Inserisci il nome del cliente');
+  const importo = parseFloat(document.getElementById('ass-importo').value)||0;
+  if(!importo) return alert('Inserisci il valore della merce danneggiata');
+  const id = document.getElementById('ass-edit-id').value;
+  const body = {
+    cliente,
+    ddt: document.getElementById('ass-ddt').value.trim(),
+    data_danno: document.getElementById('ass-data-danno').value,
+    importo,
+    rimborso_max: +(importo*0.8).toFixed(2),
+    importo_rimborsato: parseFloat(document.getElementById('ass-rimborsato').value)||0,
+    modalita_rimborso: document.getElementById('ass-modalita').value,
+    stato: document.getElementById('ass-stato').value,
+    note: document.getElementById('ass-note').value,
+    doc_1: document.getElementById('ass-doc-1').checked,
+    doc_2: document.getElementById('ass-doc-2').checked,
+    doc_3: document.getElementById('ass-doc-3').checked,
+    doc_4: document.getElementById('ass-doc-4').checked,
+    doc_5: document.getElementById('ass-doc-5').checked,
+  };
+  if(id){
+    await api.put('/api/assicurazioni/'+id, body);
+    const idx=(state.assicurazioni||[]).findIndex(a=>a.id===parseInt(id));
+    if(idx>=0) state.assicurazioni[idx]=Object.assign(state.assicurazioni[idx],body);
+  } else {
+    const r = await api.post('/api/assicurazioni', body);
+    if(!r.error){ state.assicurazioni=state.assicurazioni||[]; state.assicurazioni.unshift(r); }
+  }
+  closeModal('modal-assicurazione');
+  renderAssicurazioniList();
+  showSave();
+}
+
+function editAssicurazione(id){
+  const a=(state.assicurazioni||[]).find(x=>x.id===id); if(!a)return;
+  openModal_assicurazione_reset();
+  document.getElementById('ass-edit-id').value=a.id;
+  document.getElementById('ass-cliente').value=a.cliente||'';
+  document.getElementById('ass-ddt').value=a.ddt||'';
+  document.getElementById('ass-data-danno').value=(a.data_danno||'').slice(0,10);
+  document.getElementById('ass-importo').value=a.importo||'';
+  document.getElementById('ass-note').value=a.note||'';
+  document.getElementById('ass-stato').value=a.stato||'aperta';
+  document.getElementById('ass-rimborsato').value=a.importo_rimborsato||'';
+  document.getElementById('ass-modalita').value=a.modalita_rimborso||'';
+  [1,2,3,4,5].forEach(i=>{ document.getElementById('ass-doc-'+i).checked=!!a['doc_'+i]; });
+  calcolaRimborsoMax();
+  document.getElementById('modal-ass-title').innerHTML='<i class="ti ti-shield-check" style="color:var(--brand);margin-right:6px"></i>Modifica pratica';
+  openModal('modal-assicurazione');
+}
+
+async function eliminaAssicurazione(id){
+  conferma(async()=>{
+    await api.del('/api/assicurazioni/'+id);
+    state.assicurazioni=(state.assicurazioni||[]).filter(a=>a.id!==id);
+    renderAssicurazioniList();
+    showSave();
+  });
+}
+
+
 let contattiTabCorrente = 'clienti';
 
 function switchContattiTab(tab, el){
