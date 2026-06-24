@@ -180,6 +180,7 @@ async function initDB() {
         doc_3 BOOLEAN DEFAULT FALSE,
         doc_4 BOOLEAN DEFAULT FALSE,
         doc_5 BOOLEAN DEFAULT FALSE,
+        gmail_msg_id TEXT UNIQUE,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -2297,6 +2298,100 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
+
+// ── SCAN EMAIL SAVISE PER PRATICHE ASSICURAZIONE ──────────────────────────
+app.post('/api/assicurazioni/scan-email', async (req, res) => {
+  try {
+    if (!oauth2ClientSpedizioni) return res.json({ error: 'Account spedizioni non connesso' });
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+
+    // Cerca email con oggetto SAVISE_EXPRESS_DOC_ non ancora processate
+    const search = await gmail.users.messages.list({
+      userId: 'me',
+      q: 'subject:SAVISE_EXPRESS_DOC_ has:attachment',
+      maxResults: 20
+    });
+
+    const messages = search.data.messages || [];
+    let create = 0, skip = 0;
+
+    for (const msg of messages) {
+      // Controlla se già processata
+      const exists = await pool.query('SELECT id FROM assicurazioni WHERE gmail_msg_id=$1', [msg.id]);
+      if (exists.rows.length > 0) { skip++; continue; }
+
+      // Scarica email completa
+      const full = await gmail.users.messages.get({ userId: 'me', id: msg.id, format: 'full' });
+      const headers = full.data.payload.headers;
+      const subject = headers.find(h=>h.name==='Subject')?.value || '';
+      const dateStr = headers.find(h=>h.name==='Date')?.value || '';
+      const dataEmail = dateStr ? new Date(dateStr).toISOString().slice(0,10) : new Date().toISOString().slice(0,10);
+
+      // Trova l'allegato PDF
+      let testoPdf = '';
+      const parts = full.data.payload.parts || [];
+      for (const part of parts) {
+        if (part.filename && part.filename.endsWith('.pdf') && part.body?.attachmentId) {
+          try {
+            const att = await gmail.users.messages.attachments.get({
+              userId: 'me', messageId: msg.id, id: part.body.attachmentId
+            });
+            const pdfBuffer = Buffer.from(att.data.data, 'base64');
+            // Salva temporaneamente e leggi con pdftotext
+            const fs = require('fs');
+            const tmpPath = `/tmp/savise_${msg.id}.pdf`;
+            fs.writeFileSync(tmpPath, pdfBuffer);
+            const { execSync } = require('child_process');
+            try {
+              testoPdf = execSync(`pdftotext -layout "${tmpPath}" -`).toString();
+            } catch(e) { testoPdf = ''; }
+            fs.unlinkSync(tmpPath);
+            break;
+          } catch(e) { console.error('Errore lettura PDF:', e.message); }
+        }
+      }
+
+      if (!testoPdf) { skip++; continue; }
+
+      // Passa il testo all'AI per estrarre i dati
+      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type':'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version':'2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-sonnet-4-6',
+          max_tokens: 500,
+          messages: [{
+            role: 'user',
+            content: `Estrai da questo documento Savise Express i seguenti dati e rispondimi SOLO con JSON valido senza markdown:\n{"cliente":"nome destinatario","ddt":"riferimento mittente (rif. mitt.)","numero_spedizione":"numero sped.n.","data_spedizione":"data in formato YYYY-MM-DD","data_danno":"data lettera in formato YYYY-MM-DD","descrizione_danno":"descrizione del danno"}\n\nDOCUMENTO:\n${testoPdf.slice(0,2000)}`
+          }]
+        })
+      });
+      const aiData = await aiResp.json();
+      let parsed = {};
+      try {
+        const testo = aiData.content?.[0]?.text || '{}';
+        parsed = JSON.parse(testo.replace(/```json|```/g,'').trim());
+      } catch(e) { parsed = {}; }
+
+      // Crea la pratica
+      await pool.query(
+        `INSERT INTO assicurazioni (cliente,ddt,data_danno,stato,note,gmail_msg_id) VALUES ($1,$2,$3,'aperta',$4,$5)`,
+        [
+          parsed.cliente || subject,
+          parsed.ddt || '',
+          parsed.data_danno || dataEmail,
+          `N° spedizione: ${parsed.numero_spedizione||''}\nData spedizione: ${parsed.data_spedizione||''}\nDanno: ${parsed.descrizione_danno||''}\n\nL'importo del danno deve essere inserito manualmente.`,
+          msg.id
+        ]
+      );
+      create++;
+    }
+
+    res.json({ nuove: create, saltate: skip, totale: messages.length });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+
 
 // ── AUTO-RELOAD: timestamp avvio server ───────────────────────────────────
 const SERVER_START_TIME = Date.now().toString();
