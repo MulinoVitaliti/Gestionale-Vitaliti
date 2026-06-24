@@ -2302,14 +2302,16 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
 // ── SCAN EMAIL SAVISE PER PRATICHE ASSICURAZIONE ──────────────────────────
 app.post('/api/assicurazioni/scan-email', async (req, res) => {
   try {
-    if (!oauth2ClientSpedizioni) return res.json({ error: 'Account spedizioni non connesso' });
-    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+    // Usa l'account principale mulino.vitaliti@gmail.com dove arrivano le email Savise
+    if (!gmailTokens) return res.json({ error: 'Account Gmail principale non connesso' });
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Cerca email con oggetto SAVISE_EXPRESS_DOC_ non ancora processate
+    // Cerca email da Nina La Rosa di Savise Express con PDF allegato
     const search = await gmail.users.messages.list({
       userId: 'me',
-      q: 'subject:SAVISE_EXPRESS_DOC_ has:attachment',
-      maxResults: 20
+      q: 'from:nina.larosa@saviseexpress.it has:attachment filename:pdf',
+      maxResults: 30
     });
 
     const messages = search.data.messages || [];
