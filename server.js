@@ -2339,15 +2339,10 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
               userId: 'me', messageId: msg.id, id: part.body.attachmentId
             });
             const pdfBuffer = Buffer.from(att.data.data, 'base64');
-            // Salva temporaneamente e leggi con pdftotext
-            const fs = require('fs');
-            const tmpPath = `/tmp/savise_${msg.id}.pdf`;
-            fs.writeFileSync(tmpPath, pdfBuffer);
-            const { execSync } = require('child_process');
-            try {
-              testoPdf = execSync(`pdftotext -layout "${tmpPath}" -`).toString();
-            } catch(e) { testoPdf = ''; }
-            fs.unlinkSync(tmpPath);
+            // Usa pdf-parse (puro Node.js, nessun binario esterno)
+            const pdfParse = require('pdf-parse');
+            const pdfData = await pdfParse(pdfBuffer);
+            testoPdf = pdfData.text || '';
             break;
           } catch(e) { console.error('Errore lettura PDF:', e.message); }
         }
