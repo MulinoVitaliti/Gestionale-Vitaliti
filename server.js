@@ -2255,12 +2255,6 @@ async function eseguiAutomazioni() {
 setInterval(eseguiAutomazioni, 60 * 60 * 1000);
 
 
-// Fallback: serve index.html per tutte le route non-API
-app.get('*', (req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'index.html'));
-});
-
-
 // ── ASSICURAZIONI ─────────────────────────────────────────────────────────
 app.get('/api/assicurazioni', async (req, res) => {
   try {
@@ -2298,6 +2292,13 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
+
+// Fallback: serve index.html per tutte le route non-API
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'index.html'));
+});
+
+
 
 // ── SCAN EMAIL SAVISE PER PRATICHE ASSICURAZIONE ──────────────────────────
 app.post('/api/assicurazioni/scan-email', async (req, res) => {
