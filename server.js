@@ -812,6 +812,53 @@ app.get('/api/clienti', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── HELPER: sincronizza contatto su Fatture in Cloud ─────────────────────
+async function sincronizzaConFIC(dati, ficId = null) {
+  if (!ficTokens || !ficCompanyId) return null; // FIC non connesso, ignora silenziosamente
+  try {
+    // Mappa indirizzo
+    const indirizzoRaw = dati.ind_legale || dati.ind_consegna || '';
+    const endpoint = dati.tipo === 'fornitore'
+      ? `/c/${ficCompanyId}/entities/suppliers`
+      : `/c/${ficCompanyId}/entities/clients`;
+
+    const payload = {
+      data: {
+        name: dati.nome,
+        vat_number: dati.piva || '',
+        tax_code: dati.piva || '',
+        email: dati.email || '',
+        certified_email: dati.pec || '',
+        phone: dati.tel || '',
+        ei_code: dati.sdi || '',
+        address_street: indirizzoRaw,
+        address_city: dati.citta || '',
+      }
+    };
+
+    let r;
+    if (ficId) {
+      // Aggiorna entità esistente
+      r = await ficFetch(`${endpoint}/${ficId}`, {
+        method: 'PUT',
+        body: JSON.stringify(payload)
+      });
+    } else {
+      // Crea nuova entità
+      r = await ficFetch(endpoint, {
+        method: 'POST',
+        body: JSON.stringify(payload)
+      });
+    }
+    if (!r.ok) return null;
+    const json = await r.json();
+    return json.data?.id || null;
+  } catch (e) {
+    console.error('Errore sync FIC:', e.message);
+    return null;
+  }
+}
+
 app.post('/api/clienti', async (req, res) => {
   const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
   try {
@@ -820,11 +867,23 @@ app.post('/api/clienti', async (req, res) => {
     const countR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipoRecord]);
     const n = parseInt(countR.rows[0].count) + 1;
     const codice = prefisso + String(n).padStart(3, '0');
+
+    // Crea prima nel gestionale
     const r = await pool.query(
       'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
       [codice, tipoRecord, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
     );
-    res.json(r.rows[0]);
+    const cliente = r.rows[0];
+
+    // Sincronizza su FIC (in background, senza bloccare la risposta)
+    sincronizzaConFIC({nome, tel, email, citta, ind_legale, ind_consegna, piva, pec, sdi, tipo:tipoRecord}, null)
+      .then(nuovoFicId => {
+        if (nuovoFicId) {
+          pool.query('UPDATE clienti SET fic_id=$1 WHERE id=$2', [nuovoFicId, cliente.id]).catch(()=>{});
+        }
+      });
+
+    res.json(cliente);
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -835,9 +894,24 @@ app.put('/api/clienti/:id', async (req, res) => {
       'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,ind=$7,ind_legale=$8,ind_consegna=$9,sdi=$10,pec=$11,piva=$12,prod=$13,note=$14 WHERE id=$15',
       [tipo||'cliente', nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
     );
+
+    // Sincronizza aggiornamento su FIC se il contatto ha già un fic_id
+    const existing = await pool.query('SELECT fic_id FROM clienti WHERE id=$1', [req.params.id]);
+    const ficId = existing.rows[0]?.fic_id;
+    if (ficId) {
+      sincronizzaConFIC({nome, tel, email, citta, ind_legale, ind_consegna, piva, pec, sdi, tipo:tipo||'cliente'}, ficId).catch(()=>{});
+    } else {
+      // Non ancora su FIC — crealo ora
+      sincronizzaConFIC({nome, tel, email, citta, ind_legale, ind_consegna, piva, pec, sdi, tipo:tipo||'cliente'}, null)
+        .then(nuovoFicId => {
+          if (nuovoFicId) pool.query('UPDATE clienti SET fic_id=$1 WHERE id=$2', [nuovoFicId, req.params.id]).catch(()=>{});
+        });
+    }
+
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
+
 
 app.delete('/api/clienti/:id', async (req, res) => {
   try {
