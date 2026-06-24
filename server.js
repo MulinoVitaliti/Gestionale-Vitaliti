@@ -2333,6 +2333,18 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
 
       console.log(`[ASSICURAZIONI] Elaboro email: ${subject}`);
 
+      // Salta le risposte (oggetto che inizia con R: o RE:)
+      if (/^R(E)?:/i.test(subject.trim())) {
+        console.log(`[ASSICURAZIONI] Saltata (risposta): ${subject}`);
+        skip++; continue;
+      }
+
+      // Salta email senza SAVISE nel soggetto o nel nome file
+      if (!subject.toUpperCase().includes('SAVISE') && !subject.includes('rimborso')) {
+        console.log(`[ASSICURAZIONI] Saltata (non Savise): ${subject}`);
+        skip++; continue;
+      }
+
       // Cerca allegato PDF ricorsivamente in tutte le parti
       let testoPdf = '';
       let attachmentId = null;
