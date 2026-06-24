@@ -11,8 +11,6 @@
     "cors": "^2.8.5",
     "googleapis": "^140.0.0",
     "pg": "^8.11.3",
-    "bcryptjs": "^2.4.3",
-    "helmet": "^7.1.0",
-    "express-rate-limit": "^7.2.0"
+    "pdf-parse": "^1.1.1"
   }
 }
