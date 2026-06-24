@@ -2307,13 +2307,13 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Cerca email da Nina con allegato PDF che contiene SAVISE nel nome
+    // Cerca TUTTE le email da Nina e filtra lato server per quelle con PDF Savise
     const search = await gmail.users.messages.list({
       userId: 'me',
-      q: 'from:nina.larosa@saviseexpress.it filename:SAVISE_EXPRESS_DOC',
-      maxResults: 30
+      q: 'from:nina.larosa@saviseexpress.it',
+      maxResults: 50
     });
-    console.log(`[ASSICURAZIONI] Query Gmail: from:nina.larosa@saviseexpress.it filename:SAVISE_EXPRESS_DOC`);
+    console.log(`[ASSICURAZIONI] Query Gmail: from:nina.larosa@saviseexpress.it`);
 
     const messages = search.data.messages || [];
     console.log(`[ASSICURAZIONI] Trovate ${messages.length} email`);
@@ -2343,11 +2343,15 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
         for (const part of parts) {
           console.log(`[ASSICURAZIONI] Parte: filename="${part.filename}" mimeType="${part.mimeType}"`);
           if (part.body?.attachmentId && (
-            (part.filename && part.filename.toLowerCase().includes('.pdf')) ||
+            (part.filename && (
+              part.filename.toUpperCase().includes('SAVISE') ||
+              part.filename.toLowerCase().endsWith('.pdf')
+            )) ||
             part.mimeType === 'application/pdf' ||
             part.mimeType === 'application/octet-stream'
           )) {
             attachmentId = part.body.attachmentId;
+            console.log(`[ASSICURAZIONI] PDF trovato: ${part.filename}`);
             return;
           }
           if (part.parts) cercaAttachment(part.parts);
