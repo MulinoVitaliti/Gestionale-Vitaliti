@@ -2442,7 +2442,7 @@ function switchSpedizioniTab(tab, el){
   if(el) el.classList.add('active');
   document.getElementById('sped-vista-spedizioni').style.display = tab==='spedizioni' ? 'block' : 'none';
   document.getElementById('sped-vista-assicurazioni').style.display = tab==='assicurazioni' ? 'block' : 'none';
-  if(tab==='assicurazioni') renderAssicurazioni();
+  if(tab==='assicurazioni') setTimeout(()=>renderAssicurazioni(), 50);
 }
 
 function calcolaRimborsoMax(){
