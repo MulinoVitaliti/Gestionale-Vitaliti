@@ -2307,14 +2307,16 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
 
-    // Cerca email da Nina La Rosa di Savise Express con PDF allegato
+    // Cerca tutte le email da Nina con allegati (senza filtro filename per essere più flessibili)
     const search = await gmail.users.messages.list({
       userId: 'me',
-      q: 'from:nina.larosa@saviseexpress.it has:attachment filename:pdf',
+      q: 'from:nina.larosa@saviseexpress.it has:attachment',
       maxResults: 30
     });
+    console.log(`[ASSICURAZIONI] Query Gmail: from:nina.larosa@saviseexpress.it has:attachment`);
 
     const messages = search.data.messages || [];
+    console.log(`[ASSICURAZIONI] Trovate ${messages.length} email`);
     let create = 0, skip = 0;
 
     for (const msg of messages) {
@@ -2339,10 +2341,13 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
               userId: 'me', messageId: msg.id, id: part.body.attachmentId
             });
             const pdfBuffer = Buffer.from(att.data.data, 'base64');
-            // Usa pdf-parse (puro Node.js, nessun binario esterno)
-            const pdfParse = require('pdf-parse');
-            const pdfData = await pdfParse(pdfBuffer);
-            testoPdf = pdfData.text || '';
+            // Estrai testo dal PDF cercando le stringhe leggibili nel buffer
+            const raw = pdfBuffer.toString('latin1');
+            const matches = raw.match(/\(([^\)]{3,})\)/g) || [];
+            const testoGrezzo = matches.map(m=>m.slice(1,-1)).join(' ');
+            // Alternativa: cerca blocchi di testo ASCII leggibile
+            const ascii = raw.replace(/[^\x20-\x7E\xC0-\xFF\n\r]/g,' ').replace(/\s+/g,' ');
+            testoPdf = testoGrezzo.length > 100 ? testoGrezzo : ascii;
             break;
           } catch(e) { console.error('Errore lettura PDF:', e.message); }
         }
