@@ -2375,12 +2375,32 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
           });
           const pdfBuffer = Buffer.from(att.data.data, 'base64');
           console.log(`[ASSICURAZIONI] PDF scaricato: ${pdfBuffer.length} bytes`);
-          const raw = pdfBuffer.toString('latin1');
-          const matches = raw.match(/\(([^\)]{3,})\)/g) || [];
-          const testoGrezzo = matches.map(m=>m.slice(1,-1)).join(' ');
-          const ascii = raw.replace(/[^\x20-\x7E\xC0-\xFF\n\r]/g,' ').replace(/\s+/g,' ');
-          testoPdf = testoGrezzo.length > 100 ? testoGrezzo : ascii;
-          console.log(`[ASSICURAZIONI] Testo PDF estratto: ${testoPdf.slice(0,200)}`);
+
+          // Decomprimi gli stream FlateDecoded con zlib
+          const zlib = require('zlib');
+          const raw = pdfBuffer.toString('binary');
+          let testoFinale = '';
+
+          const streamRegex = /stream\r?\n([\s\S]*?)\r?\nendstream/g;
+          let m;
+          while ((m = streamRegex.exec(raw)) !== null) {
+            try {
+              const streamData = Buffer.from(m[1], 'binary');
+              const decomp = zlib.inflateSync(streamData).toString('latin1');
+              const textMatches = decomp.match(/\(([^\)\\]{2,})\)/g) || [];
+              const testo = textMatches.map(x=>x.slice(1,-1)).filter(t=>/[a-zA-ZÀ-ÿ0-9]{2,}/.test(t)).join(' ');
+              if (testo.length > 30) testoFinale += testo + ' ';
+            } catch(e) {}
+          }
+
+          // Fallback testo in chiaro
+          if (testoFinale.length < 50) {
+            const matches = raw.match(/\(([^\)]{4,})\)/g) || [];
+            testoFinale = matches.map(x=>x.slice(1,-1)).filter(t=>/[a-zA-Z]{3,}/.test(t)).join(' ');
+          }
+
+          testoPdf = testoFinale;
+          console.log(`[ASSICURAZIONI] Testo estratto (${testoPdf.length} chars): ${testoPdf.slice(0,300)}`);
         } catch(e) { console.error('Errore lettura PDF:', e.message); }
       }
 
