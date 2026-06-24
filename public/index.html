@@ -568,8 +568,8 @@ tbody tr:hover{background:var(--surface-2)}
 
         <!-- SEZIONE ATTIVITÀ (sempre visibile, full width) -->
         <div>
-          <!-- Pulsanti azione rapida -->
-          <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:16px;background:#fff">
+          <!-- 3 pulsanti azione rapida -->
+          <div style="display:flex;gap:0;border:1.5px solid var(--border);border-radius:var(--rl);overflow:hidden;margin-bottom:12px;background:#fff">
             <button id="ldp-btn-chiamata" onclick="apriAttivitaInLeadDetail('chiamata')" style="flex:1;padding:13px 8px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .15s;font-family:inherit" onmouseover="this.style.background='#eff6ff'" onmouseout="this.style.background='#fff'">
               <i class="ti ti-phone" style="font-size:20px;color:var(--blue)"></i>
               <span style="font-size:11px;font-weight:700;color:var(--text-2)">Chiamata</span>
@@ -578,14 +578,20 @@ tbody tr:hover{background:var(--surface-2)}
               <i class="ti ti-mail" style="font-size:20px;color:var(--orange)"></i>
               <span style="font-size:11px;font-weight:700;color:var(--text-2)">Email</span>
             </button>
-            <button id="ldp-btn-ordine" onclick="apriAttivitaInLeadDetail('ordine')" style="flex:1;padding:13px 8px;border:none;border-right:1px solid var(--border);background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .15s;font-family:inherit" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
+            <button id="ldp-btn-ordine" onclick="apriAttivitaInLeadDetail('ordine')" style="flex:1;padding:13px 8px;border:none;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .15s;font-family:inherit" onmouseover="this.style.background='#f0fdf4'" onmouseout="this.style.background='#fff'">
               <i class="ti ti-package" style="font-size:20px;color:var(--green)"></i>
               <span style="font-size:11px;font-weight:700;color:var(--text-2)">Ordine</span>
             </button>
-            <button id="ldp-btn-nota" onclick="apriAttivitaInLeadDetail('nota')" style="flex:1;padding:13px 8px;border:none;background:#fff;cursor:pointer;display:flex;flex-direction:column;align-items:center;gap:5px;transition:background .15s;font-family:inherit" onmouseover="this.style.background='#fefce8'" onmouseout="this.style.background='#fff'">
-              <i class="ti ti-note" style="font-size:20px;color:var(--gold)"></i>
-              <span style="font-size:11px;font-weight:700;color:var(--text-2)">Nota</span>
-            </button>
+          </div>
+
+          <!-- Campo nota rapida -->
+          <div class="card" style="margin-bottom:12px">
+            <div class="card-body" style="padding:12px 14px">
+              <textarea id="lead-nota-rapida" placeholder="Scrivi una nota su questo lead..." style="width:100%;min-height:72px;border:1.5px solid var(--border);border-radius:var(--r);padding:10px 12px;font-size:13px;font-family:inherit;resize:vertical;outline:none;transition:border-color .15s;box-sizing:border-box" onfocus="this.style.borderColor='var(--brand)'" onblur="this.style.borderColor='var(--border)'" onkeydown="if(event.ctrlKey&&event.key==='Enter')salvaNotaLead()"></textarea>
+              <div style="display:flex;justify-content:flex-end;margin-top:8px">
+                <button class="btn btn-primary btn-sm" onclick="salvaNotaLead()"><i class="ti ti-check"></i>Salva nota</button>
+              </div>
+            </div>
           </div>
 
           <!-- Attività future -->
@@ -3036,6 +3042,35 @@ async function eliminaAttivitaDettaglio(attId){
     if(_currentLeadDetailId) renderLeadDetailFeed(_currentLeadDetailId);
     showSave();
   });
+}
+
+async function salvaNotaLead(){
+  if(!_currentLeadDetailId) return;
+  const inp = document.getElementById('lead-nota-rapida');
+  const testo = inp?.value.trim();
+  if(!testo) return;
+
+  const l = state.leads.find(x=>x.id===_currentLeadDetailId);
+  const body = {
+    tipo:'nota',
+    titolo:'Nota — '+(l?.nome||''),
+    note: testo,
+    lead_id: _currentLeadDetailId,
+    pipeline_id: currentPipelineId||'default',
+    collegata_tipo:'lead', collegata_id:_currentLeadDetailId, collegata_nome:l?.nome||'',
+    completata: true, // va direttamente in cronologia
+    data_scadenza: new Date().toISOString().slice(0,10),
+    ora: new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})
+  };
+
+  const r = await api.post('/api/attivita', body);
+  if(r.error){ alert('Errore: '+r.error); return; }
+  state.attivita = state.attivita||[];
+  state.attivita.unshift({...r, lead_nome:l?.nome});
+  inp.value = '';
+  renderLeadDetailFeed(_currentLeadDetailId);
+  aggiornaAttBadge();
+  showSave();
 }
 
 function apriAttivitaInLeadDetail(tipo){
@@ -6313,24 +6348,19 @@ initSidebarState();
 document.addEventListener('keydown', e=>{ if(e.key==='Escape'){document.querySelectorAll('.modal-overlay.open').forEach(m=>m.classList.remove('open'));chiudiDettaglio();}});
 
 // ── AUTO-RELOAD: controlla ogni 60 secondi se il server è stato aggiornato ──
-(async function avviaAutoReload(){
+(function avviaAutoReload(){
   let versioneAttuale = null;
-  try {
-    const r = await fetch('/api/version');
-    const d = await r.json();
-    versioneAttuale = d.v;
-  } catch(e) { return; } // se fallisce non fa nulla
 
-  setInterval(async ()=>{
-    try {
-      const r = await fetch('/api/version');
-      const d = await r.json();
-      if(versioneAttuale && d.v !== versioneAttuale){
-        // Nuova versione rilevata — ricarica silenziosamente
-        window.location.reload();
-      }
-    } catch(e) {} // ignora errori di rete
-  }, 60000); // ogni 60 secondi
+  fetch('/api/version').then(r=>r.json()).then(d=>{
+    versioneAttuale = d.v;
+    setInterval(()=>{
+      fetch('/api/version').then(r=>r.json()).then(d=>{
+        if(versioneAttuale && d.v !== versioneAttuale){
+          window.location.reload();
+        }
+      }).catch(()=>{});
+    }, 60000);
+  }).catch(()=>{});
 })();
 </script>
 </body>
