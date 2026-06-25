@@ -144,6 +144,9 @@ async function initDB() {
         piva TEXT,
         prod TEXT,
         note TEXT,
+        facchinaggio BOOLEAN DEFAULT FALSE,
+        chiamata_tel TEXT,
+        note_spedizione TEXT,
         fic_id INTEGER,
         created_at TIMESTAMP DEFAULT NOW()
       );
@@ -187,12 +190,22 @@ async function initDB() {
       CREATE TABLE IF NOT EXISTS ordini (
         id SERIAL PRIMARY KEY,
         cliente TEXT NOT NULL,
+        cliente_id INTEGER REFERENCES clienti(id) ON DELETE SET NULL,
+        prodotti JSONB DEFAULT '[]',
         prodotto TEXT,
         qty NUMERIC,
+        peso_totale NUMERIC,
         importo NUMERIC,
         data DATE,
-        stato TEXT DEFAULT 'aperto',
+        data_consegna DATE,
+        stato TEXT DEFAULT 'bozza',
+        canale TEXT DEFAULT 'telefono',
         note TEXT,
+        note_spedizione TEXT,
+        facchinaggio BOOLEAN DEFAULT FALSE,
+        chiamata_tel TEXT,
+        fic_ddt_id INTEGER,
+        fic_ddt_numero TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -1081,17 +1094,85 @@ app.get('/api/ordini', async (req, res) => {
 });
 
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, prodotto, qty, importo, data, stato, note } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
   try {
-    const r = await pool.query('INSERT INTO ordini (cliente,prodotto,qty,importo,data,stato,note) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *', [cliente, prodotto, qty, importo, data, stato, note]);
-    res.json(r.rows[0]);
+    const r = await pool.query(
+      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'']
+    );
+    const ordine = r.rows[0];
+
+    // Crea bozza DDT su Fatture in Cloud automaticamente
+    if (ficTokens && ficCompanyId) {
+      try {
+        // Costruisci note spedizione
+        let noteArr = [];
+        if (note_spedizione) noteArr.push(note_spedizione);
+        if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
+        if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
+        if (note) noteArr.push(note);
+
+        // Trova fic_id del cliente
+        const cli = await pool.query('SELECT fic_id FROM clienti WHERE id=$1', [cliente_id||0]);
+        const ficClienteId = cli.rows[0]?.fic_id || null;
+
+        // Righe DDT dai prodotti
+        const righe = (prodotti||[]).map(p => ({
+          product_id: null,
+          name: p.nome || p.prodotto || prodotto,
+          qty: p.bancali || p.qty || qty || 1,
+          measure: 'bancali',
+          net_price: p.prezzo || 0,
+          vat: { value: 4 }
+        }));
+
+        if (righe.length === 0 && prodotto) {
+          righe.push({ name: prodotto, qty: qty||1, measure: 'bancali', net_price: 0, vat: { value: 4 } });
+        }
+
+        const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+          method: 'POST',
+          body: JSON.stringify({
+            data: {
+              type: 'delivery_note',
+              entity: ficClienteId ? { id: ficClienteId } : { name: cliente },
+              date: data || new Date().toISOString().slice(0,10),
+              number: null, // FIC assegna automaticamente
+              numeration: null,
+              items_list: righe,
+              notes: noteArr.join('\n'),
+              delivery_note: true,
+              use_gross_price: false,
+              e_invoice: false,
+            }
+          })
+        });
+
+        if (ddt.ok) {
+          const ddtData = await ddt.json();
+          const ddtId = ddtData.data?.id;
+          const ddtNum = ddtData.data?.number;
+          if (ddtId) {
+            await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordine.id]);
+            ordine.fic_ddt_id = ddtId;
+            ordine.fic_ddt_numero = ddtNum;
+          }
+        }
+      } catch(e) { console.error('Errore creazione DDT FIC:', e.message); }
+    }
+
+    res.json(ordine);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/ordini/:id', async (req, res) => {
-  const { cliente, prodotto, qty, importo, data, stato, note } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
   try {
-    await pool.query('UPDATE ordini SET cliente=$1,prodotto=$2,qty=$3,importo=$4,data=$5,stato=$6,note=$7 WHERE id=$8', [cliente, prodotto, qty, importo, data, stato, note, req.params.id]);
+    await pool.query(
+      `UPDATE ordini SET cliente=$1,cliente_id=$2,prodotti=$3,prodotto=$4,qty=$5,peso_totale=$6,importo=$7,data=$8,data_consegna=$9,stato=$10,canale=$11,note=$12,note_spedizione=$13,facchinaggio=$14,chiamata_tel=$15 WHERE id=$16`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', req.params.id]
+    );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -1102,6 +1183,7 @@ app.delete('/api/ordini/:id', async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
+
 
 // ── MOVIMENTI API ─────────────────────────────────────────────────────────
 app.get('/api/movimenti', async (req, res) => {
@@ -2343,9 +2425,20 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
         skip++; continue;
       }
 
-      // Salta email senza SAVISE nel soggetto o nel nome file
-      if (!subject.toUpperCase().includes('SAVISE') && !subject.includes('rimborso')) {
-        console.log(`[ASSICURAZIONI] Saltata (non Savise): ${subject}`);
+      // Salta email che non sono sinistri (mandato assicurativo, rimborsi generici, ecc.)
+      if (
+        subject.toUpperCase().includes('CONTRATTO') ||
+        subject.toUpperCase().includes('MANDATO') ||
+        subject.toLowerCase().includes('rimborso pratiche') ||
+        /^I:/i.test(subject.trim())
+      ) {
+        console.log(`[ASSICURAZIONI] Saltata (non sinistro): ${subject}`);
+        skip++; continue;
+      }
+
+      // Deve contenere SAVISE_EXPRESS_DOC nel soggetto
+      if (!subject.toUpperCase().includes('SAVISE_EXPRESS_DOC')) {
+        console.log(`[ASSICURAZIONI] Saltata (non DOC Savise): ${subject}`);
         skip++; continue;
       }
 
@@ -2458,16 +2551,25 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
         // Rif. mittente (DDT)
         const rifMatch = testoPdf.match(/rif\.\s*mitt\.\s+(\S+)/i);
         if (rifMatch) parsed.ddt = rifMatch[1].trim();
-        // Descrizione danno
-        const dannoMatch = testoPdf.match(/riscontrato il seguete danno[:\s]*([^\n]+(?:\n[^\n]+)?)/i) ||
-                           testoPdf.match(/ete danno[:\s]*([^\n]+)/i) ||
-                           testoPdf.match(/riserva[^.]*\./i);
-        if (dannoMatch) {
-          // Prendi solo fino a "saluti" o 200 caratteri
-          let danno = dannoMatch[0];
-          const cutIdx = danno.toLowerCase().indexOf('saluti');
-          if (cutIdx > 0) danno = danno.slice(0, cutIdx);
-          parsed.descrizione_danno = danno.trim().slice(0, 200);
+        // Descrizione danno — cerca vari pattern
+        const dannoPatterns = [
+          /seguete danno[:\s]*([^\n]{5,100})/i,
+          /ete danno[:\s]*([^\n]{5,100})/i,
+          /danno[:\s]*([^\n]{5,100})/i,
+          /riserva[^\n]{3,}([^\n]{5,80})/i,
+        ];
+        for (const pat of dannoPatterns) {
+          const m = testoPdf.match(pat);
+          if (m && m[1]) {
+            let danno = m[1].trim();
+            // Taglia alla fine della descrizione utile
+            const cutPoints = ['a valore', 'Vi ricordiamo', 'Ci scusiamo', 'saluti', 'entro 48h'];
+            for (const cut of cutPoints) {
+              const idx = danno.toLowerCase().indexOf(cut.toLowerCase());
+              if (idx > 0) { danno = danno.slice(0, idx).trim(); break; }
+            }
+            if (danno.length > 3) { parsed.descrizione_danno = danno; break; }
+          }
         }
       }
 
