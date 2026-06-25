@@ -2320,6 +2320,9 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
     console.log(`[ASSICURAZIONI] Trovate ${messages.length} email`);
     let create = 0, skip = 0;
 
+    // Funzione pulizia testo — definita fuori dal loop
+    const pulisci = s => (s||'').replace(/\0/g,'').replace(/[^\x09\x0A\x0D\x20-\x7E]/g,'').replace(/\s+/g,' ').trim();
+
     for (const msg of messages) {
       // Controlla se già processata
       const exists = await pool.query('SELECT id FROM assicurazioni WHERE gmail_msg_id=$1', [msg.id]);
@@ -2468,9 +2471,6 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
       }
 
       console.log(`[ASSICURAZIONI] Dati estratti: cliente="${parsed.cliente}" ddt="${parsed.ddt}" data_danno="${parsed.data_danno}"`);
-
-      // Pulisci il testo da caratteri nulli e non UTF8
-      const pulisci = s => (s||'').replace(/\0/g,'').replace(/[^\x09\x0A\x0D\x20-\x7E]/g,'').replace(/\s+/g,' ').trim();
 
       // Crea la pratica — ignora se già esiste (ON CONFLICT)
 
