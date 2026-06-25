@@ -3741,20 +3741,23 @@ function rimuoviRiga(i, mode){
 }
 
 function apriNuovoOrdine(){
-  _ordineRighe = [{nome:'Semola rimacinata di grano duro', bancali:1, prezzoUnitario:0}];
-  // Popola clienti
-  const sel = document.getElementById('ord-cliente');
-  sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
-    (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
-  document.getElementById('ord-data').value = new Date().toISOString().slice(0,10);
-  document.getElementById('ord-facchinaggio').checked = false;
-  document.getElementById('ord-chiamata-tel').value = '';
-  document.getElementById('ord-note').value = '';
-  document.getElementById('ord-data-consegna').value = '';
-  document.getElementById('ord-canale').value = 'telefono';
-  document.getElementById('ord-note-cliente-box').style.display = 'none';
-  renderRigheOrdine('new');
-  openModal('modal-ordine');
+  try{
+    _ordineRighe = [{nome:'Semola rimacinata di grano duro', bancali:1, prezzoUnitario:0}];
+    // Popola clienti
+    const sel = document.getElementById('ord-cliente');
+    if(!sel){ console.error('ord-cliente non trovato'); return; }
+    sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
+      (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
+    document.getElementById('ord-data').value = new Date().toISOString().slice(0,10);
+    document.getElementById('ord-facchinaggio').checked = false;
+    document.getElementById('ord-chiamata-tel').value = '';
+    document.getElementById('ord-note').value = '';
+    document.getElementById('ord-data-consegna').value = '';
+    document.getElementById('ord-canale').value = 'telefono';
+    document.getElementById('ord-note-cliente-box').style.display = 'none';
+    renderRigheOrdine('new');
+    openModal('modal-ordine');
+  }catch(e){ console.error('Errore apriNuovoOrdine:', e); alert('Errore apertura modal: '+e.message); }
 }
 
 function onOrdClienteChange(){
