@@ -991,12 +991,23 @@ tbody tr:hover{background:var(--surface-2)}
         <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px" id="ass-stats"></div>
 
         <!-- Filtri -->
-        <div class="pills" style="margin-bottom:14px" id="ass-pills">
-          <div class="pill active" onclick="filterAssicurazioni('tutte',this)">Tutte</div>
-          <div class="pill" onclick="filterAssicurazioni('aperta',this)"><span class="status-dot" style="background:var(--orange)"></span>Aperte</div>
-          <div class="pill" onclick="filterAssicurazioni('documenti_inviati',this)"><span class="status-dot" style="background:var(--blue)"></span>Documenti inviati</div>
-          <div class="pill" onclick="filterAssicurazioni('in_attesa_rimborso',this)"><span class="status-dot" style="background:var(--gold)"></span>In attesa rimborso</div>
-          <div class="pill" onclick="filterAssicurazioni('chiusa',this)"><span class="status-dot" style="background:var(--green)"></span>Chiuse</div>
+        <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;margin-bottom:14px">
+          <div class="pills" id="ass-pills" style="margin:0">
+            <div class="pill active" onclick="filterAssicurazioni('tutte',this)">Tutte</div>
+            <div class="pill" onclick="filterAssicurazioni('aperta',this)"><span class="status-dot" style="background:var(--orange)"></span>Aperte</div>
+            <div class="pill" onclick="filterAssicurazioni('documenti_inviati',this)"><span class="status-dot" style="background:var(--blue)"></span>Documenti inviati</div>
+            <div class="pill" onclick="filterAssicurazioni('in_attesa_rimborso',this)"><span class="status-dot" style="background:var(--gold)"></span>In attesa rimborso</div>
+            <div class="pill" onclick="filterAssicurazioni('chiusa',this)"><span class="status-dot" style="background:var(--green)"></span>Chiuse</div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <i class="ti ti-calendar" style="color:var(--text-3);font-size:16px"></i>
+            <select id="ass-anno-filter" onchange="renderAssicurazioniList()" style="border:1.5px solid var(--border);border-radius:var(--r);padding:6px 10px;font-size:13px;background:#fff;color:var(--text);font-family:var(--font)">
+              <option value="2026">2026</option>
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="">Tutti gli anni</option>
+            </select>
+          </div>
         </div>
 
         <div id="ass-list"></div>
@@ -2498,9 +2509,14 @@ function renderAssicurazioniList(){
       </div>`).join('');
   }
 
-  // Lista
+  // Lista con filtro stato + anno
   const listEl = document.getElementById('ass-list'); if(!listEl) return;
+  const annoFilter = document.getElementById('ass-anno-filter')?.value || '2026';
   let items = assFilter==='tutte' ? lista : lista.filter(a=>a.stato===assFilter);
+  if(annoFilter) items = items.filter(a=>{
+    const data = a.data_danno || a.created_at || '';
+    return data.startsWith(annoFilter);
+  });
 
   if(!items.length){
     listEl.innerHTML='<div class="empty-state"><i class="ti ti-shield-check" style="font-size:34px;opacity:0.3;display:block;margin-bottom:8px"></i><p>Nessuna pratica trovata</p></div>';
