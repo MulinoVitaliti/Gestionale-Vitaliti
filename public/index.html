@@ -3743,22 +3743,18 @@ function rimuoviRiga(i, mode){
 function apriNuovoOrdine(){
   try{
     _ordineRighe = [{nome:'Semola rimacinata di grano duro', bancali:1, prezzoUnitario:0}];
-    // Popola clienti
     const sel = document.getElementById('ord-cliente');
     if(!sel){ console.error('ord-cliente non trovato'); return; }
     sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
       (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
-    document.getElementById('ord-data').value = new Date().toISOString().slice(0,10);
-    document.getElementById('ord-facchinaggio').checked = false;
-    document.getElementById('ord-chiamata-tel').value = '';
-    document.getElementById('ord-note').value = '';
-    document.getElementById('ord-data-consegna').value = '';
-    document.getElementById('ord-canale').value = 'telefono';
-    const noteBox = document.getElementById('ord-note-cliente-box');
-    if(noteBox) noteBox.style.display = 'none';
+    const fields = ['ord-data','ord-chiamata-tel','ord-note','ord-data-consegna'];
+    fields.forEach(id=>{ const el=document.getElementById(id); if(el) el.value = id==='ord-data'?new Date().toISOString().slice(0,10):''; });
+    const facch = document.getElementById('ord-facchinaggio'); if(facch) facch.checked=false;
+    const canale = document.getElementById('ord-canale'); if(canale) canale.value='telefono';
+    const noteBox = document.getElementById('ord-note-cliente-box'); if(noteBox) noteBox.style.display='none';
     renderRigheOrdine('new');
     openModal('modal-ordine');
-  }catch(e){ console.error('Errore apriNuovoOrdine:', e); alert('Errore apertura modal: '+e.message); }
+  }catch(e){ console.error('Errore apriNuovoOrdine:', e); mostraToast('Errore: '+e.message,'error'); }
 }
 
 function onOrdClienteChange(){
