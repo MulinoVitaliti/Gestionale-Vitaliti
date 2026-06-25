@@ -2460,8 +2460,15 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
         if (rifMatch) parsed.ddt = rifMatch[1].trim();
         // Descrizione danno
         const dannoMatch = testoPdf.match(/riscontrato il seguete danno[:\s]*([^\n]+(?:\n[^\n]+)?)/i) ||
-                           testoPdf.match(/ete danno[:\s]*([^\n]+)/i);
-        if (dannoMatch) parsed.descrizione_danno = dannoMatch[1].trim();
+                           testoPdf.match(/ete danno[:\s]*([^\n]+)/i) ||
+                           testoPdf.match(/riserva[^.]*\./i);
+        if (dannoMatch) {
+          // Prendi solo fino a "saluti" o 200 caratteri
+          let danno = dannoMatch[0];
+          const cutIdx = danno.toLowerCase().indexOf('saluti');
+          if (cutIdx > 0) danno = danno.slice(0, cutIdx);
+          parsed.descrizione_danno = danno.trim().slice(0, 200);
+        }
       }
 
       // Fallback: usa il nome file per estrarre cliente e DDT
