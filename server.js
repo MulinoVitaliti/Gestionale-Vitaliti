@@ -2470,7 +2470,9 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
       console.log(`[ASSICURAZIONI] Dati estratti: cliente="${parsed.cliente}" ddt="${parsed.ddt}" data_danno="${parsed.data_danno}"`);
 
       // Pulisci il testo da caratteri nulli e non UTF8
-      const pulisci = s => (s||'').replace(/\0/g,'').replace(/[^\x09\x0A\x0D\x20-\x7E\xC0-\xFF]/g,' ').trim();
+      const pulisci = s => (s||'').replace(/\0/g,'').replace(/[^\x09\x0A\x0D\x20-\x7E]/g,'').replace(/\s+/g,' ').trim();
+
+      // Crea la pratica — ignora se già esiste (ON CONFLICT)
 
       // Crea la pratica — ignora se già esiste (ON CONFLICT)
       await pool.query(
@@ -2481,7 +2483,12 @@ app.post('/api/assicurazioni/scan-email', async (req, res) => {
           pulisci(parsed.cliente || subject),
           pulisci(parsed.ddt || ''),
           parsed.data_danno || dataEmail,
-          pulisci(`N° spedizione: ${parsed.numero_spedizione||''}\nData spedizione: ${parsed.data_spedizione||''}\nDanno: ${parsed.descrizione_danno||''}\n\nImporto danno da inserire manualmente.`),
+          pulisci([
+            parsed.numero_spedizione ? `N° spedizione: ${parsed.numero_spedizione}` : '',
+            parsed.data_spedizione ? `Data spedizione: ${parsed.data_spedizione}` : '',
+            parsed.descrizione_danno ? `Danno: ${parsed.descrizione_danno}` : '',
+            'Importo danno da inserire manualmente.'
+          ].filter(Boolean).join('\n')),
           msg.id
         ]
       );
