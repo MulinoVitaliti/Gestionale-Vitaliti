@@ -2303,10 +2303,10 @@ app.get('*', (req, res) => {
 // ── SCAN EMAIL SAVISE PER PRATICHE ASSICURAZIONE ──────────────────────────
 app.post('/api/assicurazioni/scan-email', async (req, res) => {
   try {
-    // Usa l'account principale mulino.vitaliti@gmail.com dove arrivano le email Savise
-    if (!gmailTokens) return res.json({ error: 'Account Gmail principale non connesso' });
-    oauth2Client.setCredentials(gmailTokens);
-    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    // Usa l'account spedizioni.mulinovitaliti@gmail.com dove arrivano i nuovi sinistri Savise
+    if (!oauth2ClientSpedizioni || !gmailSpedizioniTokens) return res.json({ error: 'Account spedizioni non connesso' });
+    oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
 
     // Cerca TUTTE le email da Nina e filtra lato server per quelle con PDF Savise
     const search = await gmail.users.messages.list({
