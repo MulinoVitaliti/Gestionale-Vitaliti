@@ -695,10 +695,16 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="page" id="page-ordini">
       <div class="page-header">
         <div class="page-title">Ordini</div>
-        <button class="btn btn-primary" onclick="openModal('modal-ordine')"><i class="ti ti-plus"></i>Nuovo ordine</button>
+        <button class="btn btn-primary" onclick="apriNuovoOrdine()"><i class="ti ti-plus"></i>Nuovo ordine</button>
       </div>
-      <div class="tabs"><div class="tab active" onclick="filterOrdini('tutti',this)">Tutti</div><div class="tab" onclick="filterOrdini('aperto',this)">Aperti</div><div class="tab" onclick="filterOrdini('spedito',this)">Spediti</div><div class="tab" onclick="filterOrdini('consegnato',this)">Consegnati</div></div>
-      <div class="table-wrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Prodotto</th><th>Qtà</th><th>Importo</th><th>Data</th><th>Stato</th><th></th></tr></thead><tbody id="tbl-ordini"></tbody></table></div>
+      <div class="pills" style="margin-bottom:14px">
+        <div class="pill active" onclick="filterOrdini('tutti',this)">Tutti</div>
+        <div class="pill" onclick="filterOrdini('bozza',this)"><span class="status-dot" style="background:var(--text-3)"></span>Bozza</div>
+        <div class="pill" onclick="filterOrdini('confermato',this)"><span class="status-dot" style="background:var(--blue)"></span>Confermati</div>
+        <div class="pill" onclick="filterOrdini('spedito',this)"><span class="status-dot" style="background:var(--orange)"></span>Spediti</div>
+        <div class="pill" onclick="filterOrdini('consegnato',this)"><span class="status-dot" style="background:var(--green)"></span>Consegnati</div>
+      </div>
+      <div class="table-wrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Prodotti</th><th>Bancali</th><th>Peso kg</th><th>Importo</th><th>Data</th><th>Canale</th><th>Stato</th><th>DDT</th><th></th></tr></thead><tbody id="tbl-ordini"></tbody></table></div>
     </div>
     <!-- STATISTICHE -->
     <div class="page" id="page-statistiche">
@@ -1231,40 +1237,135 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row"><div class="form-group"><label class="form-label"><i class="ti ti-file-invoice" style="font-size:13px;color:var(--brand)"></i> Codice SDI</label><input type="text" id="edit-cl-sdi" placeholder="Es. XXXXYYY" maxlength="7" style="text-transform:uppercase"></div><div class="form-group"><label class="form-label"><i class="ti ti-mail" style="font-size:13px;color:var(--brand)"></i> PEC</label><input type="text" id="edit-cl-pec" placeholder="Es. nome@pec.it"></div></div>
     <div class="form-group"><label class="form-label">Prodotti</label><input type="text" id="edit-cl-prod"></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-cl-note"></textarea></div>
+    <!-- Note spedizione -->
+    <div style="border-top:1px solid var(--border);margin:12px 0 10px"></div>
+    <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Note spedizione (salvate su ogni ordine)</div>
+    <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="edit-cl-facchinaggio"><span>Facchinaggio</span></label>
+      <div style="display:flex;align-items:center;gap:8px">
+        <label style="font-size:13px;white-space:nowrap">📞 Chiamare:</label>
+        <input type="text" id="edit-cl-chiamata-tel" placeholder="Es. 333 1234567" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:150px">
+      </div>
+    </div>
+    <div class="form-group"><label class="form-label">Note spedizione libere</label><textarea id="edit-cl-note-spedizione" style="min-height:50px" placeholder="Es. Piano terra, campanello nome..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-cliente')">Annulla</button><button class="btn btn-primary" onclick="aggiornaCliente()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
 <div class="modal-overlay" id="modal-ordine">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Nuovo ordine</div><button class="btn btn-icon" onclick="closeModal('modal-ordine')"><i class="ti ti-x"></i></button></div>
-  <div class="modal-body">
-    <div class="form-row"><div class="form-group"><label class="form-label">Cliente *</label><select id="ord-cliente" onchange="onOrdClienteChange('ord-cliente','ord-cliente-nuovo-wrap')"><option value="">— seleziona —</option></select>
-      <div id="ord-cliente-nuovo-wrap" style="display:none;margin-top:7px">
-        <input type="text" id="ord-cliente-nuovo" placeholder="Nome del nuovo cliente" style="width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)">
-        <div style="font-size:11px;color:var(--text-2);margin-top:4px">Il cliente verrà creato automaticamente in anagrafica al salvataggio</div>
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-clipboard-list" style="color:var(--brand);margin-right:6px"></i>Nuovo ordine</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-ordine')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <!-- Cliente -->
+      <div class="form-row">
+        <div class="form-group" style="flex:2">
+          <label class="form-label">Cliente *</label>
+          <select id="ord-cliente" onchange="onOrdClienteChange()">
+            <option value="">— seleziona cliente —</option>
+          </select>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Canale ordine</label>
+          <select id="ord-canale">
+            <option value="telefono">📞 Telefono</option>
+            <option value="email">✉️ Email</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+            <option value="abbonamento">📋 Abbonamento</option>
+          </select>
+        </div>
       </div>
-    </div><div class="form-group"><label class="form-label">Prodotto</label><select id="ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="ord-qty" min="0"></div><div class="form-group"><label class="form-label">Importo (€)</label><input type="number" id="ord-importo" step="0.01"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div><div class="form-group"><label class="form-label">Stato</label><select id="ord-stato"><option value="aperto">Aperto</option><option value="spedito">Spedito</option><option value="consegnato">Consegnato</option></select></div></div>
-    <div class="form-group"><label class="form-label">Note</label><textarea id="ord-note"></textarea></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-ordine')">Annulla</button><button class="btn btn-primary" onclick="salvaOrdine()"><i class="ti ti-check"></i>Salva</button></div>
-  </div></div>
+
+      <!-- Note spedizione cliente (auto-compilate) -->
+      <div id="ord-note-cliente-box" style="display:none;background:var(--brand-light);border:1px solid var(--brand);border-radius:var(--r);padding:10px 13px;margin-bottom:12px;font-size:13px">
+        <div style="font-size:11px;font-weight:700;color:var(--brand);margin-bottom:4px">NOTE SPEDIZIONE CLIENTE</div>
+        <div id="ord-note-cliente-testo" style="color:var(--brand)"></div>
+      </div>
+
+      <!-- Prodotti (righe dinamiche) -->
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:8px">Prodotti</div>
+      <div id="ord-righe" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+      <button class="btn btn-sm" onclick="aggiungiRigaOrdine()" style="margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div>
+        <div class="form-group"><label class="form-label">Data consegna prevista</label><input type="date" id="ord-data-consegna"></div>
+      </div>
+
+      <!-- Note spedizione specifiche per questo ordine -->
+      <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Note spedizione</div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px">
+          <input type="checkbox" id="ord-facchinaggio"><span><strong>Facchinaggio</strong></span>
+        </label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:13px;white-space:nowrap">📞 Chiamare prima:</label>
+          <input type="text" id="ord-chiamata-tel" placeholder="Es. 333 1234567" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:160px">
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Note aggiuntive</label><textarea id="ord-note" style="min-height:50px"></textarea></div>
+
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="closeModal('modal-ordine')">Annulla</button>
+        <button class="btn btn-primary" id="btn-salva-ordine" onclick="salvaOrdine()"><i class="ti ti-check"></i>Salva e crea DDT</button>
+      </div>
+    </div>
+  </div>
 </div>
+
 <div class="modal-overlay" id="modal-edit-ordine">
-  <div class="modal"><div class="modal-header"><div class="modal-title">Modifica ordine</div><button class="btn btn-icon" onclick="closeModal('modal-edit-ordine')"><i class="ti ti-x"></i></button></div>
-  <div class="modal-body">
-    <input type="hidden" id="edit-ord-id">
-    <div class="form-row"><div class="form-group"><label class="form-label">Cliente</label><select id="edit-ord-cliente" onchange="onOrdClienteChange('edit-ord-cliente','edit-ord-cliente-nuovo-wrap')"></select>
-      <div id="edit-ord-cliente-nuovo-wrap" style="display:none;margin-top:7px">
-        <input type="text" id="edit-ord-cliente-nuovo" placeholder="Nome del nuovo cliente" style="width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)">
-        <div style="font-size:11px;color:var(--text-2);margin-top:4px">Il cliente verrà creato automaticamente in anagrafica al salvataggio</div>
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <div class="modal-title">Modifica ordine</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-edit-ordine')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="edit-ord-id">
+      <div class="form-row">
+        <div class="form-group" style="flex:2"><label class="form-label">Cliente</label><select id="edit-ord-cliente"></select></div>
+        <div class="form-group"><label class="form-label">Canale</label>
+          <select id="edit-ord-canale">
+            <option value="telefono">📞 Telefono</option>
+            <option value="email">✉️ Email</option>
+            <option value="whatsapp">💬 WhatsApp</option>
+            <option value="abbonamento">📋 Abbonamento</option>
+          </select>
+        </div>
       </div>
-    </div><div class="form-group"><label class="form-label">Prodotto</label><select id="edit-ord-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Quantità (kg)</label><input type="number" id="edit-ord-qty" min="0"></div><div class="form-group"><label class="form-label">Importo (€)</label><input type="number" id="edit-ord-importo" step="0.01"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Data</label><input type="date" id="edit-ord-data"></div><div class="form-group"><label class="form-label">Stato</label><select id="edit-ord-stato"><option value="aperto">Aperto</option><option value="spedito">Spedito</option><option value="consegnato">Consegnato</option></select></div></div>
-    <div class="form-group"><label class="form-label">Note</label><textarea id="edit-ord-note"></textarea></div>
-    <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-ordine')">Annulla</button><button class="btn btn-primary" onclick="aggiornaOrdine()"><i class="ti ti-check"></i>Salva</button></div>
-  </div></div>
+      <div id="edit-ord-righe" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
+      <button class="btn btn-sm" onclick="aggiungiRigaOrdine('edit')" style="margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="edit-ord-data"></div>
+        <div class="form-group"><label class="form-label">Data consegna</label><input type="date" id="edit-ord-data-consegna"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Stato</label>
+          <select id="edit-ord-stato">
+            <option value="bozza">Bozza</option>
+            <option value="confermato">Confermato</option>
+            <option value="spedito">Spedito</option>
+            <option value="consegnato">Consegnato</option>
+          </select>
+        </div>
+      </div>
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="edit-ord-facchinaggio"><span>Facchinaggio</span></label>
+        <div style="display:flex;align-items:center;gap:8px">
+          <label style="font-size:13px">Chiamare:</label>
+          <input type="text" id="edit-ord-chiamata-tel" placeholder="Numero" style="padding:6px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:140px">
+        </div>
+      </div>
+      <div class="form-group"><label class="form-label">Note</label><textarea id="edit-ord-note" style="min-height:50px"></textarea></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-edit-ordine')">Annulla</button>
+        <button class="btn btn-primary" onclick="aggiornaOrdine()"><i class="ti ti-check"></i>Salva</button>
+      </div>
+    </div>
+  </div>
 </div>
+
 <div class="modal-overlay" id="modal-movimento">
   <div class="modal" style="width:640px;max-width:96vw;max-height:90vh;overflow-y:auto"><div class="modal-header"><div class="modal-title">Aggiungi movimento</div><button class="btn btn-icon" onclick="closeModal('modal-movimento')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
@@ -3523,20 +3624,268 @@ async function eliminaLead(id){
 
 // ── ORDINI ────────────────────────────────────────────────────────────────
 function renderOrdini(){
-  const list=state.ordini.filter(o=>state.ordiniFilter==='tutti'||o.stato===state.ordiniFilter);
-  const tb=document.getElementById('tbl-ordini'); tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state">Nessun ordine</div></td></tr>';return;}
+  const list=(state.ordini||[]).filter(o=>state.ordiniFilter==='tutti'||o.stato===state.ordiniFilter);
+  const tb=document.getElementById('tbl-ordini'); if(!tb)return; tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="11"><div class="empty-state">Nessun ordine</div></td></tr>';return;}
+
+  const statoCfg = {
+    bozza:{label:'Bozza',color:'var(--text-3)',bg:'var(--surface-2)'},
+    confermato:{label:'Confermato',color:'var(--blue)',bg:'#eff6ff'},
+    spedito:{label:'Spedito',color:'var(--orange)',bg:'#fff7ed'},
+    consegnato:{label:'Consegnato',color:'var(--green)',bg:'#f0fdf4'},
+    aperto:{label:'Aperto',color:'var(--blue)',bg:'#eff6ff'},
+  };
+  const canaleCfg = {telefono:'📞',email:'✉️',whatsapp:'💬',abbonamento:'📋'};
+
   list.forEach(o=>{
     const tr=document.createElement('tr');
-    const oDataFmt = o.data ? new Date(o.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'}) : '—';
-    tr.innerHTML=`<td style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">#${String(o.id).padStart(3,'0')}</td><td style="font-weight:600">${o.cliente}</td><td style="font-size:12px;color:var(--text-2)">${o.prodotto}</td><td>${o.qty} kg</td><td style="font-weight:600">${fmt(o.importo)}</td><td style="font-size:12px;color:var(--text-3)">${oDataFmt}</td><td><span class="badge badge-${o.stato}">${o.stato}</span></td><td style="white-space:nowrap"><button class="btn btn-sm" onclick="editOrdine(${o.id})" style="margin-right:4px"><i class="ti ti-pencil"></i></button><button class="btn btn-danger btn-sm" onclick="eliminaOrdine(${o.id})"><i class="ti ti-trash"></i></button></td>`;
+    const dataFmt = o.data ? new Date(o.data).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'2-digit'}) : '—';
+    const cfg = statoCfg[o.stato]||statoCfg.bozza;
+    const canale = canaleCfg[o.canale]||'📞';
+
+    // Prodotti
+    let prodottiStr = '';
+    try {
+      const prods = typeof o.prodotti==='string' ? JSON.parse(o.prodotti||'[]') : (o.prodotti||[]);
+      if(prods.length) prodottiStr = prods.map(p=>`${p.nome||p.prodotto} ×${p.bancali||p.qty}`).join(', ');
+    } catch(e) {}
+    if(!prodottiStr) prodottiStr = o.prodotto||'—';
+
+    const noteIcons = [o.facchinaggio?'🏗':'', o.chiamata_tel?'📞':''].filter(Boolean).join(' ');
+    const ddtBadge = o.fic_ddt_numero ? `<span style="font-size:10px;background:#eff6ff;color:var(--blue);padding:1px 6px;border-radius:99px;font-weight:700">DDT ${o.fic_ddt_numero}</span>` : '<span style="font-size:10px;color:var(--text-3)">—</span>';
+
+    tr.innerHTML=`
+      <td style="font-family:var(--font-mono);font-size:11px;color:var(--text-3)">#${String(o.id).padStart(3,'0')}</td>
+      <td style="font-weight:600">${o.cliente}</td>
+      <td style="font-size:12px;color:var(--text-2);max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${prodottiStr}</td>
+      <td style="font-size:12px">${o.qty||'—'}</td>
+      <td style="font-size:12px">${o.peso_totale ? o.peso_totale+' kg' : '—'}</td>
+      <td style="font-weight:600">${o.importo ? fmt(o.importo) : '—'}</td>
+      <td style="font-size:12px;color:var(--text-3)">${dataFmt}</td>
+      <td style="font-size:16px">${canale} ${noteIcons}</td>
+      <td><span style="font-size:11px;font-weight:700;color:${cfg.color};background:${cfg.bg};padding:2px 8px;border-radius:99px">${cfg.label}</span></td>
+      <td>${ddtBadge}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="editOrdine(${o.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaOrdine(${o.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>`;
     tb.appendChild(tr);
   });
 }
-async function eliminaOrdine(id){conferma(async()=>{await api.del('/api/ordini/'+id);state.ordini=state.ordini.filter(o=>o.id!==id);renderOrdini();renderDash();showSave();});}
-function filterOrdini(f,el){state.ordiniFilter=f;document.querySelectorAll('.tabs .tab').forEach(t=>t.classList.remove('active'));el.classList.add('active');renderOrdini();}
 
-// ── CONTABILITÀ ───────────────────────────────────────────────────────────
+async function eliminaOrdine(id){ conferma(async()=>{ await api.del('/api/ordini/'+id); state.ordini=state.ordini.filter(o=>o.id!==id); renderOrdini(); renderDash(); showSave(); }); }
+
+function filterOrdini(f,el){
+  state.ordiniFilter=f;
+  document.querySelectorAll('#page-ordini .pills .pill').forEach(t=>t.classList.remove('active'));
+  el.classList.add('active');
+  renderOrdini();
+}
+
+// ── RIGHE PRODOTTO ORDINE ─────────────────────────────────────────────────
+const PRODOTTI_MULINO = [
+  {nome:'Semola rimacinata di grano duro', um:'Bancale 30kg', kg_bancale:30, sacchi:42},
+  {nome:'Semola Senatore Cappelli', um:'Bancale 25kg', kg_bancale:25, sacchi:42},
+  {nome:'Farina di Grano Canadese', um:'Bancale 25kg', kg_bancale:25, sacchi:42},
+  {nome:'Farina integrale', um:'Bancale 30kg', kg_bancale:30, sacchi:42},
+  {nome:'Altro', um:'Bancale', kg_bancale:0, sacchi:0},
+];
+
+let _ordineRighe = [];
+let _ordineRigheEdit = [];
+
+function aggiungiRigaOrdine(mode='new'){
+  const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
+  righe.push({ nome: PRODOTTI_MULINO[0].nome, bancali: 1, prezzoUnitario: 0 });
+  renderRigheOrdine(mode);
+}
+
+function renderRigheOrdine(mode='new'){
+  const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
+  const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
+  if(!cont) return;
+  cont.innerHTML = righe.map((r,i)=>`
+    <div style="display:grid;grid-template-columns:2fr 80px 100px 24px;gap:8px;align-items:center">
+      <select onchange="onRigaProdottoChange(${i},'${mode}')" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font)">
+        ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
+      </select>
+      <div style="display:flex;align-items:center;gap:4px">
+        <input type="number" value="${r.bancali}" min="1" onchange="aggiornaRiga(${i},'bancali',this.value,'${mode}')" style="width:60px;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center">
+        <span style="font-size:11px;color:var(--text-3)">banc.</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:4px">
+        <span style="font-size:11px;color:var(--text-3)">€</span>
+        <input type="number" value="${r.prezzoUnitario}" step="0.01" onchange="aggiornaRiga(${i},'prezzoUnitario',this.value,'${mode}')" style="width:80px;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px">
+      </div>
+      <button onclick="rimuoviRiga(${i},'${mode}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;padding:0">×</button>
+    </div>`).join('');
+}
+
+function onRigaProdottoChange(i, mode){
+  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
+  const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
+  const sel = cont.querySelectorAll('select')[i];
+  if(sel) righe[i].nome = sel.value;
+  renderRigheOrdine(mode);
+}
+
+function aggiornaRiga(i, campo, val, mode){
+  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
+  righe[i][campo] = parseFloat(val)||0;
+}
+
+function rimuoviRiga(i, mode){
+  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
+  righe.splice(i,1);
+  renderRigheOrdine(mode);
+}
+
+function apriNuovoOrdine(){
+  _ordineRighe = [{nome:'Semola rimacinata di grano duro', bancali:1, prezzoUnitario:0}];
+  // Popola clienti
+  const sel = document.getElementById('ord-cliente');
+  sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
+    (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
+  document.getElementById('ord-data').value = new Date().toISOString().slice(0,10);
+  document.getElementById('ord-facchinaggio').checked = false;
+  document.getElementById('ord-chiamata-tel').value = '';
+  document.getElementById('ord-note').value = '';
+  document.getElementById('ord-data-consegna').value = '';
+  document.getElementById('ord-canale').value = 'telefono';
+  document.getElementById('ord-note-cliente-box').style.display = 'none';
+  renderRigheOrdine('new');
+  openModal('modal-ordine');
+}
+
+function onOrdClienteChange(){
+  const sel = document.getElementById('ord-cliente');
+  const clienteId = parseInt(sel.value)||0;
+  const c = (state.clienti||[]).find(x=>x.id===clienteId);
+  const box = document.getElementById('ord-note-cliente-box');
+  const testo = document.getElementById('ord-note-cliente-testo');
+  if(c){
+    // Auto-compila note spedizione del cliente
+    if(c.facchinaggio) document.getElementById('ord-facchinaggio').checked = true;
+    if(c.chiamata_tel) document.getElementById('ord-chiamata-tel').value = c.chiamata_tel;
+    // Mostra note spedizione
+    let noteArr = [];
+    if(c.facchinaggio) noteArr.push('🏗 Facchinaggio richiesto');
+    if(c.chiamata_tel) noteArr.push(`📞 Chiamare prima: ${c.chiamata_tel}`);
+    if(c.note_spedizione) noteArr.push(c.note_spedizione);
+    if(noteArr.length){ testo.innerHTML = noteArr.join('<br>'); box.style.display='block'; }
+    else box.style.display='none';
+  } else {
+    box.style.display='none';
+  }
+}
+
+async function salvaOrdine(){
+  const sel = document.getElementById('ord-cliente');
+  const clienteId = parseInt(sel.value)||null;
+  if(!clienteId) return alert('Seleziona un cliente');
+  const clienteNome = sel.options[sel.selectedIndex]?.dataset?.nome || sel.options[sel.selectedIndex]?.text || '';
+
+  const prodotti = _ordineRighe.map(r=>({
+    nome: r.nome,
+    bancali: r.bancali,
+    prezzoUnitario: r.prezzoUnitario,
+    totale: r.bancali * r.prezzoUnitario
+  }));
+  const importoTot = prodotti.reduce((s,p)=>s+p.totale,0);
+  const bancaliTot = prodotti.reduce((s,p)=>s+p.bancali,0);
+  const pesoTot = prodotti.reduce((s,p)=>{
+    const prod = PRODOTTI_MULINO.find(x=>x.nome===p.nome);
+    return s + (p.bancali * (prod?.kg_bancale||0));
+  },0);
+
+  const btn = document.getElementById('btn-salva-ordine');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Salvataggio...'; }
+
+  const body = {
+    cliente: clienteNome,
+    cliente_id: clienteId,
+    prodotti,
+    prodotto: prodotti.map(p=>p.nome).join(', '),
+    qty: bancaliTot,
+    peso_totale: pesoTot,
+    importo: importoTot,
+    data: document.getElementById('ord-data').value,
+    data_consegna: document.getElementById('ord-data-consegna').value||null,
+    stato: 'bozza',
+    canale: document.getElementById('ord-canale').value,
+    facchinaggio: document.getElementById('ord-facchinaggio').checked,
+    chiamata_tel: document.getElementById('ord-chiamata-tel').value.trim(),
+    note: document.getElementById('ord-note').value,
+  };
+
+  const data = await api.post('/api/ordini', body);
+  if(!data.error){
+    state.ordini.unshift(data);
+    if(data.fic_ddt_numero) mostraToast(`✅ Ordine salvato · DDT ${data.fic_ddt_numero} creato su FIC`);
+    else mostraToast('✅ Ordine salvato');
+  } else {
+    mostraToast('Errore: '+data.error, 'error');
+  }
+
+  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-check"></i>Salva e crea DDT'; }
+  closeModal('modal-ordine');
+  renderOrdini(); renderDash(); showSave();
+}
+
+function editOrdine(id){
+  const o=state.ordini.find(x=>x.id===id); if(!o)return;
+  document.getElementById('edit-ord-id').value=o.id;
+
+  // Popola clienti
+  const sel=document.getElementById('edit-ord-cliente');
+  sel.innerHTML = (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" ${c.nome===o.cliente?'selected':''}>${c.nome}</option>`).join('');
+
+  document.getElementById('edit-ord-data').value=(o.data||'').slice(0,10);
+  document.getElementById('edit-ord-data-consegna').value=(o.data_consegna||'').slice(0,10);
+  document.getElementById('edit-ord-stato').value=o.stato||'bozza';
+  document.getElementById('edit-ord-canale').value=o.canale||'telefono';
+  document.getElementById('edit-ord-facchinaggio').checked=!!o.facchinaggio;
+  document.getElementById('edit-ord-chiamata-tel').value=o.chiamata_tel||'';
+  document.getElementById('edit-ord-note').value=o.note||'';
+
+  // Righe prodotti
+  try{
+    const prods = typeof o.prodotti==='string' ? JSON.parse(o.prodotti||'[]') : (o.prodotti||[]);
+    _ordineRigheEdit = prods.length ? prods.map(p=>({nome:p.nome||p.prodotto||'Semola rimacinata di grano duro',bancali:p.bancali||p.qty||1,prezzoUnitario:p.prezzoUnitario||0})) : [{nome:'Semola rimacinata di grano duro',bancali:o.qty||1,prezzoUnitario:0}];
+  }catch(e){ _ordineRigheEdit=[{nome:'Semola rimacinata di grano duro',bancali:1,prezzoUnitario:0}]; }
+  renderRigheOrdine('edit');
+  openModal('modal-edit-ordine');
+}
+
+async function aggiornaOrdine(){
+  const id=parseInt(document.getElementById('edit-ord-id').value);
+  const sel=document.getElementById('edit-ord-cliente');
+  const clienteId=parseInt(sel.value)||null;
+  const clienteNome=sel.options[sel.selectedIndex]?.text||'';
+  const prodotti=_ordineRigheEdit.map(r=>({nome:r.nome,bancali:r.bancali,prezzoUnitario:r.prezzoUnitario,totale:r.bancali*r.prezzoUnitario}));
+  const importoTot=prodotti.reduce((s,p)=>s+p.totale,0);
+  const bancaliTot=prodotti.reduce((s,p)=>s+p.bancali,0);
+  const pesoTot=prodotti.reduce((s,p)=>{const prod=PRODOTTI_MULINO.find(x=>x.nome===p.nome);return s+(p.bancali*(prod?.kg_bancale||0));},0);
+  const body={
+    cliente:clienteNome, cliente_id:clienteId, prodotti,
+    prodotto:prodotti.map(p=>p.nome).join(', '),
+    qty:bancaliTot, peso_totale:pesoTot, importo:importoTot,
+    data:document.getElementById('edit-ord-data').value,
+    data_consegna:document.getElementById('edit-ord-data-consegna').value||null,
+    stato:document.getElementById('edit-ord-stato').value,
+    canale:document.getElementById('edit-ord-canale').value,
+    facchinaggio:document.getElementById('edit-ord-facchinaggio').checked,
+    chiamata_tel:document.getElementById('edit-ord-chiamata-tel').value.trim(),
+    note:document.getElementById('edit-ord-note').value,
+  };
+  await api.put('/api/ordini/'+id, body);
+  const o=state.ordini.find(x=>x.id===id); if(o)Object.assign(o,body);
+  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); showSave();
+}
+
+function onOrdClienteChange(){ } // legacy compat
+
+
 function renderContab(){
   if(!document.getElementById('c-entrate')) return; // non siamo nella pagina contabilità
   const parseData = m => new Date(m.data||0).getTime();
