@@ -3754,7 +3754,8 @@ function apriNuovoOrdine(){
     document.getElementById('ord-note').value = '';
     document.getElementById('ord-data-consegna').value = '';
     document.getElementById('ord-canale').value = 'telefono';
-    document.getElementById('ord-note-cliente-box').style.display = 'none';
+    const noteBox = document.getElementById('ord-note-cliente-box');
+    if(noteBox) noteBox.style.display = 'none';
     renderRigheOrdine('new');
     openModal('modal-ordine');
   }catch(e){ console.error('Errore apriNuovoOrdine:', e); alert('Errore apertura modal: '+e.message); }
