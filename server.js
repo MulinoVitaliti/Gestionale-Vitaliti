@@ -206,6 +206,7 @@ async function initDB() {
         chiamata_tel TEXT,
         fic_ddt_id INTEGER,
         fic_ddt_numero TEXT,
+        peso_trasporto NUMERIC,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -1094,7 +1095,7 @@ app.get('/api/ordini', async (req, res) => {
 });
 
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
   try {
     const r = await pool.query(
       `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
@@ -1145,6 +1146,10 @@ app.post('/api/ordini', async (req, res) => {
           });
         }
 
+        // Calcola totali sacchi e peso per il DDT
+        const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
+        const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
+
         const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
           method: 'POST',
           body: JSON.stringify({
@@ -1156,12 +1161,13 @@ app.post('/api/ordini', async (req, res) => {
               date: data || new Date().toISOString().slice(0,10),
               items_list: righe,
               notes: noteArr.join('\n'),
-              // Bozza = non finalizzata, puoi modificarla e finalizzarla tu su FIC
               delivery_note: true,
               use_gross_price: false,
               e_invoice: false,
-              // Causale trasporto
               transport_reason: 'Vendita',
+              packages_number: totSacchi,       // numero colli = sacchi totali
+              weight: String(totPeso),           // peso trasporto
+              transport_type: req.body.trasporto_tipo || 'corriere',
             }
           })
         });
