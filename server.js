@@ -1139,13 +1139,14 @@ app.post('/api/ordini', async (req, res) => {
               type: 'delivery_note',
               entity: ficClienteId ? { id: ficClienteId } : { name: cliente },
               date: data || new Date().toISOString().slice(0,10),
-              number: null, // FIC assegna automaticamente
-              numeration: null,
               items_list: righe,
               notes: noteArr.join('\n'),
+              // Bozza = non finalizzata, puoi modificarla e finalizzarla tu su FIC
               delivery_note: true,
               use_gross_price: false,
               e_invoice: false,
+              // Causale trasporto
+              transport_reason: 'Vendita',
             }
           })
         });
@@ -1154,11 +1155,15 @@ app.post('/api/ordini', async (req, res) => {
           const ddtData = await ddt.json();
           const ddtId = ddtData.data?.id;
           const ddtNum = ddtData.data?.number;
+          console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
           if (ddtId) {
             await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordine.id]);
             ordine.fic_ddt_id = ddtId;
             ordine.fic_ddt_numero = ddtNum;
           }
+        } else {
+          const errTxt = await ddt.text();
+          console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
         }
       } catch(e) { console.error('Errore creazione DDT FIC:', e.message); }
     }
