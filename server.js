@@ -1120,17 +1120,29 @@ app.post('/api/ordini', async (req, res) => {
 
         // Righe DDT dai prodotti con sacchi e kg
         const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
-        const righe = prodList.map(p => ({
-          name: p.nome,
-          qty: p.sacchi || p.bancali || 1,
-          measure: 'sacchi',
-          description: `${p.sacchi||1} sacchi × ${p.kgSacco||0}kg = ${p.kgTotale||0}kg`,
-          net_price: (p.kgTotale||0) * (p.prezzoKg||0) / (p.sacchi||1),
-          vat: { value: 4 }
-        }));
+        const righe = prodList.map(p => {
+          const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
+          const prezzoTotaleRiga = kgTot * (p.prezzoKg||0);
+          const prezzoPerSacco = (p.sacchi||1) > 0 ? prezzoTotaleRiga / (p.sacchi||1) : 0;
+          return {
+            name: `${p.nome} — ${p.sacchi||1} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
+            qty: p.sacchi || p.bancali || 1,
+            measure: 'Nr',
+            net_price: prezzoPerSacco,
+            vat: { id: 0 }, // IVA 0% — tu la modifichi su FIC
+            gross_price: prezzoPerSacco,
+            not_taxable: false,
+          };
+        });
 
-        if (righe.length === 0 && prodotto) {
-          righe.push({ name: prodotto, qty: qty||1, measure: 'sacchi', net_price: 0, vat: { value: 4 } });
+        if (righe.length === 0) {
+          righe.push({
+            name: prodotto || 'Semola rimacinata di grano duro',
+            qty: qty || 1,
+            measure: 'Nr',
+            net_price: 0,
+            vat: { id: 0 },
+          });
         }
 
         const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
