@@ -1285,8 +1285,21 @@ tbody tr:hover{background:var(--surface-2)}
 
       <!-- Prodotti (righe dinamiche) -->
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:8px">Prodotti</div>
+      <!-- intestazione colonne -->
+      <div style="display:grid;grid-template-columns:2fr 60px 60px 60px 80px 80px 20px;gap:6px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Prodotto</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Sacchi</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">kg/sacco</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">kg tot.</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">€/kg</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Totale €</span>
+        <span></span>
+      </div>
       <div id="ord-righe" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
-      <button class="btn btn-sm" onclick="aggiungiRigaOrdine()" style="margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <button class="btn btn-sm" onclick="aggiungiRigaOrdine()"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+        <div id="ord-totale-riepilogo" style="font-size:13px;color:var(--text-2)"></div>
+      </div>
 
       <div class="form-row">
         <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div>
@@ -1334,8 +1347,20 @@ tbody tr:hover{background:var(--surface-2)}
           </select>
         </div>
       </div>
+      <div style="display:grid;grid-template-columns:2fr 60px 60px 60px 80px 80px 20px;gap:6px;margin-bottom:4px;padding:0 2px">
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Prodotto</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Sacchi</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">kg/sacco</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">kg tot.</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">€/kg</span>
+        <span style="font-size:10px;color:var(--text-3);text-transform:uppercase">Totale €</span>
+        <span></span>
+      </div>
       <div id="edit-ord-righe" style="display:flex;flex-direction:column;gap:8px;margin-bottom:8px"></div>
-      <button class="btn btn-sm" onclick="aggiungiRigaOrdine('edit')" style="margin-bottom:14px"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+        <button class="btn btn-sm" onclick="aggiungiRigaOrdine('edit')"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
+        <div id="edit-ord-totale-riepilogo" style="font-size:13px;color:var(--text-2)"></div>
+      </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="edit-ord-data"></div>
         <div class="form-group"><label class="form-label">Data consegna</label><input type="date" id="edit-ord-data-consegna"></div>
@@ -3680,11 +3705,11 @@ function filterOrdini(f,el){
 
 // ── RIGHE PRODOTTO ORDINE ─────────────────────────────────────────────────
 const PRODOTTI_MULINO = [
-  {nome:'Semola rimacinata di grano duro', um:'Bancale 30kg', kg_bancale:30, sacchi:42},
-  {nome:'Semola Senatore Cappelli', um:'Bancale 25kg', kg_bancale:25, sacchi:42},
-  {nome:'Farina di Grano Canadese', um:'Bancale 25kg', kg_bancale:25, sacchi:42},
-  {nome:'Farina integrale', um:'Bancale 30kg', kg_bancale:30, sacchi:42},
-  {nome:'Altro', um:'Bancale', kg_bancale:0, sacchi:0},
+  {nome:'Semola rimacinata di grano duro', kg_sacco:30, sacchi_bancale:42},
+  {nome:'Semola Senatore Cappelli',         kg_sacco:25, sacchi_bancale:42},
+  {nome:'Farina di Grano Canadese',         kg_sacco:25, sacchi_bancale:42},
+  {nome:'Farina integrale',                 kg_sacco:30, sacchi_bancale:42},
+  {nome:'Altro',                            kg_sacco:25, sacchi_bancale:0},
 ];
 
 let _ordineRighe = [];
@@ -3692,7 +3717,7 @@ let _ordineRigheEdit = [];
 
 function aggiungiRigaOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
-  righe.push({ nome: PRODOTTI_MULINO[0].nome, bancali: 1, prezzoUnitario: 0 });
+  righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: 1, kgSacco: 30, prezzoKg: 0 });
   renderRigheOrdine(mode);
 }
 
@@ -3700,34 +3725,68 @@ function renderRigheOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
   const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
   if(!cont) return;
-  cont.innerHTML = righe.map((r,i)=>`
-    <div style="display:grid;grid-template-columns:2fr 80px 100px 24px;gap:8px;align-items:center">
-      <select onchange="onRigaProdottoChange(${i},'${mode}')" style="padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font)">
+
+  cont.innerHTML = righe.map((r,i)=>{
+    const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
+    const kgSacco = r.kgSacco ?? prodInfo.kg_sacco ?? (prodInfo.nome.includes('integrale')||prodInfo.nome.includes('grano duro') ? 30 : 25);
+    const kgTot = (r.sacchi||0) * kgSacco;
+    const totRiga = kgTot * (r.prezzoKg||0);
+    return `
+    <div style="display:grid;grid-template-columns:2fr 60px 60px 60px 80px 80px 20px;gap:6px;align-items:center" id="riga-ord-${i}-${mode}">
+      <select onchange="onRigaProdottoChange(${i},'${mode}')" style="padding:6px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;font-family:var(--font)">
         ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
       </select>
-      <div style="display:flex;align-items:center;gap:4px">
-        <input type="number" value="${r.bancali}" min="1" onchange="aggiornaRiga(${i},'bancali',this.value,'${mode}')" style="width:60px;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center">
-        <span style="font-size:11px;color:var(--text-3)">banc.</span>
-      </div>
-      <div style="display:flex;align-items:center;gap:4px">
-        <span style="font-size:11px;color:var(--text-3)">€</span>
-        <input type="number" value="${r.prezzoUnitario}" step="0.01" onchange="aggiornaRiga(${i},'prezzoUnitario',this.value,'${mode}')" style="width:80px;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px">
-      </div>
-      <button onclick="rimuoviRiga(${i},'${mode}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:16px;padding:0">×</button>
-    </div>`).join('');
+      <input type="number" value="${r.sacchi||1}" min="1" step="1"
+        onchange="aggiornaRiga(${i},'sacchi',this.value,'${mode}')"
+        style="padding:6px 4px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;text-align:center;width:100%">
+      <input type="number" value="${kgSacco}" min="1" step="0.1"
+        onchange="aggiornaRiga(${i},'kgSacco',this.value,'${mode}')"
+        style="padding:6px 4px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;text-align:center;width:100%">
+      <div style="font-size:12px;font-weight:600;text-align:center;color:var(--text-2)">${kgTot}</div>
+      <input type="number" value="${r.prezzoKg||''}" min="0" step="0.001" placeholder="0.000"
+        onchange="aggiornaRiga(${i},'prezzoKg',this.value,'${mode}')"
+        style="padding:6px 4px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;text-align:right;width:100%">
+      <div style="font-size:12px;font-weight:600;text-align:right;color:var(--brand)">${totRiga>0?'€'+totRiga.toFixed(2):''}</div>
+      <button onclick="rimuoviRiga(${i},'${mode}')" style="background:none;border:none;cursor:pointer;color:var(--red);font-size:18px;padding:0;line-height:1">×</button>
+    </div>`;
+  }).join('');
+
+  // Aggiorna riepilogo totali
+  aggiornaRiepilogoOrdine(mode);
+}
+
+function aggiornaRiepilogoOrdine(mode){
+  const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
+  const riepiEl = document.getElementById(mode==='edit'?'edit-ord-totale-riepilogo':'ord-totale-riepilogo');
+  if(!riepiEl) return;
+  let sacchiTot=0, kgTot=0, importoTot=0;
+  righe.forEach(r=>{
+    const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
+    const kgSacco = r.kgSacco ?? (prodInfo.nome.includes('integrale')||prodInfo.nome.includes('grano duro') ? 30 : 25);
+    const kg = (r.sacchi||0)*kgSacco;
+    sacchiTot += (r.sacchi||0);
+    kgTot += kg;
+    importoTot += kg*(r.prezzoKg||0);
+  });
+  riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
 }
 
 function onRigaProdottoChange(i, mode){
   const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
   const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
-  const sel = cont.querySelectorAll('select')[i];
-  if(sel) righe[i].nome = sel.value;
+  const sel = cont?.querySelectorAll('select')[i];
+  if(sel){
+    righe[i].nome = sel.value;
+    const prod = PRODOTTI_MULINO.find(p=>p.nome===sel.value);
+    if(prod) righe[i].kgSacco = prod.kg_sacco;
+  }
   renderRigheOrdine(mode);
 }
 
 function aggiornaRiga(i, campo, val, mode){
   const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
   righe[i][campo] = parseFloat(val)||0;
+  aggiornaRiepilogoOrdine(mode);
 }
 
 function rimuoviRiga(i, mode){
@@ -3737,7 +3796,7 @@ function rimuoviRiga(i, mode){
 }
 
 function apriNuovoOrdine(){
-  _ordineRighe = [{nome:'Semola rimacinata di grano duro', bancali:1, prezzoUnitario:0}];
+  _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:1, kgSacco:30, prezzoKg:0}];
   const sel = document.getElementById('ord-cliente');
   if(sel) sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
     (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
@@ -3780,18 +3839,20 @@ async function salvaOrdine(){
   if(!clienteId) return alert('Seleziona un cliente');
   const clienteNome = sel.options[sel.selectedIndex]?.dataset?.nome || sel.options[sel.selectedIndex]?.text || '';
 
-  const prodotti = _ordineRighe.map(r=>({
-    nome: r.nome,
-    bancali: r.bancali,
-    prezzoUnitario: r.prezzoUnitario,
-    totale: r.bancali * r.prezzoUnitario
-  }));
+  const prodotti = _ordineRighe.map(r=>{
+    const kgTot = (r.sacchi||0) * (r.kgSacco||0);
+    return {
+      nome: r.nome,
+      sacchi: r.sacchi||0,
+      kgSacco: r.kgSacco||0,
+      kgTotale: kgTot,
+      prezzoKg: r.prezzoKg||0,
+      totale: kgTot * (r.prezzoKg||0)
+    };
+  });
   const importoTot = prodotti.reduce((s,p)=>s+p.totale,0);
-  const bancaliTot = prodotti.reduce((s,p)=>s+p.bancali,0);
-  const pesoTot = prodotti.reduce((s,p)=>{
-    const prod = PRODOTTI_MULINO.find(x=>x.nome===p.nome);
-    return s + (p.bancali * (prod?.kg_bancale||0));
-  },0);
+  const sacchiTot = prodotti.reduce((s,p)=>s+p.sacchi,0);
+  const pesoTot = prodotti.reduce((s,p)=>s+p.kgTotale,0);
 
   const btn = document.getElementById('btn-salva-ordine');
   if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Salvataggio...'; }
@@ -3801,7 +3862,7 @@ async function salvaOrdine(){
     cliente_id: clienteId,
     prodotti,
     prodotto: prodotti.map(p=>p.nome).join(', '),
-    qty: bancaliTot,
+    qty: sacchiTot,
     peso_totale: pesoTot,
     importo: importoTot,
     data: document.getElementById('ord-data').value,
@@ -4338,69 +4399,6 @@ async function aggiornaCliente(){
 }
 
 // ── SALVA ORDINE ──────────────────────────────────────────────────────────
-async function salvaOrdine(){
-  let cl=document.getElementById('ord-cliente').value;
-  if(!cl) return alert('Seleziona un cliente');
-  if(cl==='__nuovo__'){
-    cl=document.getElementById('ord-cliente-nuovo').value.trim();
-    if(!cl) return alert('Inserisci il nome del nuovo cliente');
-    await creaClienteVeloce(cl);
-  }
-  const data=await api.post('/api/ordini',{cliente:cl,prodotto:document.getElementById('ord-prodotto').value,qty:parseFloat(document.getElementById('ord-qty').value)||0,importo:parseFloat(document.getElementById('ord-importo').value)||0,data:document.getElementById('ord-data').value,stato:document.getElementById('ord-stato').value,note:document.getElementById('ord-note').value});
-  if(!data.error) state.ordini.unshift(data);
-  closeModal('modal-ordine'); renderOrdini(); renderDash(); renderClienti(); showSave();
-}
-function editOrdine(id){
-  const o=state.ordini.find(x=>x.id===id); if(!o)return;
-  document.getElementById('edit-ord-id').value=o.id;
-  const sel=document.getElementById('edit-ord-cliente'); sel.innerHTML='';
-  let clienteTrovato=false;
-  state.clienti.forEach(c=>{const opt=document.createElement('option');opt.value=c.nome;opt.textContent=c.nome;if(c.nome===o.cliente){opt.selected=true;clienteTrovato=true;}sel.appendChild(opt);});
-  // Se il cliente dell'ordine non è in anagrafica, aggiungilo come opzione selezionata
-  if(!clienteTrovato && o.cliente){
-    const opt=document.createElement('option'); opt.value=o.cliente; opt.textContent=o.cliente+' (non in anagrafica)'; opt.selected=true; sel.appendChild(opt);
-  }
-  const optNuovo=document.createElement('option'); optNuovo.value='__nuovo__'; optNuovo.textContent='+ Nuovo cliente...'; sel.appendChild(optNuovo);
-  document.getElementById('edit-ord-cliente-nuovo-wrap').style.display='none';
-  document.getElementById('edit-ord-cliente-nuovo').value='';
-  const ps=document.getElementById('edit-ord-prodotto'); for(let op of ps.options) if(op.value===o.prodotto)op.selected=true;
-  document.getElementById('edit-ord-qty').value=o.qty;
-  document.getElementById('edit-ord-importo').value=o.importo;
-  document.getElementById('edit-ord-data').value=o.data;
-  const ss=document.getElementById('edit-ord-stato'); for(let op of ss.options) if(op.value===o.stato)op.selected=true;
-  document.getElementById('edit-ord-note').value=o.note||'';
-  openModal('modal-edit-ordine');
-}
-async function aggiornaOrdine(){
-  const id=parseInt(document.getElementById('edit-ord-id').value);
-  let cliente=document.getElementById('edit-ord-cliente').value;
-  if(cliente==='__nuovo__'){
-    cliente=document.getElementById('edit-ord-cliente-nuovo').value.trim();
-    if(!cliente) return alert('Inserisci il nome del nuovo cliente');
-    await creaClienteVeloce(cliente);
-  }
-  const body={cliente,prodotto:document.getElementById('edit-ord-prodotto').value,qty:parseFloat(document.getElementById('edit-ord-qty').value)||0,importo:parseFloat(document.getElementById('edit-ord-importo').value)||0,data:document.getElementById('edit-ord-data').value,stato:document.getElementById('edit-ord-stato').value,note:document.getElementById('edit-ord-note').value};
-  await api.put('/api/ordini/'+id,body);
-  const o=state.ordini.find(x=>x.id===id); if(o)Object.assign(o,body);
-  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); renderClienti(); showSave();
-}
-
-function onOrdClienteChange(selectId, wrapId){
-  const sel=document.getElementById(selectId);
-  const wrap=document.getElementById(wrapId);
-  if(!wrap) return;
-  wrap.style.display = sel.value==='__nuovo__' ? 'block' : 'none';
-}
-
-async function creaClienteVeloce(nome){
-  try{
-    const nuovo = await api.post('/api/clienti', {nome, ref:'', tel:'', email:'', citta:'', ind:'', prod:'', note:''});
-    if(nuovo && !nuovo.error){
-      state.clienti.push(nuovo);
-    }
-  }catch(e){ console.error('Errore creazione cliente veloce', e); }
-}
-
 // ── SALVA MOVIMENTO ───────────────────────────────────────────────────────
 async function salvaMovimento(){
   const d=document.getElementById('mov-data').value;
