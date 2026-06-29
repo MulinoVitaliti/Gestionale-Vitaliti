@@ -1305,6 +1305,12 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div>
         <div class="form-group"><label class="form-label">Data consegna prevista</label><input type="date" id="ord-data-consegna"></div>
       </div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Peso trasporto (kg) <span style="font-size:11px;color:var(--text-3)">— per il DDT, si calcola automaticamente ma puoi modificarlo</span></label>
+          <input type="number" id="ord-peso-trasporto" step="0.1" placeholder="Calcolato automaticamente">
+        </div>
+      </div>
 
       <!-- Note spedizione specifiche per questo ordine -->
       <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
@@ -3781,17 +3787,18 @@ function renderRigheOrdine(mode='new'){
 function aggiornaRiepilogoOrdine(mode){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
   const riepiEl = document.getElementById(mode==='edit'?'edit-ord-totale-riepilogo':'ord-totale-riepilogo');
-  if(!riepiEl) return;
   let sacchiTot=0, kgTot=0, importoTot=0;
   righe.forEach(r=>{
-    const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
-    const kgSacco = r.kgSacco ?? (prodInfo.nome.includes('integrale')||prodInfo.nome.includes('grano duro') ? 30 : 25);
+    const kgSacco = r.kgSacco !== undefined ? r.kgSacco : (PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0]).kg_sacco;
     const kg = (r.sacchi||0)*kgSacco;
     sacchiTot += (r.sacchi||0);
     kgTot += kg;
     importoTot += kg*(r.prezzoKg||0);
   });
-  riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
+  if(riepiEl) riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
+  // Auto-compila peso trasporto se non modificato
+  const pesoEl = document.getElementById(mode==='edit'?'edit-ord-peso-trasporto':'ord-peso-trasporto');
+  if(pesoEl && !pesoEl.dataset.manuale) pesoEl.value = kgTot || '';
 }
 
 function onRigaProdottoChange(i, mode){
@@ -3895,6 +3902,7 @@ async function salvaOrdine(){
     facchinaggio: document.getElementById('ord-facchinaggio').checked,
     chiamata_tel: document.getElementById('ord-chiamata-tel').value.trim(),
     note: document.getElementById('ord-note').value,
+    peso_trasporto: parseFloat(document.getElementById('ord-peso-trasporto')?.value)||pesoTot,
   };
 
   const data = await api.post('/api/ordini', body);
