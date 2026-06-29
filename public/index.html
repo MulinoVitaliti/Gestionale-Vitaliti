@@ -30,7 +30,7 @@
   --r:8px;--rl:12px;--font:'DM Sans',sans-serif;--font-mono:'DM Mono',monospace;
 }
 *{box-sizing:border-box;margin:0;padding:0}
-html,body{height:100%;font-family:var(--font);font-size:15px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
+html,body{height:100%;font-family:var(--font);font-size:16px;color:var(--text);background:var(--bg);-webkit-font-smoothing:antialiased}
 .login-screen{position:fixed;inset:0;background:#F8F9FA;display:flex;align-items:center;justify-content:center;z-index:1000}
 .login-screen.hidden{display:none}
 .login-wrap{display:flex;width:100%;max-width:840px;min-height:520px;border-radius:16px;overflow:hidden;box-shadow:0 8px 32px rgba(0,0,0,0.1);border:1px solid var(--border)}
@@ -303,7 +303,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="login-error" id="login-error"></div>
         <div style="text-align:center;margin-top:11px"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
         <div class="login-divider">oppure</div>
-        <div style="text-align:center;font-size:13px;color:var(--text-2)">Non hai un account? <span class="login-link" onclick="switchView('view-register')">Registrati</span></div>
+        <div style="text-align:center;font-size:13px;color:var(--text-2)"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
       </div>
       <div class="login-view" id="view-register">
         <div class="login-right-title">Nuovo account</div>
