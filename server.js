@@ -1104,6 +1104,7 @@ app.post('/api/ordini', async (req, res) => {
     const ordine = r.rows[0];
 
     // Crea bozza DDT su Fatture in Cloud automaticamente
+    console.log(`[DDT] ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
     if (ficTokens && ficCompanyId) {
       try {
         // Costruisci note DDT (note spedizione + note ordine con lotto/scadenza)
