@@ -1095,7 +1095,7 @@ app.get('/api/ordini', async (req, res) => {
 });
 
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto } = req.body;
   try {
     const r = await pool.query(
       `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
@@ -1108,12 +1108,13 @@ app.post('/api/ordini', async (req, res) => {
     console.log(`[DDT] ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
     if (ficTokens && ficCompanyId) {
       try {
-        // Costruisci note DDT (note spedizione + note ordine con lotto/scadenza)
+        // Costruisci note DDT (facchinaggio + tel + lotto + scadenza + note libere)
         let noteArr = [];
         if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
         if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
+        if (lotto || scadenza_merce) noteArr.push(`Lotto:${lotto||''} Scadenza:${scadenza_merce||''}`);
         if (note_spedizione) noteArr.push(note_spedizione);
-        if (note) noteArr.push(note); // qui finiscono lotto, scadenza, ecc.
+        if (note) noteArr.push(note);
 
         // Trova fic_id del cliente
         const cli = await pool.query('SELECT fic_id FROM clienti WHERE id=$1', [cliente_id||0]);
@@ -1164,7 +1165,7 @@ app.post('/api/ordini', async (req, res) => {
               delivery_note: true,
               use_gross_price: false,
               e_invoice: false,
-              transport_reason: 'Vendita',
+              transport_reason: causale_trasporto || 'Vendita',
               packages_number: totSacchi,       // numero colli = sacchi totali
               weight: String(totPeso),           // peso trasporto
               transport_type: req.body.trasporto_tipo || 'corriere',
