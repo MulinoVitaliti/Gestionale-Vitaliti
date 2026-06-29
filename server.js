@@ -1106,29 +1106,30 @@ app.post('/api/ordini', async (req, res) => {
     // Crea bozza DDT su Fatture in Cloud automaticamente
     if (ficTokens && ficCompanyId) {
       try {
-        // Costruisci note spedizione
+        // Costruisci note DDT (note spedizione + note ordine con lotto/scadenza)
         let noteArr = [];
-        if (note_spedizione) noteArr.push(note_spedizione);
         if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
         if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
-        if (note) noteArr.push(note);
+        if (note_spedizione) noteArr.push(note_spedizione);
+        if (note) noteArr.push(note); // qui finiscono lotto, scadenza, ecc.
 
         // Trova fic_id del cliente
         const cli = await pool.query('SELECT fic_id FROM clienti WHERE id=$1', [cliente_id||0]);
         const ficClienteId = cli.rows[0]?.fic_id || null;
 
-        // Righe DDT dai prodotti
-        const righe = (prodotti||[]).map(p => ({
-          product_id: null,
-          name: p.nome || p.prodotto || prodotto,
-          qty: p.bancali || p.qty || qty || 1,
-          measure: 'bancali',
-          net_price: p.prezzo || 0,
+        // Righe DDT dai prodotti con sacchi e kg
+        const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
+        const righe = prodList.map(p => ({
+          name: p.nome,
+          qty: p.sacchi || p.bancali || 1,
+          measure: 'sacchi',
+          description: `${p.sacchi||1} sacchi × ${p.kgSacco||0}kg = ${p.kgTotale||0}kg`,
+          net_price: (p.kgTotale||0) * (p.prezzoKg||0) / (p.sacchi||1),
           vat: { value: 4 }
         }));
 
         if (righe.length === 0 && prodotto) {
-          righe.push({ name: prodotto, qty: qty||1, measure: 'bancali', net_price: 0, vat: { value: 4 } });
+          righe.push({ name: prodotto, qty: qty||1, measure: 'sacchi', net_price: 0, vat: { value: 4 } });
         }
 
         const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
