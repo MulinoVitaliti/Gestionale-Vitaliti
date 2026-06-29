@@ -1312,6 +1312,30 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
       </div>
 
+      <!-- Dati lotto e causale DDT -->
+      <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">📦 Dati DDT</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Lotto <span style="font-size:11px;color:var(--text-3)">— appare nelle note DDT</span></label>
+          <input type="text" id="ord-lotto" placeholder="Es. 12/06/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scadenza merce</label>
+          <input type="text" id="ord-scadenza" placeholder="Es. 12/09/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Causale trasporto</label>
+          <select id="ord-causale" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%;background:#fff">
+            <option value="Vendita">Vendita</option>
+            <option value="Reso">Reso</option>
+            <option value="Omaggio">Omaggio</option>
+            <option value="Conto lavorazione">Conto lavorazione</option>
+            <option value="Conto visione">Conto visione</option>
+          </select>
+        </div>
+      </div>
+
       <!-- Note spedizione specifiche per questo ordine -->
       <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Note spedizione</div>
@@ -3837,6 +3861,9 @@ function apriNuovoOrdine(){
   try{ document.getElementById('ord-data-consegna').value = ''; }catch(e){}
   try{ document.getElementById('ord-canale').value = 'telefono'; }catch(e){}
   try{ document.getElementById('ord-note-cliente-box').style.display = 'none'; }catch(e){}
+  try{ document.getElementById('ord-lotto').value = ''; }catch(e){}
+  try{ document.getElementById('ord-scadenza').value = ''; }catch(e){}
+  try{ document.getElementById('ord-causale').value = 'Vendita'; }catch(e){}
   renderRigheOrdine('new');
   openModal('modal-ordine');
 }
@@ -3903,6 +3930,9 @@ async function salvaOrdine(){
     chiamata_tel: document.getElementById('ord-chiamata-tel').value.trim(),
     note: document.getElementById('ord-note').value,
     peso_trasporto: parseFloat(document.getElementById('ord-peso-trasporto')?.value)||pesoTot,
+    lotto: document.getElementById('ord-lotto')?.value.trim()||'',
+    scadenza_merce: document.getElementById('ord-scadenza')?.value.trim()||'',
+    causale_trasporto: document.getElementById('ord-causale')?.value||'Vendita',
   };
 
   const data = await api.post('/api/ordini', body);
