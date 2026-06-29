@@ -1150,7 +1150,9 @@ app.post('/api/ordini', async (req, res) => {
           body: JSON.stringify({
             data: {
               type: 'delivery_note',
-              entity: ficClienteId ? { id: ficClienteId } : { name: cliente },
+              entity: ficClienteId 
+                ? { id: ficClienteId, name: cliente } 
+                : { name: cliente },
               date: data || new Date().toISOString().slice(0,10),
               items_list: righe,
               notes: noteArr.join('\n'),
