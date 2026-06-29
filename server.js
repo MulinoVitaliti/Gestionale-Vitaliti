@@ -1165,10 +1165,10 @@ app.post('/api/ordini', async (req, res) => {
               delivery_note: true,
               use_gross_price: false,
               e_invoice: false,
-              transport_reason: causale_trasporto || 'Vendita',
-              packages_number: totSacchi,       // numero colli = sacchi totali
-              weight: String(totPeso),           // peso trasporto
-              transport_type: req.body.trasporto_tipo || 'corriere',
+              dn_ai_causal: causale_trasporto || 'Vendita',
+              dn_ai_packages_number: String(totSacchi),   // numero colli
+              dn_ai_weight: String(totPeso),              // peso
+              dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
             }
           })
         });
