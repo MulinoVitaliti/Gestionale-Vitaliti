@@ -1116,9 +1116,10 @@ app.post('/api/ordini', async (req, res) => {
         if (note_spedizione) noteArr.push(note_spedizione);
         if (note) noteArr.push(note);
 
-        // Trova fic_id del cliente
-        const cli = await pool.query('SELECT fic_id FROM clienti WHERE id=$1', [cliente_id||0]);
-        const ficClienteId = cli.rows[0]?.fic_id || null;
+        // Trova il cliente completo (per fic_id e indirizzo di spedizione)
+        const cli = await pool.query('SELECT * FROM clienti WHERE id=$1', [cliente_id||0]);
+        const clienteRow = cli.rows[0] || null;
+        const ficClienteId = clienteRow?.fic_id || null;
 
         // Righe DDT dai prodotti con sacchi e kg
         const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
@@ -1135,7 +1136,7 @@ app.post('/api/ordini', async (req, res) => {
             name: p.nome,
             description: `${p.sacchi||1} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
             qty: p.sacchi || p.bancali || 1,
-            measure: 'Nr',
+            measure: ficProd?.measure || 'Sacchi',
             net_price: prezzoPerSacco,
             vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
             gross_price: prezzoPerSacco,
@@ -1143,6 +1144,9 @@ app.post('/api/ordini', async (req, res) => {
           };
           if (ficProd?.id) item.product_id = ficProd.id;
           if (ficProd?.code) item.code = ficProd.code;
+          // Se su FIC il prodotto ha già una descrizione/nome diverso, lo usiamo come name
+          // ma conserviamo sempre il dettaglio sacchi/kg in description
+          if (ficProd?.name) item.name = ficProd.name;
           return item;
         });
 
@@ -1160,9 +1164,21 @@ app.post('/api/ordini', async (req, res) => {
         const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
         const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
 
+        // Costruisci entity con indirizzo di spedizione (priorità: ind_consegna > ind_legale > ind)
+        const indirizzoSpedizione = (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+        const entityObj = ficClienteId
+          ? { id: ficClienteId, name: cliente }
+          : { name: cliente };
+        if (indirizzoSpedizione) entityObj.address_street = indirizzoSpedizione;
+        if (clienteRow?.citta) entityObj.address_city = clienteRow.citta;
+        // Se l'indirizzo di consegna è diverso da quello legale, lo segnaliamo nelle note
+        if (clienteRow?.ind_consegna && clienteRow?.ind_legale && clienteRow.ind_consegna.trim() !== clienteRow.ind_legale.trim()) {
+          noteArr.push(`Consegna presso: ${clienteRow.ind_consegna}${clienteRow.citta ? ', '+clienteRow.citta : ''}`);
+        }
+
         const ddtPayload = {
           type: 'delivery_note',
-          entity: ficClienteId ? { id: ficClienteId, name: cliente } : { name: cliente },
+          entity: entityObj,
           date: data || new Date().toISOString().slice(0,10),
           items_list: righe,
           notes: noteArr.join('\n'),
