@@ -1042,6 +1042,136 @@ app.post('/api/clienti/sincronizza-indirizzi-fic', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── Funzioni di supporto per matching nomi (similarità testuale) ──────────
+function normalizzaNomeCliente(s) {
+  return String(s || '')
+    .toLowerCase()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // rimuove accenti
+    .replace(/\b(srl|spa|snc|sas|s\.r\.l\.|s\.p\.a\.|s\.n\.c\.|s\.a\.s\.|ditta|di)\b/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+// Distanza di Levenshtein semplice per stimare la somiglianza tra due stringhe
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  if (m === 0) return n;
+  if (n === 0) return m;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(dp[i - 1][j] + 1, dp[i][j - 1] + 1, dp[i - 1][j - 1] + costo);
+    }
+  }
+  return dp[m][n];
+}
+
+function similaritaNomi(a, b) {
+  const na = normalizzaNomeCliente(a), nb = normalizzaNomeCliente(b);
+  if (!na || !nb) return 0;
+  if (na === nb) return 1;
+  if (na.includes(nb) || nb.includes(na)) return 0.9;
+  const dist = levenshtein(na, nb);
+  const maxLen = Math.max(na.length, nb.length);
+  return maxLen === 0 ? 0 : 1 - dist / maxLen;
+}
+
+const CAMPI_AGGIORNABILI_CLIENTE = ['tel', 'email', 'citta', 'ind_legale', 'ind_consegna', 'sdi', 'pec', 'ref', 'piva'];
+
+// FASE 1: analizza le righe Excel e restituisce match certi, dubbi e senza corrispondenza
+// Non scrive nulla sul database
+app.post('/api/clienti/importa-excel/anteprima', async (req, res) => {
+  const { righe } = req.body;
+  if (!Array.isArray(righe) || righe.length === 0) {
+    return res.json({ error: 'Nessuna riga da importare' });
+  }
+  try {
+    const localClienti = await pool.query('SELECT * FROM clienti');
+    const clienti = localClienti.rows;
+
+    const certi = [];   // match automatico (nome identico dopo normalizzazione)
+    const dubbi = [];   // più candidati simili, serve conferma utente
+    const senzaMatch = [];
+
+    for (const riga of righe) {
+      if (!riga.nome) { senzaMatch.push(riga); continue; }
+
+      // Calcola similarità con tutti i clienti locali
+      const candidati = clienti
+        .map(c => ({ cliente: c, score: similaritaNomi(riga.nome, c.nome) }))
+        .filter(x => x.score >= 0.55)
+        .sort((a, b) => b.score - a.score);
+
+      if (candidati.length === 0) {
+        senzaMatch.push(riga);
+        continue;
+      }
+
+      const migliore = candidati[0];
+      const secondo = candidati[1];
+
+      // Match certo: somiglianza altissima e nettamente migliore di eventuali alternative
+      const certo = migliore.score >= 0.92 && (!secondo || migliore.score - secondo.score >= 0.15);
+
+      // Calcola quali campi verrebbero effettivamente completati (solo quelli vuoti)
+      const campiDaCompletare = {};
+      for (const campo of CAMPI_AGGIORNABILI_CLIENTE) {
+        const esistente = (migliore.cliente[campo] || '').toString().trim();
+        const nuovo = (riga[campo] || '').toString().trim();
+        if (!esistente && nuovo) campiDaCompletare[campo] = nuovo;
+      }
+
+      const entry = {
+        rigaExcel: riga,
+        clienteId: migliore.cliente.id,
+        clienteNome: migliore.cliente.nome,
+        score: Math.round(migliore.score * 100),
+        campiDaCompletare,
+        alternative: candidati.slice(1, 4).map(c => ({ clienteId: c.cliente.id, clienteNome: c.cliente.nome, score: Math.round(c.score * 100) }))
+      };
+
+      if (Object.keys(campiDaCompletare).length === 0) continue; // nulla da aggiornare, lo ignoriamo
+
+      if (certo) certi.push(entry); else dubbi.push(entry);
+    }
+
+    res.json({ certi, dubbi, senzaMatch: senzaMatch.map(r => r.nome || '(riga senza nome)') });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// FASE 2: applica gli aggiornamenti confermati (lista di {clienteId, campiDaCompletare})
+app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
+  const { conferme } = req.body; // [{ clienteId, campiDaCompletare: {tel:'...', email:'...'} }, ...]
+  if (!Array.isArray(conferme) || conferme.length === 0) {
+    return res.json({ error: 'Nessuna conferma da applicare' });
+  }
+  try {
+    let aggiornati = 0;
+    for (const c of conferme) {
+      const campi = c.campiDaCompletare || {};
+      const setClauses = [];
+      const values = [];
+      let i = 1;
+      for (const campo of CAMPI_AGGIORNABILI_CLIENTE) {
+        if (campi[campo]) {
+          setClauses.push(`${campo}=$${i}`);
+          values.push(campi[campo]);
+          i++;
+        }
+      }
+      if (setClauses.length === 0) continue;
+      values.push(c.clienteId);
+      await pool.query(`UPDATE clienti SET ${setClauses.join(', ')} WHERE id=$${i}`, values);
+      aggiornati++;
+    }
+    res.json({ aggiornati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.post('/api/clienti/importa-fic', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
   try {
