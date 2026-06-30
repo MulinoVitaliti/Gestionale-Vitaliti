@@ -282,6 +282,7 @@ tbody tr:hover{background:var(--surface-2)}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
 </style>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 </head>
 <body>
 
@@ -1078,6 +1079,27 @@ tbody tr:hover{background:var(--surface-2)}
         </div>
         <div id="conflitti-list" style="padding:10px 14px">
           <div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun conflitto pendente. I conflitti appaiono qui quando importi clienti da Fatture in Cloud e un cliente con la stessa P.IVA esiste già nel gestionale.</div>
+        </div>
+      </div>
+
+      <!-- Importazione contatti da Excel -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-file-spreadsheet" style="color:var(--green)"></i>Completa contatti da file Excel</div>
+        </div>
+        <div class="card-body">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">
+            Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo.
+          </div>
+          <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px">
+            <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA.
+          </div>
+          <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+            <input type="file" id="excel-import-file" accept=".xlsx,.xls" style="display:none" onchange="onExcelFileSelected(this)">
+            <button class="btn" onclick="document.getElementById('excel-import-file').click()"><i class="ti ti-upload"></i>Scegli file Excel</button>
+            <span id="excel-import-filename" style="font-size:13px;color:var(--text-2)"></span>
+          </div>
+          <div id="excel-import-preview" style="display:none;margin-top:14px"></div>
         </div>
       </div>
 
@@ -3004,6 +3026,196 @@ async function sincronizzaIndirizziFic(){
   }catch(e){ alert('Errore di rete: '+e.message); }
   finally{
     if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-map-pin"></i>Recupera indirizzi da FIC'; }
+  }
+}
+
+// ── IMPORTAZIONE CONTATTI DA EXCEL ──────────────────────────────────────────
+let _excelImportRighe = []; // righe normalizzate pronte da inviare al server
+let _excelImportCerti = []; // match certi calcolati dal server
+let _excelSenzaMatch = []; // nomi senza nessuna corrispondenza
+
+// Mappa alias colonna (minuscolo, senza spazi/punti) -> campo interno
+const EXCEL_COLONNE_ALIAS = {
+  'nome': 'nome', 'ragionesociale': 'nome', 'ragsociale': 'nome', 'cliente': 'nome', 'denominazione': 'nome',
+  'piva': 'piva', 'partitaiva': 'piva', 'pi': 'piva', 'vatnumber': 'piva',
+  'telefono': 'tel', 'tel': 'tel', 'cellulare': 'tel', 'cell': 'tel', 'phone': 'tel',
+  'email': 'email', 'mail': 'email', 'e-mail': 'email',
+  'citta': 'citta', 'città': 'citta', 'comune': 'citta', 'city': 'citta',
+  'indirizzo': 'ind_legale', 'indirizzolegale': 'ind_legale', 'indirizzosedelegale': 'ind_legale', 'sedelegale': 'ind_legale', 'address': 'ind_legale',
+  'indirizzoconsegna': 'ind_consegna', 'indirizzospedizione': 'ind_consegna', 'indirizzodiconsegna': 'ind_consegna', 'destinazione': 'ind_consegna',
+  'sdi': 'sdi', 'codicesdi': 'sdi', 'codicedestinatario': 'sdi',
+  'pec': 'pec', 'emailpec': 'pec',
+  'referente': 'ref', 'contatto': 'ref', 'refente': 'ref',
+};
+
+function normalizzaIntestazioneColonna(s){
+  return String(s||'').toLowerCase().trim()
+    .replace(/[\s_]+/g,'')
+    .replace(/[àá]/g,'a').replace(/[èé]/g,'e').replace(/[ìí]/g,'i').replace(/[òó]/g,'o').replace(/[ùú]/g,'u');
+}
+
+function onExcelFileSelected(input){
+  const file = input.files?.[0];
+  if(!file) return;
+  document.getElementById('excel-import-filename').textContent = file.name;
+
+  const reader = new FileReader();
+  reader.onload = async function(e){
+    try{
+      const wb = XLSX.read(e.target.result, {type:'array'});
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      if(!rows.length){ alert('Il file Excel sembra vuoto.'); return; }
+
+      // Mappa le colonne del file sui campi interni
+      const colonneOriginali = Object.keys(rows[0]);
+      const mappaColonne = {};
+      colonneOriginali.forEach(col=>{
+        const norm = normalizzaIntestazioneColonna(col);
+        if(EXCEL_COLONNE_ALIAS[norm]) mappaColonne[col] = EXCEL_COLONNE_ALIAS[norm];
+      });
+
+      if(!Object.values(mappaColonne).includes('nome')){
+        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" nel file. Controlla le intestazioni delle colonne.');
+        return;
+      }
+
+      _excelImportRighe = rows.map(row=>{
+        const obj = {};
+        Object.keys(row).forEach(col=>{
+          const campo = mappaColonne[col];
+          if(campo && row[col]!==''){ obj[campo] = String(row[col]).trim(); }
+        });
+        return obj;
+      }).filter(r=>r.nome);
+
+      await analizzaImportExcel();
+    }catch(err){
+      alert('Errore nella lettura del file Excel: '+err.message);
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+let _excelDubbiCorrenti = []; // dubbi in attesa di scelta utente, con clienteId scelto
+
+async function analizzaImportExcel(){
+  const box = document.getElementById('excel-import-preview');
+  box.style.display='block';
+  box.innerHTML = '<div style="font-size:13px;color:var(--text-2)"><i class="ti ti-loader"></i> Analisi del file in corso...</div>';
+
+  const r = await api.post('/api/clienti/importa-excel/anteprima', { righe: _excelImportRighe });
+  if(r.error){ alert('Errore: '+r.error); box.style.display='none'; return; }
+
+  _excelImportCerti = r.certi || [];
+  _excelDubbiCorrenti = (r.dubbi||[]).map(d=>({...d, sceltaClienteId: d.clienteId})); // default: il match migliore
+  _excelSenzaMatch = r.senzaMatch || [];
+
+  renderAnteprimaExcel();
+}
+
+function campoLabel(c){
+  return {tel:'Telefono', email:'Email', citta:'Città', ind_legale:'Indirizzo legale', ind_consegna:'Indirizzo consegna', sdi:'SDI', pec:'PEC', ref:'Referente', piva:'P.IVA'}[c] || c;
+}
+
+function renderAnteprimaExcel(){
+  const box = document.getElementById('excel-import-preview');
+  const certi = _excelImportCerti||[], dubbi = _excelDubbiCorrenti||[], senzaMatch = _excelSenzaMatch||[];
+
+  if(certi.length===0 && dubbi.length===0 && senzaMatch.length===0){
+    box.innerHTML = '<div style="font-size:13px;color:var(--text-2)">Nessun dato da completare: i clienti del file sono già tutti aggiornati o non riconosciuti.</div>';
+    return;
+  }
+
+  let html = '';
+
+  // ── Match certi ──
+  if(certi.length){
+    html += `<div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px"><i class="ti ti-circle-check"></i> ${certi.length} corrispondenze sicure</div>`;
+    html += `<div style="border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">`;
+    certi.forEach((c,i)=>{
+      const campiTesto = Object.entries(c.campiDaCompletare).map(([k,v])=>`<strong>${campoLabel(k)}:</strong> ${v}`).join(' · ');
+      html += `<div style="padding:9px 12px;font-size:12px;border-bottom:${i<certi.length-1?'1px solid var(--border)':'none'}">
+        <strong>${c.clienteNome}</strong> <span style="color:var(--text-3)">(file: "${c.rigaExcel.nome}")</span><br>
+        <span style="color:var(--text-2)">${campiTesto}</span>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // ── Dubbi: richiedono conferma ──
+  if(dubbi.length){
+    html += `<div style="font-size:13px;font-weight:600;color:var(--orange);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> ${dubbi.length} corrispondenze da confermare</div>`;
+    html += `<div style="border:1px solid var(--orange);border-radius:var(--r);margin-bottom:16px;overflow:hidden">`;
+    dubbi.forEach((d,i)=>{
+      const campiTesto = Object.entries(d.campiDaCompletare).map(([k,v])=>`<strong>${campoLabel(k)}:</strong> ${v}`).join(' · ');
+      const opzioni = [{clienteId:d.clienteId, clienteNome:d.clienteNome, score:d.score}, ...d.alternative];
+      html += `<div style="padding:10px 12px;font-size:12px;border-bottom:${i<dubbi.length-1?'1px solid var(--border)':'none'};background:#fff8f0">
+        <div style="margin-bottom:6px"><strong>Riga file:</strong> "${d.rigaExcel.nome}"</div>
+        <div style="margin-bottom:6px;color:var(--text-2)">${campiTesto}</div>
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+          <span style="color:var(--text-3)">Abbina a:</span>
+          <select onchange="aggiornaSceltaDubbio(${i}, this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+            ${opzioni.map(o=>`<option value="${o.clienteId}" ${o.clienteId===d.sceltaClienteId?'selected':''}>${o.clienteNome} (${o.score}% simile)</option>`).join('')}
+            <option value="" ${d.sceltaClienteId===null?'selected':''}>— Nessuno, salta questa riga —</option>
+          </select>
+        </div>
+      </div>`;
+    });
+    html += `</div>`;
+  }
+
+  // ── Senza match ──
+  if(senzaMatch.length){
+    html += `<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">
+      <strong>${senzaMatch.length} righe senza nessuna corrispondenza</strong> nel gestionale: ${senzaMatch.slice(0,15).join(', ')}${senzaMatch.length>15?` e altri ${senzaMatch.length-15}...`:''}
+    </div>`;
+  }
+
+  html += `<button class="btn btn-primary" id="btn-conferma-import-excel" onclick="confermaImportExcel()"><i class="ti ti-check"></i>Conferma e completa contatti</button>`;
+
+  box.innerHTML = html;
+}
+
+function aggiornaSceltaDubbio(index, valore){
+  _excelDubbiCorrenti[index].sceltaClienteId = valore ? parseInt(valore) : null;
+  // Se l'utente ha scelto un'alternativa diversa dal default, aggiorna anche i campiDaCompletare/nome mostrato
+  const d = _excelDubbiCorrenti[index];
+  if(d.sceltaClienteId && d.sceltaClienteId !== d.clienteId){
+    const alt = d.alternative.find(a=>a.clienteId===d.sceltaClienteId);
+    if(alt) d.clienteNome = alt.clienteNome;
+  }
+}
+
+async function confermaImportExcel(){
+  const btn = document.getElementById('btn-conferma-import-excel');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Importazione...'; }
+  try{
+    const conferme = [
+      ...(_excelImportCerti||[]).map(c=>({ clienteId:c.clienteId, campiDaCompletare:c.campiDaCompletare })),
+      ...(_excelDubbiCorrenti||[]).filter(d=>d.sceltaClienteId).map(d=>({ clienteId:d.sceltaClienteId, campiDaCompletare:d.campiDaCompletare }))
+    ];
+
+    if(conferme.length===0){ alert('Nessun aggiornamento da applicare.'); return; }
+
+    const r = await api.post('/api/clienti/importa-excel/conferma', { conferme });
+    if(r.error){ alert('Errore: '+r.error); return; }
+
+    const clientiAggiornati = await api.get('/api/clienti');
+    if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    renderClienti();
+
+    alert(`✅ Importazione completata!\n\n📊 ${r.aggiornati} clienti completati con i nuovi dati.`);
+    showSave();
+
+    // Reset
+    _excelImportRighe = []; _excelImportCerti = []; _excelDubbiCorrenti = []; _excelSenzaMatch = [];
+    document.getElementById('excel-import-preview').style.display='none';
+    document.getElementById('excel-import-filename').textContent='';
+    document.getElementById('excel-import-file').value='';
+  }catch(e){ alert('Errore di rete: '+e.message); }
+  finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-check"></i>Conferma e completa contatti'; }
   }
 }
 
