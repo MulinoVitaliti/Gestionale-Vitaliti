@@ -1235,6 +1235,25 @@ app.put('/api/ordini/:id', async (req, res) => {
 
 app.delete('/api/ordini/:id', async (req, res) => {
   try {
+    // Recupera l'ordine per sapere se ha un DDT collegato su FIC
+    const o = await pool.query('SELECT fic_ddt_id FROM ordini WHERE id=$1', [req.params.id]);
+    const ficDdtId = o.rows[0]?.fic_ddt_id || null;
+
+    // Elimina il DDT su Fatture in Cloud, se presente
+    if (ficDdtId && ficTokens && ficCompanyId) {
+      try {
+        const del = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficDdtId}`, { method: 'DELETE' });
+        if (del.ok) {
+          console.log(`[DDT] Eliminato su FIC: id=${ficDdtId}`);
+        } else {
+          const errTxt = await del.text();
+          console.error(`[DDT] Errore eliminazione FIC: ${del.status} ${errTxt}`);
+        }
+      } catch (e) {
+        console.error('[DDT] Errore chiamata eliminazione FIC:', e.message);
+      }
+    }
+
     await pool.query('DELETE FROM ordini WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
