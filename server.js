@@ -1122,19 +1122,28 @@ app.post('/api/ordini', async (req, res) => {
 
         // Righe DDT dai prodotti con sacchi e kg
         const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
+        // Carica mappa prodotti FIC per trovare product_id
+        const ficProdMap = await getFicProducts();
+
         const righe = prodList.map(p => {
           const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
           const prezzoTotaleRiga = kgTot * (p.prezzoKg||0);
           const prezzoPerSacco = (p.sacchi||1) > 0 ? prezzoTotaleRiga / (p.sacchi||1) : 0;
-          return {
-            name: `${p.nome} — ${p.sacchi||1} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
+          // Cerca il prodotto in FIC per nome (case-insensitive)
+          const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
+          const item = {
+            name: p.nome,
+            description: `${p.sacchi||1} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
             qty: p.sacchi || p.bancali || 1,
             measure: 'Nr',
             net_price: prezzoPerSacco,
-            vat: { id: 0 }, // IVA 0% — tu la modifichi su FIC
+            vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
             gross_price: prezzoPerSacco,
             not_taxable: false,
           };
+          if (ficProd?.id) item.product_id = ficProd.id;
+          if (ficProd?.code) item.code = ficProd.code;
+          return item;
         });
 
         if (righe.length === 0) {
@@ -1151,26 +1160,26 @@ app.post('/api/ordini', async (req, res) => {
         const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
         const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
 
+        const ddtPayload = {
+          type: 'delivery_note',
+          entity: ficClienteId ? { id: ficClienteId, name: cliente } : { name: cliente },
+          date: data || new Date().toISOString().slice(0,10),
+          items_list: righe,
+          notes: noteArr.join('
+'),
+          delivery_note: true,
+          use_gross_price: false,
+          e_invoice: false,
+          dn_ai_causal: causale_trasporto || 'Vendita',
+          dn_ai_packages_number: String(totSacchi),
+          dn_ai_weight: String(totPeso),
+          dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
+        };
+        console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
+
         const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
           method: 'POST',
-          body: JSON.stringify({
-            data: {
-              type: 'delivery_note',
-              entity: ficClienteId 
-                ? { id: ficClienteId, name: cliente } 
-                : { name: cliente },
-              date: data || new Date().toISOString().slice(0,10),
-              items_list: righe,
-              notes: noteArr.join('\n'),
-              delivery_note: true,
-              use_gross_price: false,
-              e_invoice: false,
-              dn_ai_causal: causale_trasporto || 'Vendita',
-              dn_ai_packages_number: String(totSacchi),   // numero colli
-              dn_ai_weight: String(totPeso),              // peso
-              dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
-            }
-          })
+          body: JSON.stringify({ data: ddtPayload })
         });
 
         if (ddt.ok) {
@@ -1833,6 +1842,82 @@ app.get('/api/fatture/clients', async (req, res) => {
     const data = await r.json();
     if (!r.ok) return res.json({ error: data.error?.message || 'Errore recupero clienti' });
     res.json(data?.data || []);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── PRODOTTI FIC: cache in memoria + endpoint ─────────────────────────────
+let ficProductsCache = null;
+
+async function getFicProducts() {
+  if (ficProductsCache && Date.now() - ficProductsCache.timestamp < 10 * 60 * 1000) {
+    return ficProductsCache.map;
+  }
+  if (!ficTokens || !ficCompanyId) return {};
+  try {
+    let allProducts = [], page = 1;
+    while (true) {
+      const r = await ficFetch(`/c/${ficCompanyId}/products?per_page=100&page=${page}`);
+      const data = await r.json();
+      if (!r.ok || !data.data || data.data.length === 0) break;
+      allProducts = allProducts.concat(data.data);
+      if (data.data.length < 100) break;
+      page++;
+    }
+    const map = {};
+    for (const p of allProducts) {
+      if (p.name) map[p.name.toLowerCase().trim()] = p;
+    }
+    ficProductsCache = { timestamp: Date.now(), map };
+    console.log('[FIC Products] Cache: ' + allProducts.length + ' prodotti');
+    return map;
+  } catch (e) { console.error('[FIC Products] Errore:', e.message); return {}; }
+}
+
+app.get('/api/fatture/products', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
+  ficProductsCache = null;
+  const map = await getFicProducts();
+  res.json(Object.values(map));
+});
+
+app.post('/api/fatture/products/refresh', async (req, res) => {
+  ficProductsCache = null;
+  const map = await getFicProducts();
+  res.json({ prodotti: Object.keys(map).length });
+});
+
+// Leggi DDT specifico da FIC (debug/ispezione struttura)
+app.get('/api/fatture/ddt/:id', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
+  try {
+    const r = await ficFetch(`/c/${ficCompanyId}/issued_documents/${req.params.id}`);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data });
+    res.json(data.data);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Lista DDT FIC recenti (ultimi 20)
+app.get('/api/fatture/ddt', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
+  try {
+    const r = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=delivery_note&per_page=20&sort=-date`);
+    const data = await r.json();
+    if (!r.ok) return res.json({ error: data });
+    // Restituisce solo i campi chiave per confronto
+    const list = (data.data||[]).map(d => ({
+      id: d.id,
+      number: d.number,
+      date: d.date,
+      entity: d.entity?.name,
+      items: (d.items_list||[]).map(i=>({ product_id:i.product_id, code:i.code, name:i.name, description:i.description, qty:i.qty, measure:i.measure, net_price:i.net_price })),
+      notes: d.notes,
+      dn_ai_causal: d.dn_ai_causal,
+      dn_ai_packages_number: d.dn_ai_packages_number,
+      dn_ai_weight: d.dn_ai_weight,
+      dn_ai_transporter: d.dn_ai_transporter,
+    }));
+    res.json(list);
   } catch (err) { res.json({ error: err.message }); }
 });
 
