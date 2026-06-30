@@ -978,6 +978,70 @@ app.delete('/api/clienti/note/:id', async (req, res) => {
 });
 
 
+// Sincronizza SOLO gli indirizzi mancanti dei clienti già collegati a FIC
+// Non crea nuovi clienti, non genera conflitti: aggiorna solo ind_legale/ind_consegna/citta vuoti
+app.post('/api/clienti/sincronizza-indirizzi-fic', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
+  try {
+    async function fetchAll(endpoint) {
+      let lista = [], page = 1;
+      while (true) {
+        const r = await ficFetch(`/c/${ficCompanyId}/${endpoint}?per_page=100&page=${page}`);
+        const data = await r.json();
+        if (!r.ok || !data.data) break;
+        lista = lista.concat(data.data);
+        if (!data.next_page_url || data.data.length < 100) break;
+        page++;
+      }
+      return lista;
+    }
+
+    const [ficClienti, ficFornitori] = await Promise.all([
+      fetchAll('entities/clients'),
+      fetchAll('entities/suppliers')
+    ]);
+    const tuttiFic = [...ficClienti, ...ficFornitori];
+
+    // Mappa fic_id -> dati FIC per lookup veloce
+    const ficById = {};
+    for (const c of tuttiFic) { if (c.id) ficById[c.id] = c; }
+
+    // Prendi tutti i clienti del gestionale già collegati a FIC
+    const localClienti = await pool.query('SELECT id, nome, ind_legale, ind_consegna, citta, fic_id FROM clienti WHERE fic_id IS NOT NULL');
+
+    let aggiornati = 0, saltatiCompleti = 0, nonTrovatiSuFic = 0;
+
+    for (const cl of localClienti.rows) {
+      const ficData = ficById[cl.fic_id];
+      if (!ficData) { nonTrovatiSuFic++; continue; }
+
+      const indirizzoFic = [ficData.address_street, ficData.address_postal_code, ficData.address_city, ficData.address_province]
+        .filter(Boolean).join(', ');
+
+      const haIndirizzoLocale = (cl.ind_legale && cl.ind_legale.trim()) || (cl.ind_consegna && cl.ind_consegna.trim());
+      if (haIndirizzoLocale || !indirizzoFic) { saltatiCompleti++; continue; }
+
+      // Aggiorna solo i campi vuoti, senza toccare quelli già compilati
+      await pool.query(
+        `UPDATE clienti SET 
+           ind_legale = COALESCE(NULLIF(ind_legale,''), $1),
+           ind_consegna = COALESCE(NULLIF(ind_consegna,''), $1),
+           citta = COALESCE(NULLIF(citta,''), $2)
+         WHERE id=$3`,
+        [indirizzoFic, ficData.address_city || null, cl.id]
+      );
+      aggiornati++;
+    }
+
+    res.json({
+      totaleClientiLocali: localClienti.rows.length,
+      aggiornati,
+      saltatiGiaCompilati: saltatiCompleti,
+      nonTrovatiSuFic
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 app.post('/api/clienti/importa-fic', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso o azienda non selezionata' });
   try {
