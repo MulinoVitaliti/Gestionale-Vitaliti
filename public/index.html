@@ -656,6 +656,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="page-title">Contatti</div>
         <div style="display:flex;gap:8px" id="contatti-header-actions">
           <button class="btn" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
+          <button class="btn" id="btn-sync-indirizzi-fic" onclick="sincronizzaIndirizziFic()"><i class="ti ti-map-pin"></i>Recupera indirizzi da FIC</button>
           <button class="btn" id="btn-export-contatti" onclick="esportaContatti()"><i class="ti ti-download"></i>Esporta</button>
           <button class="btn btn-primary" id="btn-nuovo-contatto" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
         </div>
@@ -2984,6 +2985,25 @@ async function importaClientiDaFic(){
   }catch(e){ alert('Errore di rete: '+e.message); }
   finally{
     if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-cloud-download"></i>Importa da FIC'; }
+  }
+}
+
+async function sincronizzaIndirizziFic(){
+  const btn = document.getElementById('btn-sync-indirizzi-fic');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Recupero indirizzi...'; }
+  try{
+    const r = await api.post('/api/clienti/sincronizza-indirizzi-fic', {});
+    if(r.error){ alert('Errore: '+r.error); return; }
+    // Ricarica la lista clienti per riflettere gli indirizzi aggiornati
+    const clientiAggiornati = await api.get('/api/clienti');
+    if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    renderClienti();
+    let msg = `✅ Sincronizzazione indirizzi completata!\n\n📍 ${r.aggiornati} clienti aggiornati con l'indirizzo preso da FIC\n• ${r.saltatiGiaCompilati} già avevano un indirizzo (non toccati)\n• ${r.nonTrovatiSuFic} non trovati su FIC`;
+    alert(msg);
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+  finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-map-pin"></i>Recupera indirizzi da FIC'; }
   }
 }
 
