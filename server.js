@@ -1128,25 +1128,29 @@ app.post('/api/ordini', async (req, res) => {
 
         const righe = prodList.map(p => {
           const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
-          const prezzoTotaleRiga = kgTot * (p.prezzoKg||0);
-          const prezzoPerSacco = (p.sacchi||1) > 0 ? prezzoTotaleRiga / (p.sacchi||1) : 0;
+          const sacchi = p.sacchi || p.bancali || 1;
           // Cerca il prodotto in FIC per nome (case-insensitive)
           const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
+          const misuraFic = (ficProd?.measure || '').toLowerCase().trim();
+          const isKg = misuraFic === 'kg' || misuraFic === 'kg.' || misuraFic === 'chilogrammi';
+
+          // Se il prodotto FIC è impostato in KG: quantità = kg totali, prezzo = €/kg
+          // Altrimenti: quantità = numero sacchi, prezzo = €/sacco
+          const qty = isKg ? kgTot : sacchi;
+          const net_price = isKg ? (p.prezzoKg||0) : (kgTot * (p.prezzoKg||0)) / (sacchi||1);
+
           const item = {
-            name: p.nome,
-            description: `${p.sacchi||1} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
-            qty: p.sacchi || p.bancali || 1,
+            name: ficProd?.name || p.nome,
+            description: `${sacchi} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
+            qty: qty,
             measure: ficProd?.measure || 'Sacchi',
-            net_price: prezzoPerSacco,
+            net_price: net_price,
             vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
-            gross_price: prezzoPerSacco,
+            gross_price: net_price,
             not_taxable: false,
           };
           if (ficProd?.id) item.product_id = ficProd.id;
           if (ficProd?.code) item.code = ficProd.code;
-          // Se su FIC il prodotto ha già una descrizione/nome diverso, lo usiamo come name
-          // ma conserviamo sempre il dettaglio sacchi/kg in description
-          if (ficProd?.name) item.name = ficProd.name;
           return item;
         });
 
