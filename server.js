@@ -1,4 +1,4 @@
-const express = require('express');
+\const express = require('express');
 const cors = require('cors');
 const path = require('path');
 const { google } = require('googleapis');
@@ -1165,8 +1165,7 @@ app.post('/api/ordini', async (req, res) => {
           entity: ficClienteId ? { id: ficClienteId, name: cliente } : { name: cliente },
           date: data || new Date().toISOString().slice(0,10),
           items_list: righe,
-          notes: noteArr.join('
-'),
+          notes: noteArr.join('\n'),
           delivery_note: true,
           use_gross_price: false,
           e_invoice: false,
