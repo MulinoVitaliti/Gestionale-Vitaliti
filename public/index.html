@@ -1260,11 +1260,11 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="modal-body">
       <!-- Cliente -->
       <div class="form-row">
-        <div class="form-group" style="flex:2">
+        <div class="form-group" style="flex:2;position:relative">
           <label class="form-label">Cliente *</label>
-          <select id="ord-cliente" onchange="onOrdClienteChange()">
-            <option value="">— seleziona cliente —</option>
-          </select>
+          <input type="text" id="ord-cliente-search" autocomplete="off" placeholder="Scrivi il nome del cliente..." oninput="filtraClientiOrdine()" onfocus="filtraClientiOrdine()" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+          <input type="hidden" id="ord-cliente">
+          <div id="ord-cliente-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:var(--r);max-height:220px;overflow-y:auto;z-index:50;box-shadow:0 6px 16px rgba(0,0,0,0.12);margin-top:2px"></div>
         </div>
         <div class="form-group">
           <label class="form-label">Canale ordine</label>
@@ -1303,12 +1303,9 @@ tbody tr:hover{background:var(--surface-2)}
 
       <div class="form-row">
         <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="ord-data"></div>
-        <div class="form-group"><label class="form-label">Data consegna prevista</label><input type="date" id="ord-data-consegna"></div>
-      </div>
-      <div class="form-row">
         <div class="form-group">
-          <label class="form-label">Peso trasporto (kg) <span style="font-size:11px;color:var(--text-3)">— per il DDT, si calcola automaticamente ma puoi modificarlo</span></label>
-          <input type="number" id="ord-peso-trasporto" step="0.1" placeholder="Calcolato automaticamente">
+          <label class="form-label">Trasportatore <span style="font-size:11px;color:var(--text-3)">— chi effettua la consegna</span></label>
+          <input type="text" id="ord-trasportatore" placeholder="Es. Mittente, Bartolotta, GLS..." style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
         </div>
       </div>
 
@@ -3820,7 +3817,7 @@ function aggiornaRiepilogoOrdine(mode){
     importoTot += kg*(r.prezzoKg||0);
   });
   if(riepiEl) riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
-  // Auto-compila peso trasporto se non modificato
+  // Auto-compila peso trasporto se il campo esiste (solo in edit, dove resta editabile)
   const pesoEl = document.getElementById(mode==='edit'?'edit-ord-peso-trasporto':'ord-peso-trasporto');
   if(pesoEl && !pesoEl.dataset.manuale) pesoEl.value = kgTot || '';
 }
@@ -3851,26 +3848,57 @@ function rimuoviRiga(i, mode){
 
 function apriNuovoOrdine(){
   _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:1, kgSacco:30, prezzoKg:0}];
-  const sel = document.getElementById('ord-cliente');
-  if(sel) sel.innerHTML = '<option value="">— seleziona cliente —</option>' +
-    (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" data-nome="${c.nome}">${c.nome}${c.citta?' — '+c.citta:''}</option>`).join('');
+  try{ document.getElementById('ord-cliente-search').value = ''; }catch(e){}
+  try{ document.getElementById('ord-cliente').value = ''; }catch(e){}
+  try{ document.getElementById('ord-cliente-suggestions').style.display = 'none'; }catch(e){}
   try{ document.getElementById('ord-data').value = new Date().toISOString().slice(0,10); }catch(e){}
   try{ document.getElementById('ord-facchinaggio').checked = false; }catch(e){}
   try{ document.getElementById('ord-chiamata-tel').value = ''; }catch(e){}
   try{ document.getElementById('ord-note').value = ''; }catch(e){}
-  try{ document.getElementById('ord-data-consegna').value = ''; }catch(e){}
   try{ document.getElementById('ord-canale').value = 'telefono'; }catch(e){}
   try{ document.getElementById('ord-note-cliente-box').style.display = 'none'; }catch(e){}
   try{ document.getElementById('ord-lotto').value = ''; }catch(e){}
   try{ document.getElementById('ord-scadenza').value = ''; }catch(e){}
   try{ document.getElementById('ord-causale').value = 'Vendita'; }catch(e){}
+  try{ document.getElementById('ord-trasportatore').value = ''; }catch(e){}
   renderRigheOrdine('new');
   openModal('modal-ordine');
 }
 
+function filtraClientiOrdine(){
+  const q = (document.getElementById('ord-cliente-search').value||'').toLowerCase().trim();
+  const box = document.getElementById('ord-cliente-suggestions');
+  if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+  const matches = (state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.nome.toLowerCase().includes(q)).slice(0,15);
+  if(matches.length===0){
+    box.innerHTML = '<div style="padding:10px 12px;font-size:13px;color:var(--text-3)">Nessun cliente trovato</div>';
+    box.style.display='block';
+    return;
+  }
+  box.innerHTML = matches.map(c=>`
+    <div onclick="selezionaClienteOrdine(${c.id})" style="padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)" onmouseover="this.style.background='var(--brand-light)'" onmouseout="this.style.background='#fff'">
+      <strong>${c.nome}</strong>${c.citta?' <span style="color:var(--text-3)">— '+c.citta+'</span>':''}
+    </div>`).join('');
+  box.style.display='block';
+}
+
+function selezionaClienteOrdine(clienteId){
+  const c = (state.clienti||[]).find(x=>x.id===clienteId);
+  if(!c) return;
+  document.getElementById('ord-cliente').value = clienteId;
+  document.getElementById('ord-cliente-search').value = c.nome;
+  document.getElementById('ord-cliente-suggestions').style.display = 'none';
+  onOrdClienteChange();
+}
+
+document.addEventListener('click', function(e){
+  const box = document.getElementById('ord-cliente-suggestions');
+  const input = document.getElementById('ord-cliente-search');
+  if(box && input && !box.contains(e.target) && e.target!==input){ box.style.display='none'; }
+});
+
 function onOrdClienteChange(){
-  const sel = document.getElementById('ord-cliente');
-  const clienteId = parseInt(sel.value)||0;
+  const clienteId = parseInt(document.getElementById('ord-cliente').value)||0;
   const c = (state.clienti||[]).find(x=>x.id===clienteId);
   const box = document.getElementById('ord-note-cliente-box');
   const testo = document.getElementById('ord-note-cliente-testo');
@@ -3891,10 +3919,9 @@ function onOrdClienteChange(){
 }
 
 async function salvaOrdine(){
-  const sel = document.getElementById('ord-cliente');
-  const clienteId = parseInt(sel.value)||null;
-  if(!clienteId) return alert('Seleziona un cliente');
-  const clienteNome = sel.options[sel.selectedIndex]?.dataset?.nome || sel.options[sel.selectedIndex]?.text || '';
+  const clienteId = parseInt(document.getElementById('ord-cliente').value)||null;
+  if(!clienteId) return alert('Seleziona un cliente dalla ricerca');
+  const clienteNome = document.getElementById('ord-cliente-search').value.trim();
 
   const prodotti = _ordineRighe.map(r=>{
     const kgTot = (r.sacchi||0) * (r.kgSacco||0);
@@ -3923,16 +3950,16 @@ async function salvaOrdine(){
     peso_totale: pesoTot,
     importo: importoTot,
     data: document.getElementById('ord-data').value,
-    data_consegna: document.getElementById('ord-data-consegna').value||null,
     stato: 'bozza',
     canale: document.getElementById('ord-canale').value,
     facchinaggio: document.getElementById('ord-facchinaggio').checked,
     chiamata_tel: document.getElementById('ord-chiamata-tel').value.trim(),
     note: document.getElementById('ord-note').value,
-    peso_trasporto: parseFloat(document.getElementById('ord-peso-trasporto')?.value)||pesoTot,
+    peso_trasporto: pesoTot,
     lotto: document.getElementById('ord-lotto')?.value.trim()||'',
     scadenza_merce: document.getElementById('ord-scadenza')?.value.trim()||'',
     causale_trasporto: document.getElementById('ord-causale')?.value||'Vendita',
+    trasporto_tipo: document.getElementById('ord-trasportatore')?.value.trim()||'',
   };
 
   const data = await api.post('/api/ordini', body);
