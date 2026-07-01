@@ -225,8 +225,11 @@ async function initDB() {
         prezzo_kg NUMERIC,
         metodo_pagamento TEXT,
         prodotti JSONB,
+        fic_fattura_id INTEGER DEFAULT NULL,
         created_at TIMESTAMP DEFAULT NOW()
       );
+      -- Migrazione: aggiunge fic_fattura_id se non esiste già
+      ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER DEFAULT NULL;
 
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
@@ -1280,6 +1283,32 @@ app.post('/api/clienti/conflitti/:id/ignora', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// Risolvi TUTTI i conflitti pendenti in un colpo solo, stessa azione per ognuno
+app.post('/api/clienti/conflitti/risolvi-tutti', async (req, res) => {
+  const { azione } = req.body; // 'unisci' | 'ignora'
+  if (!['unisci', 'ignora'].includes(azione)) {
+    return res.json({ error: 'Azione non valida' });
+  }
+  try {
+    const pendenti = await pool.query("SELECT * FROM fic_conflitti WHERE stato='pending'");
+    let processati = 0;
+
+    for (const conflitto of pendenti.rows) {
+      if (azione === 'unisci') {
+        const d = typeof conflitto.fic_data === 'string' ? JSON.parse(conflitto.fic_data) : conflitto.fic_data;
+        await pool.query(
+          `UPDATE clienti SET nome=$1,piva=$2,sdi=$3,pec=$4,email=$5,tel=$6,ind_legale=$7,fic_id=$8 WHERE id=$9`,
+          [d.nome, d.piva, d.sdi, d.pec, d.email, d.tel, d.ind_legale, d.fic_id, conflitto.cliente_id]
+        );
+      }
+      await pool.query('UPDATE fic_conflitti SET stato=$1 WHERE id=$2', [azione === 'unisci' ? 'risolto' : 'ignorato', conflitto.id]);
+      processati++;
+    }
+
+    res.json({ processati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 
 app.get('/api/ordini', async (req, res) => {
   try {
@@ -1463,11 +1492,11 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) RETURNING *',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null]
+      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti,fic_fattura_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, fic_fattura_id||null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
@@ -1477,6 +1506,39 @@ app.put('/api/movimenti/:id/pagato', async (req, res) => {
   const { pagato } = req.body;
   try {
     await pool.query('UPDATE movimenti SET pagato=$1 WHERE id=$2', [pagato, req.params.id]);
+
+    // Sincronizza stato pagamento su FIC se il movimento ha una fattura collegata
+    const mov = await pool.query('SELECT fic_fattura_id, importo, data, metodo_pagamento FROM movimenti WHERE id=$1', [req.params.id]);
+    const ficFatturaId = mov.rows[0]?.fic_fattura_id;
+
+    if (ficFatturaId && ficTokens && ficCompanyId) {
+      try {
+        // Leggi la fattura attuale da FIC per preservare payments_list esistente
+        const getFattura = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficFatturaId}`);
+        const fatturaData = await getFattura.json();
+        const fattura = fatturaData.data;
+
+        if (fattura) {
+          // Aggiorna il payments_list: segna tutto come pagato o non pagato
+          const payments = (fattura.payments_list || []).map(p => ({
+            ...p,
+            status: pagato ? 'paid' : 'not_paid',
+            paid_date: pagato ? (mov.rows[0].data || new Date().toISOString().slice(0, 10)) : null,
+          }));
+
+          await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficFatturaId}`, {
+            method: 'PUT',
+            body: JSON.stringify({
+              data: { payments_list: payments }
+            })
+          });
+          console.log(`[FIC] Fattura ${ficFatturaId} aggiornata: pagato=${pagato}`);
+        }
+      } catch (e) {
+        console.error('[FIC] Errore aggiornamento stato pagamento:', e.message);
+      }
+    }
+
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -1490,11 +1552,11 @@ app.put('/api/movimenti/:id/metodo-pagamento', async (req, res) => {
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato, fic_fattura_id } = req.body;
   try {
     await pool.query(
-      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13 WHERE id=$14',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, req.params.id]
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13,fic_fattura_id=$14 WHERE id=$15',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, fic_fattura_id||null, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
