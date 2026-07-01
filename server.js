@@ -2111,11 +2111,51 @@ app.get('/api/fatture/ddt', async (req, res) => {
   }
 });
 
-// Storico clienti accumulato da fatture e DDT importati
+// Storico clienti: ricalcola sempre da zero da FIC (evita duplicati da chiamate multiple)
 app.get('/api/fatture/clienti-storico', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Nessuna azienda Fatture in Cloud selezionata' });
   try {
-    const r = await pool.query('SELECT * FROM fic_clienti_storico ORDER BY updated_at DESC');
-    res.json(r.rows);
+    // Scarica tutte le fatture da FIC (max 500)
+    let tutteFatture = [];
+    for (let page = 1; page <= 5; page++) {
+      const r = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=invoice&per_page=100&page=${page}&sort=-date`);
+      const data = await r.json();
+      if (!r.ok || !data.data || data.data.length === 0) break;
+      tutteFatture = tutteFatture.concat(data.data);
+      if (data.data.length < 100) break;
+    }
+
+    // Raggruppa per nome cliente
+    const mappa = {};
+    for (const doc of tutteFatture) {
+      const e = doc.entity;
+      if (!e || !e.name) continue;
+      const key = e.name.trim();
+      if (!mappa[key]) {
+        mappa[key] = {
+          nome: key,
+          vat_number: e.vat_number || null,
+          citta: e.address_city || null,
+          num_fatture: 0,
+          num_ddt: 0,
+          importo_totale_fatturato: 0,
+          ultimo_documento_tipo: null,
+          ultimo_documento_data: null,
+          ultimo_documento_numero: null,
+        };
+      }
+      mappa[key].num_fatture++;
+      mappa[key].importo_totale_fatturato += parseFloat(doc.amount_net || 0); // imponibile netto
+      // Tieni l'ultimo documento (già ordinati per -date, quindi il primo trovato è l'ultimo)
+      if (!mappa[key].ultimo_documento_data) {
+        mappa[key].ultimo_documento_tipo = 'invoice';
+        mappa[key].ultimo_documento_data = doc.date || null;
+        mappa[key].ultimo_documento_numero = String(doc.number || '');
+      }
+    }
+
+    const risultato = Object.values(mappa).sort((a,b) => b.importo_totale_fatturato - a.importo_totale_fatturato);
+    res.json(risultato);
   } catch (err) { res.json({ error: err.message }); }
 });
 
