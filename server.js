@@ -1507,36 +1507,66 @@ app.put('/api/movimenti/:id/pagato', async (req, res) => {
   try {
     await pool.query('UPDATE movimenti SET pagato=$1 WHERE id=$2', [pagato, req.params.id]);
 
-    // Sincronizza stato pagamento su FIC se il movimento ha una fattura collegata
-    const mov = await pool.query('SELECT fic_fattura_id, importo, data, metodo_pagamento FROM movimenti WHERE id=$1', [req.params.id]);
-    const ficFatturaId = mov.rows[0]?.fic_fattura_id;
+    if (!ficTokens || !ficCompanyId) return res.json({ success: true });
 
-    if (ficFatturaId && ficTokens && ficCompanyId) {
-      try {
-        // Leggi la fattura attuale da FIC per preservare payments_list esistente
+    const mov = await pool.query('SELECT * FROM movimenti WHERE id=$1', [req.params.id]);
+    const m = mov.rows[0];
+    if (!m || m.tipo !== 'entrata') return res.json({ success: true });
+
+    try {
+      let ficFatturaId = m.fic_fattura_id || null;
+
+      // Se non c'è un ID fattura FIC salvato, cerca automaticamente per nome cliente + importo
+      if (!ficFatturaId) {
+        // Cerca le fatture non pagate su FIC degli ultimi 12 mesi
+        const q = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=invoice&per_page=50&sort=-date`);
+        const qData = await q.json();
+        const fatture = qData.data || [];
+
+        // Normalizza nome per confronto (minuscolo, senza spazi multipli)
+        const normNome = s => String(s||'').toLowerCase().replace(/\s+/g,' ').trim();
+        const descMov = normNome(m.descrizione || '');
+        const importoMov = Number(m.importo || 0);
+
+        // Cerca fattura con nome cliente simile alla descrizione del movimento e importo vicino (±1%)
+        const match = fatture.find(f => {
+          const nomeCliente = normNome(f.entity?.name || '');
+          const totFattura = Number(f.amount_gross || 0);
+          const nomeMatch = nomeCliente && (descMov.includes(nomeCliente) || nomeCliente.includes(descMov.split(' ')[0]));
+          const importoMatch = importoMov > 0 && Math.abs(totFattura - importoMov) / importoMov < 0.01;
+          return nomeMatch && importoMatch;
+        });
+
+        if (match) {
+          ficFatturaId = match.id;
+          // Salva per le volte successive
+          await pool.query('UPDATE movimenti SET fic_fattura_id=$1 WHERE id=$2', [ficFatturaId, m.id]);
+          console.log(`[FIC] Fattura trovata automaticamente: id=${ficFatturaId} cliente="${match.entity?.name}"`);
+        } else {
+          console.log(`[FIC] Nessuna fattura trovata per "${m.descrizione}" importo=${importoMov}`);
+        }
+      }
+
+      if (ficFatturaId) {
         const getFattura = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficFatturaId}`);
         const fatturaData = await getFattura.json();
         const fattura = fatturaData.data;
 
         if (fattura) {
-          // Aggiorna il payments_list: segna tutto come pagato o non pagato
           const payments = (fattura.payments_list || []).map(p => ({
             ...p,
             status: pagato ? 'paid' : 'not_paid',
-            paid_date: pagato ? (mov.rows[0].data || new Date().toISOString().slice(0, 10)) : null,
+            paid_date: pagato ? (String(m.data).slice(0,10) || new Date().toISOString().slice(0,10)) : null,
           }));
-
           await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficFatturaId}`, {
             method: 'PUT',
-            body: JSON.stringify({
-              data: { payments_list: payments }
-            })
+            body: JSON.stringify({ data: { payments_list: payments } })
           });
           console.log(`[FIC] Fattura ${ficFatturaId} aggiornata: pagato=${pagato}`);
         }
-      } catch (e) {
-        console.error('[FIC] Errore aggiornamento stato pagamento:', e.message);
       }
+    } catch (e) {
+      console.error('[FIC] Errore aggiornamento stato pagamento:', e.message);
     }
 
     res.json({ success: true });
