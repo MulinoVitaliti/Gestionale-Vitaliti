@@ -887,7 +887,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
         <div class="metric-card" style="border-top-color:var(--orange)" id="card-black"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
-      <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div><div class="pill" onclick="filterContab('nonpagati',this)" style="color:var(--orange)">⚠️ Non pagati</div></div>
+      <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div><div class="pill" onclick="filterContab('nonpagati',this)" style="color:var(--orange)">Non pagati</div></div>
       <div class="table-wrap" id="contab-table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th>Metodo pagamento</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
 
       <!-- Vista non pagati -->
@@ -4461,8 +4461,8 @@ function renderNonPagati(){
     return;
   }
 
-  const totale = nonPagati.reduce((s,m)=>s+(m.importo||0),0);
-  if(totaleEl) totaleEl.innerHTML = `Totale da incassare: <strong style="color:var(--orange)">€${totale.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+  const totale = nonPagati.reduce((s,m) => s + (Number(m.importo)||0), 0);
+  if(totaleEl) totaleEl.innerHTML = `Da incassare: <strong style="color:var(--orange)">€${totale.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
 
   const oggi = new Date(); oggi.setHours(0,0,0,0);
 
