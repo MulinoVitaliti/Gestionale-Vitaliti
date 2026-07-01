@@ -1490,6 +1490,10 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
+    <div class="form-group">
+      <label class="form-label">ID Fattura su Fatture in Cloud <span style="font-size:11px;color:var(--text-3)">— opzionale, per aggiornare lo stato di pagamento su FIC</span></label>
+      <input type="number" id="mov-fic-fattura-id" placeholder="Es. 12345 (trova l'ID nell'URL della fattura su FIC)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+    </div>
     <!-- Fallback per uscite senza prodotti, o importo manuale -->
     <div class="form-group" id="mov-importo-netto-manuale-wrap" style="display:none">
       <label class="form-label">Imponibile netto (€) *</label><input type="number" id="mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoMov()">
@@ -1537,6 +1541,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva" onchange="calcolaImportoEditMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label">ID Fattura su Fatture in Cloud <span style="font-size:11px;color:var(--text-3)">— opzionale, per aggiornare lo stato di pagamento su FIC</span></label>
+      <input type="number" id="edit-mov-fic-fattura-id" placeholder="Es. 12345 (trova l'ID nell'URL della fattura su FIC)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
     </div>
     <div class="form-group" id="edit-mov-importo-netto-manuale-wrap" style="display:none">
       <label class="form-label">Imponibile netto (€) *</label><input type="number" id="edit-mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoEditMov()">
@@ -4845,7 +4853,8 @@ async function salvaMovimento(){
       qty_kg: prodotti.length===1 ? prodotti[0].qty : null,
       prezzo_kg: prodotti.length===1 ? prodotti[0].prezzo : null,
       pagato,
-      metodo_pagamento: metodoPagamento
+      metodo_pagamento: metodoPagamento,
+      fic_fattura_id: parseInt(document.getElementById('mov-fic-fattura-id')?.value)||null
     });
     if(data && !data.error){
       state.movimenti.unshift(data);
@@ -4878,6 +4887,9 @@ function editMovimento(id){
   radios.forEach(r=>r.checked = (r.value==='si')===!!m.pagato);
   document.getElementById('edit-mov-metodo-pagamento').value = m.metodo_pagamento||'';
   toggleMetodoPagamentoVisibility('edit-mov');
+  // Popola ID fattura FIC se presente
+  const ficIdEl = document.getElementById('edit-mov-fic-fattura-id');
+  if(ficIdEl) ficIdEl.value = m.fic_fattura_id || '';
 
   // Prodotti: usa array prodotti se presente, altrimenti singola riga legacy
   const prodottiList = document.getElementById('edit-mov-prodotti-list');
@@ -4925,7 +4937,8 @@ async function aggiornaMovimento(){
     qty_kg: prodotti.length===1 ? prodotti[0].qty : null,
     prezzo_kg: prodotti.length===1 ? prodotti[0].prezzo : null,
     pagato,
-    metodo_pagamento: metodoPagamento
+    metodo_pagamento: metodoPagamento,
+    fic_fattura_id: parseInt(document.getElementById('edit-mov-fic-fattura-id')?.value)||null
   };
   await api.put('/api/movimenti/'+id,body);
   const m=state.movimenti.find(x=>x.id===id); if(m)Object.assign(m,body);
