@@ -887,8 +887,19 @@ tbody tr:hover{background:var(--surface-2)}
         <div class="metric-card" style="border-top-color:var(--green)"><div class="metric-label"><i class="ti ti-check"></i>Fatturato</div><div class="metric-value green" id="c-fatturato">€0</div><div class="metric-sub">entrate con fattura</div></div>
         <div class="metric-card" style="border-top-color:var(--orange)" id="card-black"><div class="metric-label"><i class="ti ti-clock"></i>Black</div><div class="metric-value" style="color:var(--orange)" id="c-da-fatturare">€0</div><div class="metric-sub">non in regola</div></div>
       </div>
-      <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div></div>
-      <div class="table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th>Metodo pagamento</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+      <div class="pills"><div class="pill active" onclick="filterContab('tutti',this)">Tutti</div><div class="pill" onclick="filterContab('entrata',this)">Entrate</div><div class="pill" onclick="filterContab('uscita',this)">Uscite</div><div class="pill" onclick="filterContab('nonpagati',this)" style="color:var(--orange)">⚠️ Non pagati</div></div>
+      <div class="table-wrap" id="contab-table-wrap"><table><thead><tr><th>Data</th><th>Descrizione</th><th style="text-align:center">Pagato</th><th>Categoria</th><th>Tipo</th><th style="text-align:right">Importo</th><th>Fatturazione</th><th>Metodo pagamento</th><th></th></tr></thead><tbody id="tbl-contab"></tbody></table></div>
+
+      <!-- Vista non pagati -->
+      <div id="contab-nonpagati-wrap" style="display:none">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div style="font-size:13px;color:var(--text-2)">Entrate non ancora incassate, dalla più vecchia alla più recente.</div>
+          <div id="nonpagati-totale" style="font-size:18px;font-weight:800;color:var(--orange)"></div>
+        </div>
+        <div class="table-wrap"><table><thead><tr>
+          <th>Data</th><th>Giorni attesa</th><th>Cliente / Descrizione</th><th>Categoria</th><th style="text-align:right">Importo</th><th style="text-align:center">Segna pagato</th><th></th>
+        </tr></thead><tbody id="tbl-nonpagati"></tbody></table></div>
+      </div>
     </div>
     <div class="page" id="page-email">
       <div class="email-layout">
@@ -1075,7 +1086,11 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="card" style="margin-bottom:20px" id="card-conflitti">
         <div class="card-header">
           <div class="card-title"><i class="ti ti-git-merge" style="color:var(--orange)"></i>Conflitti importazione clienti <span class="nav-badge" id="conflitti-badge" style="display:none;background:var(--orange);margin-left:6px">0</span></div>
-          <button class="btn btn-sm" onclick="caricaConflitti()"><i class="ti ti-refresh"></i>Aggiorna</button>
+          <div style="display:flex;gap:6px;flex-wrap:wrap">
+            <button class="btn btn-sm" id="btn-risolvi-tutti-unisci" onclick="risolviTuttiConflitti('unisci')" style="display:none"><i class="ti ti-git-merge"></i>Risolvi tutti: aggiorna con FIC</button>
+            <button class="btn btn-sm" id="btn-risolvi-tutti-ignora" onclick="risolviTuttiConflitti('ignora')" style="display:none"><i class="ti ti-x"></i>Risolvi tutti: mantieni attuali</button>
+            <button class="btn btn-sm" onclick="caricaConflitti()"><i class="ti ti-refresh"></i>Aggiorna</button>
+          </div>
         </div>
         <div id="conflitti-list" style="padding:10px 14px">
           <div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun conflitto pendente. I conflitti appaiono qui quando importi clienti da Fatture in Cloud e un cliente con la stessa P.IVA esiste già nel gestionale.</div>
@@ -3228,6 +3243,14 @@ async function caricaConflitti(){
     const data = await api.get('/api/clienti/conflitti');
     if(data.error){ cont.innerHTML = `<div style="color:var(--red);font-size:13px;padding:8px 0">${data.error}</div>`; return; }
     aggiornaConflittiBadge(data.length);
+
+    const btnUnisci = document.getElementById('btn-risolvi-tutti-unisci');
+    const btnIgnora = document.getElementById('btn-risolvi-tutti-ignora');
+    if(btnUnisci) btnUnisci.style.display = data.length > 1 ? 'inline-flex' : 'none';
+    if(btnIgnora) btnIgnora.style.display = data.length > 1 ? 'inline-flex' : 'none';
+    if(btnUnisci) btnUnisci.innerHTML = `<i class="ti ti-git-merge"></i>Risolvi tutti (${data.length}): aggiorna con FIC`;
+    if(btnIgnora) btnIgnora.innerHTML = `<i class="ti ti-x"></i>Risolvi tutti (${data.length}): mantieni attuali`;
+
     if(!data.length){
       cont.innerHTML = '<div style="font-size:13px;color:var(--text-2);padding:8px 0">Nessun conflitto pendente. I conflitti appaiono qui quando importi clienti da Fatture in Cloud e un cliente con la stessa P.IVA esiste già nel gestionale.</div>';
       return;
@@ -3275,6 +3298,29 @@ async function risolviConflitto(id, azione){
     await caricaConflitti();
     showSave();
   }catch(e){ alert('Errore di rete: '+e.message); }
+}
+
+async function risolviTuttiConflitti(azione){
+  const label = azione === 'unisci' ? 'aggiornare TUTTI i clienti con i dati di Fatture in Cloud' : 'mantenere i dati attuali per TUTTI i conflitti (ignorandoli)';
+  if(!confirm(`Sei sicuro di voler ${label}? Questa azione non può essere annullata singolarmente.`)) return;
+
+  const btn = document.getElementById(azione === 'unisci' ? 'btn-risolvi-tutti-unisci' : 'btn-risolvi-tutti-ignora');
+  if(btn){ btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Elaborazione...'; }
+
+  try{
+    const r = await api.post('/api/clienti/conflitti/risolvi-tutti', { azione });
+    if(r.error){ alert('Errore: '+r.error); return; }
+    if(azione === 'unisci'){
+      const clientiAggiornati = await api.get('/api/clienti');
+      if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    }
+    await caricaConflitti();
+    showSave();
+    alert(`✅ ${r.processati} conflitti risolti.`);
+  }catch(e){ alert('Errore di rete: '+e.message); }
+  finally{
+    if(btn){ btn.disabled = false; }
+  }
 }
 
 function aggiornaConflittiBadge(n){
@@ -4374,7 +4420,61 @@ function renderBarCharts(){
   draw(uMap,'stat-uscite','');
 }
 async function eliminaMov(id){conferma(async()=>{await api.del('/api/movimenti/'+id);state.movimenti=state.movimenti.filter(m=>m.id!==id);renderContab();renderDash();showSave();});}
-function filterContab(f,el){state.contabFilter=f;document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));el.classList.add('active');renderContab();}
+function filterContab(f,el){
+  state.contabFilter=f;
+  document.querySelectorAll('.pills .pill').forEach(p=>p.classList.remove('active'));
+  el.classList.add('active');
+  const tableWrap = document.getElementById('contab-table-wrap');
+  const nonpagatiWrap = document.getElementById('contab-nonpagati-wrap');
+  if(f === 'nonpagati'){
+    if(tableWrap) tableWrap.style.display='none';
+    if(nonpagatiWrap) nonpagatiWrap.style.display='block';
+    renderNonPagati();
+  } else {
+    if(tableWrap) tableWrap.style.display='block';
+    if(nonpagatiWrap) nonpagatiWrap.style.display='none';
+    renderContab();
+  }
+}
+
+function renderNonPagati(){
+  const tbody = document.getElementById('tbl-nonpagati');
+  const totaleEl = document.getElementById('nonpagati-totale');
+  if(!tbody) return;
+
+  // Prendi solo le entrate non pagate, dal più recente al più vecchio
+  const nonPagati = (state.movimenti||[])
+    .filter(m => m.tipo === 'entrata' && !m.pagato)
+    .sort((a,b) => new Date(b.data) - new Date(a.data));
+
+  if(!nonPagati.length){
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--green);font-size:14px"><i class="ti ti-circle-check" style="font-size:24px;display:block;margin-bottom:8px"></i>Tutti i clienti hanno pagato!</td></tr>`;
+    if(totaleEl) totaleEl.textContent = '';
+    return;
+  }
+
+  const totale = nonPagati.reduce((s,m)=>s+(m.importo||0),0);
+  if(totaleEl) totaleEl.innerHTML = `Totale da incassare: <strong style="color:var(--orange)">€${totale.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+
+  const oggi = new Date(); oggi.setHours(0,0,0,0);
+
+  tbody.innerHTML = nonPagati.map(m=>{
+    const dataOrd = new Date(m.data); dataOrd.setHours(0,0,0,0);
+    const giorni = Math.floor((oggi - dataOrd) / 86400000);
+    const giorniColor = giorni > 60 ? 'var(--red)' : giorni > 30 ? 'var(--orange)' : 'var(--text-2)';
+    const dataFmt = dataOrd.toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit',year:'numeric'});
+    const importoFmt = (m.importo||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+    return `<tr style="border-bottom:1px solid var(--border)">
+      <td style="font-size:13px;white-space:nowrap">${dataFmt}</td>
+      <td style="font-size:13px;font-weight:700;color:${giorniColor};white-space:nowrap">${giorni} gg</td>
+      <td style="font-size:13px"><strong>${m.descrizione||'—'}</strong>${m.cliente_nome?`<br><span style="font-size:11px;color:var(--text-3)">${m.cliente_nome}</span>`:''}</td>
+      <td style="font-size:12px;color:var(--text-2)">${m.cat||'—'}</td>
+      <td style="font-size:14px;font-weight:700;color:var(--orange);text-align:right;white-space:nowrap">+€${importoFmt}</td>
+      <td style="text-align:center"><input type="checkbox" onchange="togglePagato(${m.id},this.checked);setTimeout(renderNonPagati,300)" style="width:18px;height:18px;cursor:pointer;accent-color:var(--green)"></td>
+      <td><button class="btn btn-sm" onclick="editMovimento(${m.id})"><i class="ti ti-pencil"></i></button></td>
+    </tr>`;
+  }).join('');
+}
 
 // ── DASHBOARD ─────────────────────────────────────────────────────────────
 // ── RICERCA RAPIDA DASHBOARD (stile Pipedrive) ───────────────────────────
