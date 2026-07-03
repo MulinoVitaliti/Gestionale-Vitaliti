@@ -5,6 +5,28 @@ const { google } = require('googleapis');
 const { Pool } = require('pg');
 const crypto = require('crypto');
 
+// ── Retry helper per chiamate API soggette a "Premature close" ────────────
+async function withRetry(fn, maxTentativi = 3, delayMs = 800) {
+  let ultimoErrore;
+  for (let i = 0; i < maxTentativi; i++) {
+    try {
+      return await fn();
+    } catch (err) {
+      ultimoErrore = err;
+      const isPrematureClose = err.message && (
+        err.message.includes('Premature close') ||
+        err.message.includes('ECONNRESET') ||
+        err.message.includes('ETIMEDOUT') ||
+        err.message.includes('socket hang up')
+      );
+      if (!isPrematureClose) throw err; // errore non recuperabile, non ritentare
+      console.warn(`[Retry ${i+1}/${maxTentativi}] ${err.message} — riprovo tra ${delayMs}ms...`);
+      await new Promise(r => setTimeout(r, delayMs * (i + 1)));
+    }
+  }
+  throw ultimoErrore;
+}
+
 // ── Helper password con crypto nativo (nessuna dipendenza extra) ───────────
 function hashPassword(password) {
   const salt = crypto.randomBytes(16).toString('hex');
@@ -2303,10 +2325,10 @@ app.get('/api/gmail/inbox', async (req, res) => {
   try {
     client.setCredentials(tokens);
     const gmail = google.gmail({ version: 'v1', auth: client });
-    const list = await gmail.users.messages.list({ userId: 'me', maxResults: 20, labelIds });
+    const list = await withRetry(() => gmail.users.messages.list({ userId: 'me', maxResults: 20, labelIds }));
     if (!list.data.messages) return res.json({ emails: [] });
     const emails = await Promise.all(list.data.messages.slice(0, 15).map(async m => {
-      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Date'] });
+      const msg = await withRetry(() => gmail.users.messages.get({ userId: 'me', id: m.id, format: 'metadata', metadataHeaders: ['From', 'To', 'Subject', 'Date'] }));
       const headers = msg.data.payload.headers;
       const get = name => (headers.find(h => h.name === name) || {}).value || '';
       return { id: m.id, from: get('From'), to: get('To'), subject: get('Subject'), date: get('Date'), snippet: msg.data.snippet, unread: msg.data.labelIds?.includes('UNREAD') };
@@ -2442,11 +2464,11 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
     oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
     // Cerca le email di One Express negli ultimi messaggi
-    const list = await gmail.users.messages.list({
+    const list = await withRetry(() => gmail.users.messages.list({
       userId: 'me',
       maxResults: 50,
       q: 'from:mail.via1.it OR subject:"TRACKING ONEEXPRESS"'
-    });
+    }));
     if (!list.data.messages) return res.json({ trovate: 0, nuove: 0 });
 
     let nuove = 0;
@@ -2455,7 +2477,7 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
       const esiste = await pool.query('SELECT id FROM spedizioni WHERE gmail_msg_id=$1', [m.id]);
       if (esiste.rows.length) continue;
 
-      const msg = await gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' });
+      const msg = await withRetry(() => gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' }));
       const headers = msg.data.payload.headers || [];
       const subject = (headers.find(h => h.name === 'Subject') || {}).value || '';
       const from = (headers.find(h => h.name === 'From') || {}).value || '';
