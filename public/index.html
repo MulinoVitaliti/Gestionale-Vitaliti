@@ -5467,6 +5467,15 @@ function caricaEmail(){
     return;
   }
   fetch('/api/gmail/inbox?folder='+emailFolder+'&account='+currentEmailAccount).then(r=>r.json()).then(data=>{
+    if(data.error === 'TOKEN_SCADUTO'){
+      list.innerHTML=`<div class="empty-state" style="padding:32px;text-align:center">
+        <i class="ti ti-refresh-alert" style="font-size:32px;color:var(--orange);margin-bottom:12px;display:block"></i>
+        <p style="font-weight:600;color:var(--orange);margin-bottom:8px">Token Gmail scaduto</p>
+        <p style="font-size:13px;color:var(--text-2);margin-bottom:16px">${data.messaggio}</p>
+        <button class="btn btn-primary" onclick="showPage('impostazioni')"><i class="ti ti-settings"></i>Vai a Impostazioni</button>
+      </div>`;
+      return;
+    }
     if(data.error){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-alert-circle"></i><p>${data.error}</p></div>`;return;}
     if(!data.emails||!data.emails.length){list.innerHTML=`<div class="empty-state" style="padding:24px"><i class="ti ti-inbox"></i><p>Nessuna email</p></div>`;return;}
     const unread=data.emails.filter(e=>e.unread).length;
