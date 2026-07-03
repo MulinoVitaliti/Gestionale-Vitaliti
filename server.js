@@ -1756,6 +1756,37 @@ const oauth2ClientSpedizioni = new google.auth.OAuth2(
   SPEDIZIONI_REDIRECT_URI
 );
 
+// ── Patch: retry automatico su refreshAccessToken per entrambi i client ──
+// Google a volte chiude la connessione a metà durante il refresh del token
+// ("Premature close"). Questo wrapper riprova fino a 3 volte.
+function patchOAuth2ClientRefresh(client) {
+  const originalRefresh = client.refreshAccessToken.bind(client);
+  client.refreshAccessToken = async function(...args) {
+    let ultimoErrore;
+    for (let i = 0; i < 3; i++) {
+      try {
+        return await originalRefresh(...args);
+      } catch (err) {
+        ultimoErrore = err;
+        const recuperabile = err.message && (
+          err.message.includes('Premature close') ||
+          err.message.includes('ECONNRESET') ||
+          err.message.includes('ETIMEDOUT') ||
+          err.message.includes('socket hang up') ||
+          err.message.includes('Invalid response body')
+        );
+        if (!recuperabile) throw err;
+        const delay = 1000 * (i + 1);
+        console.warn(`[OAuth2 Retry ${i+1}/3] ${err.message} — riprovo tra ${delay}ms`);
+        await new Promise(r => setTimeout(r, delay));
+      }
+    }
+    throw ultimoErrore;
+  };
+}
+patchOAuth2ClientRefresh(oauth2Client);
+patchOAuth2ClientRefresh(oauth2ClientSpedizioni);
+
 // Restituisce { client, tokens, label } in base al parametro ?account=principale|spedizioni
 function getGmailAccount(req) {
   const account = req.query.account || 'principale';
