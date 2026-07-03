@@ -1899,6 +1899,15 @@ app.get('/api/gmail/status', (req, res) => {
   res.json({ connected: !!tokens, account: label });
 });
 
+app.post('/api/gmail/disconnect', async (req, res) => {
+  try {
+    gmailTokens = null;
+    oauth2Client.revokeCredentials().catch(()=>{});
+    await pool.query(`DELETE FROM impostazioni WHERE chiave='gmail_tokens'`);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 // ── FATTURE IN CLOUD (OAuth2) ────────────────────────────────────────────
 let ficTokens = null;
 let ficCompanyId = null;
