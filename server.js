@@ -1778,6 +1778,9 @@ function patchOAuth2ClientRefresh(client) {
         if (!recuperabile) throw err;
         const delay = 1000 * (i + 1);
         console.warn(`[OAuth2 Retry ${i+1}/3] ${err.message} — riprovo tra ${delay}ms`);
+        // Log dettagliato per capire la causa
+        if (err.response) console.error('[OAuth2] Risposta Google:', JSON.stringify(err.response?.data || err.response));
+        if (err.code) console.error('[OAuth2] Codice errore:', err.code);
         await new Promise(r => setTimeout(r, delay));
       }
     }
@@ -2365,7 +2368,14 @@ app.get('/api/gmail/inbox', async (req, res) => {
       return { id: m.id, from: get('From'), to: get('To'), subject: get('Subject'), date: get('Date'), snippet: msg.data.snippet, unread: msg.data.labelIds?.includes('UNREAD') };
     }));
     res.json({ emails });
-  } catch (err) { res.json({ error: err.message }); }
+  } catch (err) {
+    const isTokenError = err.message?.includes('Premature close') || err.message?.includes('invalid_grant') || err.message?.includes('Token has been expired');
+    if (isTokenError) {
+      console.error('[Gmail] Token non valido o scaduto — riconnessione necessaria');
+      return res.json({ error: 'TOKEN_SCADUTO', messaggio: 'Il token Gmail è scaduto o revocato. Vai su Impostazioni → Email e riconnetti l\'account.' });
+    }
+    res.json({ error: err.message });
+  }
 });
 
 // ── SPEDIZIONI ONE EXPRESS (parsing email automatico) ───────────────────
