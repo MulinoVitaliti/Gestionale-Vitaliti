@@ -1838,12 +1838,25 @@ app.get('/auth/spedizioni/login', (req, res) => {
 
 app.get('/auth/spedizioni/callback', async (req, res) => {
   try {
-    const { tokens } = await oauth2ClientSpedizioni.getToken(req.query.code);
+    const { tokens } = await withRetry(() => oauth2ClientSpedizioni.getToken(req.query.code), 4, 1500);
     gmailSpedizioniTokens = tokens;
     oauth2ClientSpedizioni.setCredentials(tokens);
     await saveGmailSpedizioniTokens(tokens);
     res.redirect('/?spedizioni=connected');
-  } catch (err) { res.status(500).send('Errore OAuth Spedizioni: ' + err.message); }
+  } catch (err) {
+    console.error('[OAuth Spedizioni Callback] Errore:', err.message);
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Errore connessione Gmail</title>
+      <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f8f8}
+      .box{background:#fff;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1)}
+      h2{color:#e53e3e;margin-bottom:12px}p{color:#555;margin-bottom:24px;font-size:14px}
+      a{display:inline-block;background:#4F46E5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600}</style></head>
+      <body><div class="box">
+        <h2>⚠️ Connessione interrotta</h2>
+        <p>Google ha chiuso la connessione a metà. Riprova — di solito funziona al secondo tentativo.</p>
+        <p style="font-size:12px;color:#999">Dettaglio: ${err.message}</p>
+        <a href="/auth/spedizioni/login">🔄 Riprova la connessione</a>
+      </div></body></html>`);
+  }
 });
 
 app.get('/api/spedizioni/gmail-status', (req, res) => {
@@ -1886,12 +1899,26 @@ app.get('/auth/login', (req, res) => {
 
 app.get('/auth/callback', async (req, res) => {
   try {
-    const { tokens } = await oauth2Client.getToken(req.query.code);
+    const { tokens } = await withRetry(() => oauth2Client.getToken(req.query.code), 4, 1500);
     gmailTokens = tokens;
     oauth2Client.setCredentials(tokens);
     await saveGmailTokens(tokens);
     res.redirect('/?gmail=connected');
-  } catch (err) { res.status(500).send('Errore OAuth: ' + err.message); }
+  } catch (err) {
+    console.error('[OAuth Callback] Errore:', err.message);
+    // Mostra pagina di errore con pulsante per riprovare invece di stringa grezza
+    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Errore connessione Gmail</title>
+      <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f8f8}
+      .box{background:#fff;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1)}
+      h2{color:#e53e3e;margin-bottom:12px}p{color:#555;margin-bottom:24px;font-size:14px}
+      a{display:inline-block;background:#4F46E5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600}</style></head>
+      <body><div class="box">
+        <h2>⚠️ Connessione interrotta</h2>
+        <p>Google ha chiuso la connessione a metà durante l'autenticazione. Succede raramente — riprova e dovrebbe funzionare.</p>
+        <p style="font-size:12px;color:#999">Dettaglio: ${err.message}</p>
+        <a href="/auth/login">🔄 Riprova la connessione</a>
+      </div></body></html>`);
+  }
 });
 
 app.get('/api/gmail/status', (req, res) => {
