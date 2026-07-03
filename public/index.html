@@ -1082,6 +1082,39 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
+      <!-- Connessione Gmail -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-brand-google" style="color:#EA4335"></i>Account Gmail</div>
+        </div>
+        <div class="card-body">
+          <!-- Account principale -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0;border-bottom:1px solid var(--border)">
+            <div>
+              <div style="font-size:13px;font-weight:600">📬 Account principale</div>
+              <div style="font-size:12px;color:var(--text-2)">mulino.vitaliti@gmail.com — usato per invio/ricezione email clienti</div>
+              <div id="gmail-principale-status" style="font-size:12px;margin-top:4px"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm btn-primary" onclick="window.location.href='/auth/login'"><i class="ti ti-brand-google"></i>Connetti / Riconnetti</button>
+              <button class="btn btn-sm" id="btn-disconnetti-gmail-principale" onclick="disconnettiGmail('principale')" style="color:var(--red)"><i class="ti ti-plug-off"></i>Disconnetti</button>
+            </div>
+          </div>
+          <!-- Account spedizioni -->
+          <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 0">
+            <div>
+              <div style="font-size:13px;font-weight:600">📦 Account spedizioni</div>
+              <div style="font-size:12px;color:var(--text-2)">spedizioni.mulinovitaliti@gmail.com — usato per parsing email One Express</div>
+              <div id="gmail-spedizioni-status" style="font-size:12px;margin-top:4px"></div>
+            </div>
+            <div style="display:flex;gap:8px">
+              <button class="btn btn-sm btn-primary" onclick="window.location.href='/auth/spedizioni/login'"><i class="ti ti-brand-google"></i>Connetti / Riconnetti</button>
+              <button class="btn btn-sm" onclick="disconnettiGmail('spedizioni')" style="color:var(--red)"><i class="ti ti-plug-off"></i>Disconnetti</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Conflitti importazione clienti FIC -->
       <div class="card" style="margin-bottom:20px" id="card-conflitti">
         <div class="card-header">
@@ -2217,7 +2250,7 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -3235,6 +3268,34 @@ async function confermaImportExcel(){
 }
 
 // ── GESTIONE CONFLITTI ────────────────────────────────────────────────────
+async function aggiornaStatoGmail(){
+  try{
+    const [p, s] = await Promise.all([
+      api.get('/api/gmail/status?account=principale'),
+      api.get('/api/gmail/status?account=spedizioni')
+    ]);
+    const elP = document.getElementById('gmail-principale-status');
+    const elS = document.getElementById('gmail-spedizioni-status');
+    if(elP) elP.innerHTML = p.connected
+      ? '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> Connesso</span>'
+      : '<span style="color:var(--red)"><i class="ti ti-circle-x"></i> Non connesso — clicca "Connetti / Riconnetti"</span>';
+    if(elS) elS.innerHTML = s.connected
+      ? '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> Connesso</span>'
+      : '<span style="color:var(--red)"><i class="ti ti-circle-x"></i> Non connesso — clicca "Connetti / Riconnetti"</span>';
+  }catch(e){}
+}
+
+async function disconnettiGmail(account){
+  if(!confirm(`Sei sicuro di voler disconnettere l'account Gmail ${account === 'spedizioni' ? 'spedizioni' : 'principale'}?`)) return;
+  try{
+    const endpoint = account === 'spedizioni' ? '/api/spedizioni/disconnect' : '/api/gmail/disconnect';
+    const r = await api.post(endpoint, {});
+    if(r.error){ alert('Errore: '+r.error); return; }
+    alert('✅ Account disconnesso. Ricollegalo quando vuoi con "Connetti / Riconnetti".');
+    aggiornaStatoGmail();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+}
+
 async function caricaConflitti(){
   const cont = document.getElementById('conflitti-list');
   if(!cont) return;
