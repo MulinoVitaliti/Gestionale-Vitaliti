@@ -658,6 +658,7 @@ tbody tr:hover{background:var(--surface-2)}
         <div style="display:flex;gap:8px" id="contatti-header-actions">
           <button class="btn" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
           <button class="btn" id="btn-sync-indirizzi-fic" onclick="sincronizzaIndirizziFic()"><i class="ti ti-map-pin"></i>Recupera indirizzi da FIC</button>
+          <button class="btn" onclick="apriModalRegioni()"><i class="ti ti-map-2"></i>Compila regioni mancanti</button>
           <button class="btn" id="btn-export-contatti" onclick="esportaContatti()"><i class="ti ti-download"></i>Esporta</button>
           <button class="btn btn-primary" id="btn-nuovo-contatto" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
         </div>
@@ -1329,6 +1330,29 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="form-group"><label class="form-label">Note spedizione libere</label><textarea id="edit-cl-note-spedizione" style="min-height:50px" placeholder="Es. Piano terra, campanello nome..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-cliente')">Annulla</button><button class="btn btn-primary" onclick="aggiornaCliente()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
+</div>
+<div class="modal-overlay" id="modal-regioni">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-header"><div class="modal-title"><i class="ti ti-map-2" style="color:var(--brand);margin-right:6px"></i>Compila regioni mancanti</div><button class="btn btn-icon" onclick="closeModal('modal-regioni')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div id="regioni-loading" style="text-align:center;padding:20px 0;color:var(--text-2)">Analisi contatti in corso...</div>
+      <div id="regioni-content" style="display:none">
+        <div id="regioni-proposte-wrap">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Regione dedotta dalla città. Deseleziona quelle che non vuoi applicare, poi conferma.</div>
+          <div id="regioni-lista-proposte" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);padding:8px"></div>
+        </div>
+        <div id="regioni-non-riconosciuti-wrap" style="margin-top:16px;display:none">
+          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:8px">Non riconosciuti (da compilare a mano dalla scheda contatto)</div>
+          <div id="regioni-lista-non-riconosciuti" style="font-size:12px;color:var(--text-2);max-height:140px;overflow-y:auto"></div>
+        </div>
+        <div id="regioni-vuoto" style="display:none;text-align:center;padding:16px 0;color:var(--text-2)">Tutti i contatti con città compilata hanno già una regione. Niente da fare.</div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+          <button class="btn" onclick="closeModal('modal-regioni')">Chiudi</button>
+          <button class="btn btn-primary" id="btn-applica-regioni" onclick="applicaRegioniConfermate()"><i class="ti ti-check"></i>Applica selezionate</button>
+        </div>
+      </div>
+    </div>
+  </div>
 </div>
 <div class="modal-overlay" id="modal-ordine">
   <div class="modal" style="max-width:620px">
@@ -2993,6 +3017,66 @@ function popolaSelectRegioni(){
     sel.innerHTML = '<option value="">Tutte le regioni</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
     sel.dataset.popolato='1';
   });
+}
+
+// ── COMPILAZIONE REGIONI MANCANTI (da città, con conferma manuale) ─────────
+async function apriModalRegioni(){
+  openModal('modal-regioni');
+  document.getElementById('regioni-loading').style.display='block';
+  document.getElementById('regioni-content').style.display='none';
+  const data = await api.get('/api/clienti/regioni-proposte');
+  document.getElementById('regioni-loading').style.display='none';
+  document.getElementById('regioni-content').style.display='block';
+  if(data.error){ alert('Errore: '+data.error); return; }
+
+  const proposteWrap = document.getElementById('regioni-proposte-wrap');
+  const nonRicWrap = document.getElementById('regioni-non-riconosciuti-wrap');
+  const vuoto = document.getElementById('regioni-vuoto');
+  const btnApplica = document.getElementById('btn-applica-regioni');
+
+  if(!data.proposte.length && !data.nonRiconosciuti.length){
+    proposteWrap.style.display='none'; nonRicWrap.style.display='none'; btnApplica.style.display='none';
+    vuoto.style.display='block';
+    return;
+  }
+  vuoto.style.display='none'; btnApplica.style.display=data.proposte.length?'inline-flex':'none';
+
+  const lista = document.getElementById('regioni-lista-proposte');
+  if(data.proposte.length){
+    proposteWrap.style.display='block';
+    lista.innerHTML = data.proposte.map(p=>`
+      <label style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
+        <input type="checkbox" class="regione-check" checked data-id="${p.id}" data-regione="${p.regioneProposta}">
+        <span style="flex:1"><strong>${p.nome}</strong> <span style="color:var(--text-3)">— ${p.citta}</span></span>
+        <span class="badge" style="background:var(--brand-light);color:var(--brand)">${p.regioneProposta}</span>
+      </label>`).join('');
+  } else {
+    proposteWrap.style.display='none';
+  }
+
+  const listaNr = document.getElementById('regioni-lista-non-riconosciuti');
+  if(data.nonRiconosciuti.length){
+    nonRicWrap.style.display='block';
+    listaNr.innerHTML = data.nonRiconosciuti.map(p=>`<div>${p.nome} — città: "${p.citta}"</div>`).join('');
+  } else {
+    nonRicWrap.style.display='none';
+  }
+}
+
+async function applicaRegioniConfermate(){
+  const checks = document.querySelectorAll('.regione-check:checked');
+  if(!checks.length){ alert('Nessuna proposta selezionata'); return; }
+  const conferme = Array.from(checks).map(c=>({ id: parseInt(c.dataset.id), regione: c.dataset.regione }));
+  const btn = document.getElementById('btn-applica-regioni');
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Applico...';
+  const r = await api.post('/api/clienti/regioni-applica', { conferme });
+  btn.disabled = false; btn.innerHTML = '<i class="ti ti-check"></i>Applica selezionate';
+  if(r.error){ alert('Errore: '+r.error); return; }
+  const aggiornati = await api.get('/api/clienti');
+  if(!aggiornati.error) state.clienti = aggiornati;
+  renderClienti(); renderFornitori(); showSave();
+  closeModal('modal-regioni');
+  alert(`Fatto: ${r.aggiornati} contatti aggiornati con la regione dedotta dalla città.`);
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
