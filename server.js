@@ -1419,7 +1419,8 @@ app.post('/api/ordini', async (req, res) => {
         let noteArr = [];
         if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
         if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
-        if (lotto || scadenza_merce) noteArr.push(`Lotto:${lotto||''} Scadenza:${scadenza_merce||''}`);
+        if (lotto) noteArr.push(`Lotto:${lotto}`);
+        if (scadenza_merce) noteArr.push(`Scadenza:${scadenza_merce}`);
         if (note_spedizione) noteArr.push(note_spedizione);
         if (note) noteArr.push(note);
 
@@ -1472,28 +1473,19 @@ app.post('/api/ordini', async (req, res) => {
         const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
         const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
 
-        // Costruisci entity con indirizzo di spedizione
-        // Priorità: destinazione scritta per QUESTO ordine > ind_consegna cliente > ind_legale > ind
+        // Luogo di destinazione: priorità a quello scritto per QUESTO ordine, altrimenti quello salvato sul cliente
         const destinazioneOrdine = (req.body.destinazione || '').trim();
-        const indirizzoSpedizione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+        const luogoDestinazione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+        // L'anagrafica del destinatario resta quella ufficiale del cliente su FIC: NON la tocchiamo
         const entityObj = ficClienteId
           ? { id: ficClienteId, name: cliente }
           : { name: cliente };
-        if (indirizzoSpedizione) entityObj.address_street = indirizzoSpedizione;
-        if (!destinazioneOrdine && clienteRow?.citta) entityObj.address_city = clienteRow.citta;
-        // Se la destinazione (di questo ordine o salvata sul cliente) è diversa dall'indirizzo legale, segnalalo nelle note
-        if (destinazioneOrdine && clienteRow?.ind_legale && destinazioneOrdine !== clienteRow.ind_legale.trim()) {
-          noteArr.push(`Consegna presso: ${destinazioneOrdine}`);
-        } else if (!destinazioneOrdine && clienteRow?.ind_consegna && clienteRow?.ind_legale && clienteRow.ind_consegna.trim() !== clienteRow.ind_legale.trim()) {
-          noteArr.push(`Consegna presso: ${clienteRow.ind_consegna}${clienteRow.citta ? ', '+clienteRow.citta : ''}`);
-        }
 
         const ddtPayload = {
           type: 'delivery_note',
           entity: entityObj,
           date: data || new Date().toISOString().slice(0,10),
           items_list: righe,
-          notes: noteArr.join('\n'),
           delivery_note: true,
           use_gross_price: false,
           e_invoice: false,
@@ -1501,6 +1493,8 @@ app.post('/api/ordini', async (req, res) => {
           dn_ai_packages_number: String(totSacchi),
           dn_ai_weight: String(totPeso),
           dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
+          dn_ai_destination: luogoDestinazione,
+          dn_ai_notes: noteArr.join('\n'),
         };
         console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
 
