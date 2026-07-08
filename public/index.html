@@ -1330,6 +1330,22 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-cliente')">Annulla</button><button class="btn btn-primary" onclick="aggiornaCliente()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
 </div>
+<div class="modal-overlay" id="modal-destinazione">
+  <div class="modal" style="max-width:440px">
+    <div class="modal-header"><div class="modal-title"><i class="ti ti-map-pin" style="color:var(--brand);margin-right:6px"></i>Aggiungi indirizzo di destinazione</div><button class="btn btn-icon" onclick="closeModal('modal-destinazione')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <div class="form-group"><label class="form-label">Indirizzo (via, civico, CAP, città)</label><input type="text" id="dest-indirizzo" placeholder="Es. Via Roma 10, 90100 Palermo (PA)"></div>
+      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
+        <input type="checkbox" id="dest-salva-cliente" checked>
+        <span>Salva questo indirizzo anche sulla scheda del cliente, per i prossimi ordini</span>
+      </label>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-destinazione')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaDestinazioneOrdine()"><i class="ti ti-check"></i>Usa questo indirizzo</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-regioni">
   <div class="modal" style="max-width:640px">
     <div class="modal-header"><div class="modal-title"><i class="ti ti-map-2" style="color:var(--brand);margin-right:6px"></i>Compila regioni mancanti</div><button class="btn btn-icon" onclick="closeModal('modal-regioni')"><i class="ti ti-x"></i></button></div>
@@ -1432,6 +1448,14 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
             <option value="Conto lavorazione">Conto lavorazione</option>
             <option value="Conto visione">Conto visione</option>
           </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Luogo di destinazione <span style="font-size:11px;color:var(--text-3)">— dove va consegnata QUESTA merce, se diverso dalla sede legale del cliente</span></label>
+        <input type="text" id="ord-destinazione" placeholder="Es. Via Roma 10, 90100 Palermo (PA)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        <div id="ord-destinazione-vuota" style="display:none;margin-top:6px">
+          <span class="login-link" style="font-size:12px" onclick="apriModalDestinazione()">+ Aggiungi indirizzo di destinazione</span>
         </div>
       </div>
 
@@ -4323,6 +4347,8 @@ function apriNuovoOrdine(){
   try{ document.getElementById('ord-note-cliente-box').style.display = 'none'; }catch(e){}
   try{ document.getElementById('ord-lotto').value = ''; }catch(e){}
   try{ document.getElementById('ord-scadenza').value = ''; }catch(e){}
+  try{ document.getElementById('ord-destinazione').value = ''; }catch(e){}
+  try{ document.getElementById('ord-destinazione-vuota').style.display = 'none'; }catch(e){}
   try{ document.getElementById('ord-causale').value = 'Vendita'; }catch(e){}
   try{ document.getElementById('ord-trasportatore').value = ''; }catch(e){}
   renderRigheOrdine('new');
@@ -4346,6 +4372,31 @@ function filtraClientiOrdine(){
   box.style.display='block';
 }
 
+function apriModalDestinazione(){
+  document.getElementById('dest-indirizzo').value = '';
+  document.getElementById('dest-salva-cliente').checked = true;
+  openModal('modal-destinazione');
+}
+
+async function salvaDestinazioneOrdine(){
+  const indirizzo = document.getElementById('dest-indirizzo').value.trim();
+  if(!indirizzo) return alert('Scrivi un indirizzo');
+  document.getElementById('ord-destinazione').value = indirizzo;
+  document.getElementById('ord-destinazione-vuota').style.display = 'none';
+
+  if(document.getElementById('dest-salva-cliente').checked){
+    const clienteId = parseInt(document.getElementById('ord-cliente').value)||0;
+    const c = (state.clienti||[]).find(x=>x.id===clienteId);
+    if(c){
+      const body = { ...c, ind_consegna: indirizzo };
+      const r = await api.put(`/api/clienti/${clienteId}`, body);
+      if(!r.error){ c.ind_consegna = indirizzo; mostraToast('✅ Indirizzo salvato anche sulla scheda cliente'); }
+      else mostraToast('Indirizzo usato per questo ordine, ma non salvato sul cliente: '+r.error, 'error');
+    }
+  }
+  closeModal('modal-destinazione');
+}
+
 function selezionaClienteOrdine(clienteId){
   const c = (state.clienti||[]).find(x=>x.id===clienteId);
   if(!c) return;
@@ -4367,6 +4418,14 @@ function onOrdClienteChange(){
   const box = document.getElementById('ord-note-cliente-box');
   const testo = document.getElementById('ord-note-cliente-testo');
   if(c){
+    // Precompila il luogo di destinazione dal cliente (priorità: consegna > legale > ind)
+    const indirizzoDefault = (c.ind_consegna || c.ind_legale || c.ind || '') + (c.citta && !(c.ind_consegna||c.ind_legale||c.ind||'').includes(c.citta) ? ', '+c.citta : '');
+    const destInput = document.getElementById('ord-destinazione');
+    const destVuota = document.getElementById('ord-destinazione-vuota');
+    if(destInput){
+      destInput.value = indirizzoDefault.trim();
+      if(destVuota) destVuota.style.display = indirizzoDefault.trim() ? 'none' : 'block';
+    }
     // Auto-compila note spedizione del cliente
     if(c.facchinaggio) document.getElementById('ord-facchinaggio').checked = true;
     if(c.chiamata_tel) document.getElementById('ord-chiamata-tel').value = c.chiamata_tel;
@@ -4427,6 +4486,7 @@ async function salvaOrdine(creaDdt){
     scadenza_merce: document.getElementById('ord-scadenza')?.value.trim()||'',
     causale_trasporto: document.getElementById('ord-causale')?.value||'Vendita',
     trasporto_tipo: document.getElementById('ord-trasportatore')?.value.trim()||'',
+    destinazione: document.getElementById('ord-destinazione')?.value.trim()||'',
     crea_ddt: !!creaDdt,
   };
 
