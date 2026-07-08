@@ -1399,7 +1399,7 @@ app.get('/api/ordini', async (req, res) => {
 });
 
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt } = req.body;
   try {
     const r = await pool.query(
       `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
@@ -1408,9 +1408,9 @@ app.post('/api/ordini', async (req, res) => {
     );
     const ordine = r.rows[0];
 
-    // Crea bozza DDT su Fatture in Cloud automaticamente
-    console.log(`[DDT] ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
-    if (ficTokens && ficCompanyId) {
+    // Crea bozza DDT su Fatture in Cloud SOLO se richiesto esplicitamente dal pulsante "DDT"
+    console.log(`[DDT] crea_ddt=${!!crea_ddt} ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
+    if (crea_ddt && ficTokens && ficCompanyId) {
       try {
         // Costruisci note DDT (facchinaggio + tel + lotto + scadenza + note libere)
         let noteArr = [];
@@ -1518,8 +1518,14 @@ app.post('/api/ordini', async (req, res) => {
         } else {
           const errTxt = await ddt.text();
           console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
+          ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + errTxt;
         }
-      } catch(e) { console.error('Errore creazione DDT FIC:', e.message); }
+      } catch(e) {
+        console.error('Errore creazione DDT FIC:', e.message);
+        ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + e.message;
+      }
+    } else if (crea_ddt && (!ficTokens || !ficCompanyId)) {
+      ordine.ddt_errore = 'Fatture in Cloud non è collegato: il DDT non è stato creato.';
     }
 
     res.json(ordine);
