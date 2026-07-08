@@ -1453,7 +1453,8 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button class="btn" onclick="closeModal('modal-ordine')">Annulla</button>
-        <button class="btn btn-primary" id="btn-salva-ordine" onclick="salvaOrdine()"><i class="ti ti-check"></i>Salva e crea DDT</button>
+        <button class="btn" id="btn-salva-ordine" onclick="salvaOrdine(false)"><i class="ti ti-check"></i>Salva</button>
+        <button class="btn btn-primary" id="btn-salva-ddt-ordine" onclick="salvaOrdine(true)"><i class="ti ti-truck-delivery"></i>Salva e crea DDT</button>
       </div>
     </div>
   </div>
@@ -4379,7 +4380,7 @@ function onOrdClienteChange(){
   }
 }
 
-async function salvaOrdine(){
+async function salvaOrdine(creaDdt){
   const clienteId = parseInt(document.getElementById('ord-cliente').value)||null;
   if(!clienteId) return alert('Seleziona un cliente dalla ricerca');
   const clienteNome = document.getElementById('ord-cliente-search').value.trim();
@@ -4399,8 +4400,11 @@ async function salvaOrdine(){
   const sacchiTot = prodotti.reduce((s,p)=>s+p.sacchi,0);
   const pesoTot = prodotti.reduce((s,p)=>s+p.kgTotale,0);
 
-  const btn = document.getElementById('btn-salva-ordine');
-  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Salvataggio...'; }
+  const btnSalva = document.getElementById('btn-salva-ordine');
+  const btnDdt = document.getElementById('btn-salva-ddt-ordine');
+  [btnSalva, btnDdt].forEach(b=>{ if(b) b.disabled = true; });
+  const btnAttivo = creaDdt ? btnDdt : btnSalva;
+  if(btnAttivo){ btnAttivo.innerHTML = '<i class="ti ti-loader"></i> Salvataggio...'; }
 
   const body = {
     cliente: clienteNome,
@@ -4421,18 +4425,21 @@ async function salvaOrdine(){
     scadenza_merce: document.getElementById('ord-scadenza')?.value.trim()||'',
     causale_trasporto: document.getElementById('ord-causale')?.value||'Vendita',
     trasporto_tipo: document.getElementById('ord-trasportatore')?.value.trim()||'',
+    crea_ddt: !!creaDdt,
   };
 
   const data = await api.post('/api/ordini', body);
   if(!data.error){
     state.ordini.unshift(data);
     if(data.fic_ddt_numero) mostraToast(`✅ Ordine salvato · DDT ${data.fic_ddt_numero} creato su FIC`);
+    else if(data.ddt_errore) mostraToast('⚠️ Ordine salvato, ma DDT non creato: '+data.ddt_errore, 'error');
     else mostraToast('✅ Ordine salvato');
   } else {
     mostraToast('Errore: '+data.error, 'error');
   }
 
-  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-check"></i>Salva e crea DDT'; }
+  if(btnSalva){ btnSalva.disabled=false; btnSalva.innerHTML='<i class="ti ti-check"></i>Salva'; }
+  if(btnDdt){ btnDdt.disabled=false; btnDdt.innerHTML='<i class="ti ti-truck-delivery"></i>Salva e crea DDT'; }
   closeModal('modal-ordine');
   renderOrdini(); renderDash(); showSave();
 }
