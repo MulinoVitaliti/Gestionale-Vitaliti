@@ -4206,7 +4206,7 @@ let _ordineRigheEdit = [];
 
 function aggiungiRigaOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
-  righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: 1, kgSacco: 30, prezzoKg: 0 });
+  righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: '', kgSacco: 30, prezzoKg: 0 });
   renderRigheOrdine(mode);
 }
 
@@ -4234,7 +4234,7 @@ function renderRigheOrdine(mode='new'){
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">N° sacchi</label>
-          <input type="number" value="${r.sacchi||1}" min="1" step="1"
+          <input type="number" value="${r.sacchi===undefined||r.sacchi===''?'':r.sacchi}" min="1" step="1" placeholder="0"
             onchange="aggiornaRiga(${i},'sacchi',this.value,'${mode}')"
             style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">
         </div>
@@ -4246,7 +4246,7 @@ function renderRigheOrdine(mode='new'){
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">kg totali</label>
-          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-weight:700;text-align:center;background:var(--surface-2);color:var(--text-2)">${kgTot}</div>
+          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-weight:700;text-align:center;background:var(--surface-2);color:var(--text-2)">${r.sacchi?kgTot:''}</div>
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">€ / kg</label>
@@ -4299,6 +4299,7 @@ function onRigaProdottoChange(i, mode){
 function aggiornaRiga(i, campo, val, mode){
   const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
   righe[i][campo] = parseFloat(val)||0;
+  renderRigheOrdine(mode);
   aggiornaRiepilogoOrdine(mode);
 }
 
@@ -4309,7 +4310,7 @@ function rimuoviRiga(i, mode){
 }
 
 function apriNuovoOrdine(){
-  _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:1, kgSacco:30, prezzoKg:0}];
+  _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:'', kgSacco:30, prezzoKg:0}];
   try{ document.getElementById('ord-cliente-search').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente-suggestions').style.display = 'none'; }catch(e){}
