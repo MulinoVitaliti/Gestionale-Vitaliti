@@ -107,7 +107,13 @@ const pool = new Pool({
 });
 
 // ── DEDUZIONE REGIONE DA CITTÀ (per contatti storici senza regione) ────────
-const comuniRegioni = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'comuni-regioni.json'), 'utf-8'));
+let comuniRegioni = {};
+try {
+  comuniRegioni = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'comuni-regioni.json'), 'utf-8'));
+  console.log(`comuni-regioni.json caricato: ${Object.keys(comuniRegioni).length} comuni`);
+} catch (err) {
+  console.warn('ATTENZIONE: data/comuni-regioni.json non trovato — "Compila regioni mancanti" non funzionerà finché non viene caricato. Errore:', err.message);
+}
 const PAROLE_ESTERO = ['germania','francia','svizzera','austria','spagna','belgio','olanda','paesi bassi','regno unito','inghilterra','usa','stati uniti','malta','grecia','portogallo'];
 function normalizzaCitta(str) {
   return (str || '').trim().toLowerCase().replace(/\s*\([a-z]{2}\)\s*$/i, '').trim();
