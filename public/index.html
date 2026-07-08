@@ -671,26 +671,32 @@ tbody tr:hover{background:var(--surface-2)}
 
       <!-- Vista Clienti -->
       <div id="contatti-vista-clienti">
-        <div class="search-bar-wrap" style="margin:0 auto 18px">
-          <div class="search-bar-box">
-            <i class="ti ti-search search-icon"></i>
-            <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
-            <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
+            <div class="search-bar-box">
+              <i class="ti ti-search search-icon"></i>
+              <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
+              <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+            </div>
           </div>
+          <select id="filtro-regione-clienti" onchange="renderClienti()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
       </div>
 
       <!-- Vista Fornitori -->
       <div id="contatti-vista-fornitori" style="display:none">
-        <div class="search-bar-wrap" style="margin:0 auto 18px">
-          <div class="search-bar-box">
-            <i class="ti ti-search search-icon"></i>
-            <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
-            <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
+            <div class="search-bar-box">
+              <i class="ti ti-search search-icon"></i>
+              <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
+              <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+            </div>
           </div>
+          <select id="filtro-regione-fornitori" onchange="renderFornitori()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Regione</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
       </div>
     </div>
 
@@ -1265,7 +1271,8 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">Regione</label><select id="cl-regione"></select></div></div>
+    <div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
       <input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)" oninput="if(document.getElementById('cl-ind-same').checked){document.getElementById('cl-ind-legale').value=this.value}">
@@ -1293,7 +1300,8 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">Regione</label><select id="edit-cl-regione"></select></div></div>
+    <div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
       <input type="text" id="edit-cl-ind-consegna" oninput="if(document.getElementById('edit-cl-ind-same').checked){document.getElementById('edit-cl-ind-legale').value=this.value}">
@@ -2957,8 +2965,8 @@ function esportaContatti(){
 
   // Esporta come CSV scaricabile
   const cols = tab==='fornitori'
-    ? ['codice','nome','citta','tel','piva','sdi','pec','email','ind_legale','ind_consegna']
-    : ['codice','nome','citta','tel','email','sdi','pec','piva','prod','ind_legale','ind_consegna','note'];
+    ? ['codice','nome','citta','regione','tel','piva','sdi','pec','email','ind_legale','ind_consegna']
+    : ['codice','nome','citta','regione','tel','email','sdi','pec','piva','prod','ind_legale','ind_consegna','note'];
   const intestazione = cols.join(';');
   const righe = lista.map(c=>cols.map(k=>`"${(c[k]||'').toString().replace(/"/g,'""')}"`).join(';'));
   const csv = [intestazione, ...righe].join('\n');
@@ -2969,16 +2977,36 @@ function esportaContatti(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
+// ── REGIONI ───────────────────────────────────────────────────────────────
+const REGIONI_ITALIA = ['Abruzzo','Basilicata','Calabria','Campania','Emilia-Romagna','Friuli-Venezia Giulia','Lazio','Liguria','Lombardia','Marche','Molise','Piemonte','Puglia','Sardegna','Sicilia','Toscana','Trentino-Alto Adige','Umbria',"Valle d'Aosta",'Veneto','Estero'];
+
+function popolaSelectRegioni(){
+  const formSelects = ['cl-regione','edit-cl-regione'];
+  formSelects.forEach(id=>{
+    const sel=document.getElementById(id); if(!sel||sel.dataset.popolato) return;
+    sel.innerHTML = '<option value="">— Seleziona regione —</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
+    sel.dataset.popolato='1';
+  });
+  const filterSelects = ['filtro-regione-clienti','filtro-regione-fornitori'];
+  filterSelects.forEach(id=>{
+    const sel=document.getElementById(id); if(!sel||sel.dataset.popolato) return;
+    sel.innerHTML = '<option value="">Tutte le regioni</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
+    sel.dataset.popolato='1';
+  });
+}
+
 // ── CLIENTI ───────────────────────────────────────────────────────────────
 // Filtra solo clienti (non fornitori)
 function renderClienti(){
+  popolaSelectRegioni();
   const q=(document.getElementById('search-clienti')?.value||'').toLowerCase();
-  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
+  const regioneSel=document.getElementById('filtro-regione-clienti')?.value||'';
+  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
   const cnt=document.getElementById('clienti-count');
   const soloClienti=(state.clienti||[]).filter(c=>c.tipo!=='fornitore');
-  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloClienti.length} clienti`;
+  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloClienti.length} clienti`;
   const tb=document.getElementById('tbl-clienti'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
     const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
@@ -2986,6 +3014,7 @@ function renderClienti(){
       <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
       <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
       <td>${c.citta||'—'}</td>
+      <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${c.tel||'—'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
       <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
@@ -3000,13 +3029,15 @@ function renderClienti(){
 
 // ── FORNITORI ─────────────────────────────────────────────────────────────
 function renderFornitori(){
+  popolaSelectRegioni();
   const q=(document.getElementById('search-fornitori')?.value||'').toLowerCase();
-  const list=(state.clienti||[]).filter(c=>c.tipo==='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.piva||'').includes(q)||(c.tel||'').includes(q)||(c.codice||'').toLowerCase().includes(q)));
+  const regioneSel=document.getElementById('filtro-regione-fornitori')?.value||'';
+  const list=(state.clienti||[]).filter(c=>c.tipo==='fornitore' && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.piva||'').includes(q)||(c.tel||'').includes(q)||(c.codice||'').toLowerCase().includes(q)));
   const cnt=document.getElementById('fornitori-count');
   const soloFornitori=(state.clienti||[]).filter(c=>c.tipo==='fornitore');
-  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloFornitori.length} fornitori`;
+  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloFornitori.length} fornitori`;
   const tb=document.getElementById('tbl-fornitori'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun fornitore trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state">Nessun fornitore trovato</div></td></tr>';return;}
   list.forEach(c=>{
     const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
@@ -3014,6 +3045,7 @@ function renderFornitori(){
       <td><span style="font-family:monospace;font-size:11px;background:var(--green-light);color:var(--green);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
       <td><div class="flex-row"><div class="avatar" style="background:var(--green-light);color:var(--green)">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
       <td>${c.citta||'—'}</td>
+      <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${c.tel||'—'}</td>
       <td style="font-size:12px;color:var(--text-2)">${c.piva||'—'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
@@ -4814,6 +4846,7 @@ async function salvaCliente(){
     nome, ref:document.getElementById('cl-ref').value,
     tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
     citta:document.getElementById('cl-citta').value,
+    regione:document.getElementById('cl-regione')?.value||'',
     piva:document.getElementById('cl-piva').value.trim(),
     ind_legale:document.getElementById('cl-ind-legale').value.trim(),
     ind_consegna:document.getElementById('cl-ind-consegna').value.trim(),
@@ -4829,7 +4862,7 @@ async function salvaCliente(){
   closeModal('modal-cliente');
   if(tipoModal==='fornitore') renderFornitori(); else renderClienti();
   renderDash(); showSave();
-  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-regione','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
 function setEditTipo(tipo){
@@ -4848,7 +4881,8 @@ function setEditTipo(tipo){
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
+  popolaSelectRegioni();
+  ['nome','ref','tel','email','citta','regione','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
     const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
   });
   const same = document.getElementById('edit-cl-ind-same');
@@ -4864,6 +4898,7 @@ async function aggiornaCliente(){
     nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
     tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
     citta:document.getElementById('edit-cl-citta').value,
+    regione:document.getElementById('edit-cl-regione')?.value||'',
     piva:document.getElementById('edit-cl-piva')?.value.trim()||'',
     ind_legale:document.getElementById('edit-cl-ind-legale')?.value.trim()||'',
     ind_consegna:document.getElementById('edit-cl-ind-consegna')?.value.trim()||'',
