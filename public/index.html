@@ -304,8 +304,6 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         <button class="login-btn" onclick="doLogin()">Accedi</button>
         <div class="login-error" id="login-error"></div>
         <div style="text-align:center;margin-top:11px"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
-        <div class="login-divider">oppure</div>
-        <div style="text-align:center;font-size:13px;color:var(--text-2)"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
       </div>
       <div class="login-view" id="view-register">
         <div class="login-right-title">Nuovo account</div>
@@ -4278,7 +4276,10 @@ function aggiornaRiepilogoOrdine(mode){
     kgTot += kg;
     importoTot += kg*(r.prezzoKg||0);
   });
-  if(riepiEl) riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
+  if(riepiEl){
+    const importoIva = importoTot * 1.04;
+    riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?` · <strong style="color:var(--brand)">€${importoTot.toFixed(2)}</strong> <span style="color:var(--text-3);font-size:12px">(netto)</span> · <strong style="color:var(--brand)">€${importoIva.toFixed(2)}</strong> <span style="color:var(--text-3);font-size:12px">(IVA 4% incl.)</span>`:''}`;
+  }
   // Auto-compila peso trasporto se il campo esiste (solo in edit, dove resta editabile)
   const pesoEl = document.getElementById(mode==='edit'?'edit-ord-peso-trasporto':'ord-peso-trasporto');
   if(pesoEl && !pesoEl.dataset.manuale) pesoEl.value = kgTot || '';
