@@ -251,6 +251,7 @@ async function initDB() {
         fic_ddt_id INTEGER,
         fic_ddt_numero TEXT,
         peso_trasporto NUMERIC,
+        destinazione TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -276,6 +277,8 @@ async function initDB() {
       ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER DEFAULT NULL;
       -- Migrazione: aggiunge regione se non esiste già
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS regione TEXT;
+      -- Migrazione: aggiunge destinazione ordine se non esiste già
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS destinazione TEXT;
 
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
@@ -1399,12 +1402,12 @@ app.get('/api/ordini', async (req, res) => {
 });
 
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt, destinazione } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
-      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'']
+      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel,peso_trasporto,destinazione)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'']
     );
     const ordine = r.rows[0];
 
@@ -1435,19 +1438,16 @@ app.post('/api/ordini', async (req, res) => {
           const sacchi = p.sacchi || p.bancali || 1;
           // Cerca il prodotto in FIC per nome (case-insensitive)
           const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
-          const misuraFic = (ficProd?.measure || '').toLowerCase().trim();
-          const isKg = misuraFic === 'kg' || misuraFic === 'kg.' || misuraFic === 'chilogrammi';
 
-          // Se il prodotto FIC è impostato in KG: quantità = kg totali, prezzo = €/kg
-          // Altrimenti: quantità = numero sacchi, prezzo = €/sacco
-          const qty = isKg ? kgTot : sacchi;
-          const net_price = isKg ? (p.prezzoKg||0) : (kgTot * (p.prezzoKg||0)) / (sacchi||1);
+          // Quantità sempre in kg totali, prezzo sempre €/kg (indipendentemente da come è impostato il prodotto su FIC)
+          const qty = kgTot;
+          const net_price = p.prezzoKg || 0;
 
           const item = {
             name: ficProd?.name || p.nome,
             description: `${sacchi} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
             qty: qty,
-            measure: ficProd?.measure || 'Sacchi',
+            measure: 'Kg',
             net_price: net_price,
             vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
             gross_price: net_price,
@@ -1472,15 +1472,19 @@ app.post('/api/ordini', async (req, res) => {
         const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
         const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
 
-        // Costruisci entity con indirizzo di spedizione (priorità: ind_consegna > ind_legale > ind)
-        const indirizzoSpedizione = (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+        // Costruisci entity con indirizzo di spedizione
+        // Priorità: destinazione scritta per QUESTO ordine > ind_consegna cliente > ind_legale > ind
+        const destinazioneOrdine = (req.body.destinazione || '').trim();
+        const indirizzoSpedizione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
         const entityObj = ficClienteId
           ? { id: ficClienteId, name: cliente }
           : { name: cliente };
         if (indirizzoSpedizione) entityObj.address_street = indirizzoSpedizione;
-        if (clienteRow?.citta) entityObj.address_city = clienteRow.citta;
-        // Se l'indirizzo di consegna è diverso da quello legale, lo segnaliamo nelle note
-        if (clienteRow?.ind_consegna && clienteRow?.ind_legale && clienteRow.ind_consegna.trim() !== clienteRow.ind_legale.trim()) {
+        if (!destinazioneOrdine && clienteRow?.citta) entityObj.address_city = clienteRow.citta;
+        // Se la destinazione (di questo ordine o salvata sul cliente) è diversa dall'indirizzo legale, segnalalo nelle note
+        if (destinazioneOrdine && clienteRow?.ind_legale && destinazioneOrdine !== clienteRow.ind_legale.trim()) {
+          noteArr.push(`Consegna presso: ${destinazioneOrdine}`);
+        } else if (!destinazioneOrdine && clienteRow?.ind_consegna && clienteRow?.ind_legale && clienteRow.ind_consegna.trim() !== clienteRow.ind_legale.trim()) {
           noteArr.push(`Consegna presso: ${clienteRow.ind_consegna}${clienteRow.citta ? ', '+clienteRow.citta : ''}`);
         }
 
