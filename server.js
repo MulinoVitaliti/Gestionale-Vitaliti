@@ -158,6 +158,7 @@ async function initDB() {
         tel TEXT,
         email TEXT,
         citta TEXT,
+        regione TEXT,
         ind TEXT,
         ind_legale TEXT,
         ind_consegna TEXT,
@@ -252,6 +253,8 @@ async function initDB() {
       );
       -- Migrazione: aggiunge fic_fattura_id se non esiste già
       ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER DEFAULT NULL;
+      -- Migrazione: aggiunge regione se non esiste già
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS regione TEXT;
 
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
@@ -919,7 +922,7 @@ async function sincronizzaConFIC(dati, ficId = null) {
 }
 
 app.post('/api/clienti', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
+  const { nome, ref, tel, email, citta, regione, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
   try {
     const tipoRecord = tipo || 'cliente';
     const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
@@ -929,8 +932,8 @@ app.post('/api/clienti', async (req, res) => {
 
     // Crea prima nel gestionale
     const r = await pool.query(
-      'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
-      [codice, tipoRecord, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
+      'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,regione,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',
+      [codice, tipoRecord, nome, ref, tel, email, citta, regione||null, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
     );
     const cliente = r.rows[0];
 
@@ -947,11 +950,11 @@ app.post('/api/clienti', async (req, res) => {
 });
 
 app.put('/api/clienti/:id', async (req, res) => {
-  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, tipo } = req.body;
+  const { nome, ref, tel, email, citta, regione, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, tipo } = req.body;
   try {
     await pool.query(
-      'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,ind=$7,ind_legale=$8,ind_consegna=$9,sdi=$10,pec=$11,piva=$12,prod=$13,note=$14 WHERE id=$15',
-      [tipo||'cliente', nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
+      'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,regione=$7,ind=$8,ind_legale=$9,ind_consegna=$10,sdi=$11,pec=$12,piva=$13,prod=$14,note=$15 WHERE id=$16',
+      [tipo||'cliente', nome, ref, tel, email, citta, regione||null, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
     );
 
     // Sincronizza aggiornamento su FIC se il contatto ha già un fic_id
