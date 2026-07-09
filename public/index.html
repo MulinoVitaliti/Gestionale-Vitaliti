@@ -4223,12 +4223,46 @@ const PRODOTTI_MULINO = [
   {nome:'Altro',                            kg_sacco:25, sacchi_bancale:0},
 ];
 
+// ── CATALOGO PRODOTTI REALE DA FATTURE IN CLOUD ─────────────────────────────
+// Raggruppa per nome prodotto, con le varianti di peso/codice disponibili per ciascuno.
+let _catalogoFIC = null; // { nomi:[...], gruppi:{ nome: [{codice,descrizione,peso,prezzo,measure}] } }
+async function caricaCatalogoFIC(){
+  if(_catalogoFIC) return _catalogoFIC;
+  try {
+    const prods = await api.get('/api/fatture/products');
+    if(!Array.isArray(prods)) { _catalogoFIC = {nomi:[], gruppi:{}}; return _catalogoFIC; }
+    const gruppi = {};
+    prods.forEach(p=>{
+      if((p.category||'').trim().toUpperCase()==='MAT.PRIMA') return; // escludi materia prima, non si vende ai clienti
+      if(!p.name || !p.code) return; // serve sempre un codice per finire nel DDT
+      let peso = null;
+      const mCat = (p.category||'').match(/(\d+(?:[.,]\d+)?)\s*kg/i);
+      if(mCat) peso = parseFloat(mCat[1].replace(',','.'));
+      else { const mCod = (p.code||'').match(/(\d+(?:[.,]\d+)?)\s*KG/i); if(mCod) peso = parseFloat(mCod[1].replace(',','.')); }
+      if(!gruppi[p.name]) gruppi[p.name] = [];
+      gruppi[p.name].push({ codice: p.code, descrizione: p.description||'', peso, prezzo: p.net_price||0, measure: p.measure||'Kg' });
+    });
+    Object.values(gruppi).forEach(arr=>arr.sort((a,b)=>(a.peso||0)-(b.peso||0)));
+    _catalogoFIC = { nomi: Object.keys(gruppi).sort(), gruppi };
+  } catch(e) {
+    console.error('Errore caricamento catalogo FIC:', e);
+    _catalogoFIC = { nomi:[], gruppi:{} };
+  }
+  return _catalogoFIC;
+}
+
 let _ordineRighe = [];
 let _ordineRigheEdit = [];
 
 function aggiungiRigaOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
-  righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: '', kgSacco: 30, prezzoKg: 0 });
+  if(_catalogoFIC && _catalogoFIC.nomi.length){
+    const nome = _catalogoFIC.nomi[0];
+    const prima = _catalogoFIC.gruppi[nome][0];
+    righe.push({ nome, codice: prima?.codice||'', descrizione: prima?.descrizione||'', sacchi: '', kgSacco: prima?.peso||0, prezzoKg: 0 });
+  } else {
+    righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: '', kgSacco: 30, prezzoKg: 0 });
+  }
   renderRigheOrdine(mode);
 }
 
@@ -4236,23 +4270,51 @@ function renderRigheOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
   const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
   if(!cont) return;
+  const catalogoOk = _catalogoFIC && _catalogoFIC.nomi.length > 0;
 
   cont.innerHTML = righe.map((r,i)=>{
-    const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
-    const kgSacco = r.kgSacco !== undefined ? r.kgSacco : prodInfo.kg_sacco;
+    let kgSacco, blocProdotto;
+    if(catalogoOk){
+      const varianti = _catalogoFIC.gruppi[r.nome] || _catalogoFIC.gruppi[_catalogoFIC.nomi[0]] || [];
+      const variante = varianti.find(v=>v.codice===r.codice) || varianti[0];
+      kgSacco = variante?.peso ?? (r.kgSacco||0);
+      blocProdotto = `
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto</label>
+        <select onchange="onRigaTipoChange(${i},'${mode}',this.value)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
+          ${_catalogoFIC.nomi.map(nome=>`<option value="${nome}" ${nome===r.nome?'selected':''}>${nome}</option>`).join('')}
+        </select>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
+        <div>
+          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Peso sacco</label>
+          <select onchange="onRigaPesoChange(${i},'${mode}',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
+            ${varianti.map(v=>`<option value="${v.codice}" ${v.codice===variante?.codice?'selected':''}>${v.peso?v.peso+' kg':'(peso non indicato)'}</option>`).join('')}
+          </select>
+        </div>
+        <div>
+          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Codice FIC</label>
+          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;font-family:monospace;text-align:center;background:var(--surface-2);color:var(--text-2)">${variante?.codice||'—'}</div>
+        </div>
+      </div>`;
+    } else {
+      const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
+      kgSacco = r.kgSacco !== undefined ? r.kgSacco : prodInfo.kg_sacco;
+      blocProdotto = `
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto <span style="color:var(--text-3);font-weight:400">(catalogo FIC non disponibile)</span></label>
+        <select onchange="onRigaProdottoChange(${i},'${mode}')" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
+          ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
+        </select>
+      </div>`;
+    }
     const kgTot = (r.sacchi||0) * (kgSacco||0);
     const totRiga = kgTot * (r.prezzoKg||0);
     return `
     <div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r);padding:10px 12px;position:relative">
       <button onclick="rimuoviRiga(${i},'${mode}')" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;padding:0" title="Rimuovi">×</button>
-      <!-- Riga 1: prodotto -->
-      <div class="form-group" style="margin-bottom:8px">
-        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto</label>
-        <select onchange="onRigaProdottoChange(${i},'${mode}')" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
-          ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
-        </select>
-      </div>
-      <!-- Riga 2: sacchi / kg sacco / kg tot / €/kg / totale -->
+      ${blocProdotto}
+      <!-- Riga: sacchi / kg sacco / kg tot / €/kg / totale -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">N° sacchi</label>
@@ -4262,9 +4324,9 @@ function renderRigheOrdine(mode='new'){
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">kg/sacco</label>
-          <input type="number" value="${kgSacco}" min="1" step="0.5"
-            onchange="aggiornaRiga(${i},'kgSacco',this.value,'${mode}')"
-            style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">
+          ${catalogoOk
+            ? `<div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:var(--surface-2);color:var(--text-2)">${kgSacco||'—'}</div>`
+            : `<input type="number" value="${kgSacco}" min="1" step="0.5" onchange="aggiornaRiga(${i},'kgSacco',this.value,'${mode}')" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">`}
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">kg totali</label>
@@ -4321,6 +4383,29 @@ function onRigaProdottoChange(i, mode){
   renderRigheOrdine(mode);
 }
 
+// Cambio "Prodotto": aggiorna il nome e seleziona di default la prima variante di peso disponibile
+function onRigaTipoChange(i, mode, nomeSelezionato){
+  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
+  righe[i].nome = nomeSelezionato;
+  const varianti = _catalogoFIC?.gruppi[nomeSelezionato] || [];
+  const prima = varianti[0];
+  righe[i].codice = prima?.codice || '';
+  righe[i].kgSacco = prima?.peso || 0;
+  righe[i].descrizione = prima?.descrizione || '';
+  renderRigheOrdine(mode);
+}
+
+// Cambio "Peso sacco": aggiorna codice e kg/sacco in base alla variante scelta per lo stesso prodotto
+function onRigaPesoChange(i, mode, codiceSelezionato){
+  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
+  const varianti = _catalogoFIC?.gruppi[righe[i].nome] || [];
+  const scelta = varianti.find(v=>v.codice===codiceSelezionato);
+  righe[i].codice = scelta?.codice || '';
+  righe[i].kgSacco = scelta?.peso || 0;
+  righe[i].descrizione = scelta?.descrizione || '';
+  renderRigheOrdine(mode);
+}
+
 function aggiornaRiga(i, campo, val, mode){
   const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
   righe[i][campo] = parseFloat(val)||0;
@@ -4334,8 +4419,15 @@ function rimuoviRiga(i, mode){
   renderRigheOrdine(mode);
 }
 
-function apriNuovoOrdine(){
-  _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:'', kgSacco:30, prezzoKg:0}];
+async function apriNuovoOrdine(){
+  await caricaCatalogoFIC();
+  if(_catalogoFIC && _catalogoFIC.nomi.length){
+    const primoNome = _catalogoFIC.nomi.includes('Semola Rimacinata di Grano Duro') ? 'Semola Rimacinata di Grano Duro' : _catalogoFIC.nomi[0];
+    const prima = _catalogoFIC.gruppi[primoNome][0];
+    _ordineRighe = [{nome:primoNome, codice:prima?.codice||'', descrizione:prima?.descrizione||'', sacchi:'', kgSacco:prima?.peso||0, prezzoKg:0}];
+  } else {
+    _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:'', kgSacco:30, prezzoKg:0}];
+  }
   try{ document.getElementById('ord-cliente-search').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente-suggestions').style.display = 'none'; }catch(e){}
@@ -4450,6 +4542,8 @@ async function salvaOrdine(creaDdt){
     const kgTot = (r.sacchi||0) * (r.kgSacco||0);
     return {
       nome: r.nome,
+      codice: r.codice||'',
+      descrizione: r.descrizione||'',
       sacchi: r.sacchi||0,
       kgSacco: r.kgSacco||0,
       kgTotale: kgTot,
