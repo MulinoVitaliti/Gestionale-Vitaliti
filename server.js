@@ -1429,34 +1429,49 @@ app.post('/api/ordini', async (req, res) => {
         const clienteRow = cli.rows[0] || null;
         const ficClienteId = clienteRow?.fic_id || null;
 
-        // Righe DDT dai prodotti con sacchi e kg
+        // Righe DDT: nome, descrizione e codice presi dal catalogo FIC (coerenza con l'elenco prodotti su Fatture in Cloud)
         const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
-        // Carica mappa prodotti FIC per trovare product_id
-        const ficProdMap = await getFicProducts();
+        // Carica indici prodotti FIC per codice (primario) e nome (ripiego, per ordini creati prima del selettore a catalogo)
+        const { byCode: ficByCode, byName: ficByName } = await getFicProducts();
+        function trovaProdottoFic(p) {
+          if (p.codice) {
+            const t = ficByCode[p.codice.toLowerCase().trim()];
+            if (t) return t;
+          }
+          return ficByName[(p.nome||'').toLowerCase().trim()];
+        }
+
+        // Verifica PRIMA che tutti i prodotti dell'ordine esistano nel catalogo FIC.
+        // Se manca anche uno solo, non creiamo il DDT: va prima censito su Fatture in Cloud.
+        const prodottiMancanti = prodList
+          .filter(p => !trovaProdottoFic(p))
+          .map(p => p.nome);
+
+        if (prodottiMancanti.length > 0) {
+          ordine.ddt_errore = `Prodotto/i non ancora presenti nel catalogo di Fatture in Cloud: ${[...new Set(prodottiMancanti)].join(', ')}. Creali su FIC (con codice e descrizione) e poi riprova a generare il DDT.`;
+        } else {
 
         const righe = prodList.map(p => {
           const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
-          const sacchi = p.sacchi || p.bancali || 1;
-          // Cerca il prodotto in FIC per nome (case-insensitive)
-          const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
+          // Prodotto trovato nel catalogo FIC (garantito: abbiamo già controllato sopra)
+          const ficProd = trovaProdottoFic(p);
 
           // Quantità sempre in kg totali, prezzo sempre €/kg (indipendentemente da come è impostato il prodotto su FIC)
           const qty = kgTot;
           const net_price = p.prezzoKg || 0;
 
-          const item = {
-            name: ficProd?.name || p.nome,
-            description: `${sacchi} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
+          return {
+            name: ficProd.name,
+            description: ficProd.description || '',
             qty: qty,
             measure: 'Kg',
             net_price: net_price,
-            vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
+            vat: ficProd.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
             gross_price: net_price,
             not_taxable: false,
+            product_id: ficProd.id,
+            code: ficProd.code,
           };
-          if (ficProd?.id) item.product_id = ficProd.id;
-          if (ficProd?.code) item.code = ficProd.code;
-          return item;
         });
 
         if (righe.length === 0) {
@@ -1518,6 +1533,7 @@ app.post('/api/ordini', async (req, res) => {
           console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
           ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + errTxt;
         }
+        } // chiude l'else di "tutti i prodotti trovati nel catalogo FIC"
       } catch(e) {
         console.error('Errore creazione DDT FIC:', e.message);
         ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + e.message;
@@ -2369,9 +2385,9 @@ let ficProductsCache = null;
 
 async function getFicProducts() {
   if (ficProductsCache && Date.now() - ficProductsCache.timestamp < 10 * 60 * 1000) {
-    return ficProductsCache.map;
+    return ficProductsCache;
   }
-  if (!ficTokens || !ficCompanyId) return {};
+  if (!ficTokens || !ficCompanyId) return { byName: {}, byCode: {}, list: [] };
   try {
     let allProducts = [], page = 1;
     while (true) {
@@ -2382,27 +2398,28 @@ async function getFicProducts() {
       if (data.data.length < 100) break;
       page++;
     }
-    const map = {};
+    const byName = {}, byCode = {};
     for (const p of allProducts) {
-      if (p.name) map[p.name.toLowerCase().trim()] = p;
+      if (p.name) byName[p.name.toLowerCase().trim()] = p;
+      if (p.code) byCode[p.code.toLowerCase().trim()] = p;
     }
-    ficProductsCache = { timestamp: Date.now(), map };
+    ficProductsCache = { timestamp: Date.now(), byName, byCode, list: allProducts };
     console.log('[FIC Products] Cache: ' + allProducts.length + ' prodotti');
-    return map;
-  } catch (e) { console.error('[FIC Products] Errore:', e.message); return {}; }
+    return ficProductsCache;
+  } catch (e) { console.error('[FIC Products] Errore:', e.message); return { byName: {}, byCode: {}, list: [] }; }
 }
 
 app.get('/api/fatture/products', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
   ficProductsCache = null;
-  const map = await getFicProducts();
-  res.json(Object.values(map));
+  const { list } = await getFicProducts();
+  res.json(list);
 });
 
 app.post('/api/fatture/products/refresh', async (req, res) => {
   ficProductsCache = null;
-  const map = await getFicProducts();
-  res.json({ prodotti: Object.keys(map).length });
+  const { list } = await getFicProducts();
+  res.json({ prodotti: list.length });
 });
 
 // Leggi DDT specifico da FIC (debug/ispezione struttura)
