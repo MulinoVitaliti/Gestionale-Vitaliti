@@ -1177,7 +1177,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         </div>
         <div class="card-body">
           <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">
-            Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo.
+            Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo. <strong>I nominativi che non esistono ancora nel gestionale vengono proposti come nuovi contatti da creare</strong>, con tutti i dati già presenti nel file — li rivedi e confermi con un click, invece di inserirli uno per uno.
           </div>
           <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px">
             <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA.
@@ -3313,7 +3313,8 @@ async function sincronizzaIndirizziFic(){
 // ── IMPORTAZIONE CONTATTI DA EXCEL ──────────────────────────────────────────
 let _excelImportRighe = []; // righe normalizzate pronte da inviare al server
 let _excelImportCerti = []; // match certi calcolati dal server
-let _excelSenzaMatch = []; // nomi senza nessuna corrispondenza
+let _excelSenzaMatch = []; // righe complete senza nessuna corrispondenza (candidate a nuovo contatto)
+const CAMPI_AGGIORNABILI_CLIENTE_JS = ['tel', 'email', 'citta', 'ind_legale', 'ind_consegna', 'sdi', 'pec', 'ref', 'piva'];
 
 // Mappa alias colonna (minuscolo, senza spazi/punti) -> campo interno
 const EXCEL_COLONNE_ALIAS = {
@@ -3446,11 +3447,20 @@ function renderAnteprimaExcel(){
     html += `</div>`;
   }
 
-  // ── Senza match ──
+  // ── Senza match: diventano nuovi contatti ──
   if(senzaMatch.length){
-    html += `<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">
-      <strong>${senzaMatch.length} righe senza nessuna corrispondenza</strong> nel gestionale: ${senzaMatch.slice(0,15).join(', ')}${senzaMatch.length>15?` e altri ${senzaMatch.length-15}...`:''}
-    </div>`;
+    html += `<div style="font-size:13px;font-weight:600;color:var(--brand);margin-bottom:8px"><i class="ti ti-user-plus"></i> ${senzaMatch.length} nuovi contatti da creare</div>`;
+    html += `<div style="font-size:12px;color:var(--text-2);margin-bottom:8px">Non esistono ancora nel gestionale — verranno creati con i dati del file. Deseleziona quelli che non vuoi importare.</div>`;
+    html += `<div style="border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden;max-height:280px;overflow-y:auto">`;
+    senzaMatch.forEach((r,i)=>{
+      const campiTesto = CAMPI_AGGIORNABILI_CLIENTE_JS.filter(c=>r[c]).map(c=>`<strong>${campoLabel(c)}:</strong> ${r[c]}`).join(' · ');
+      const nessunAltroDato = '<span style="color:var(--text-3)">nessun altro dato</span>';
+      html += `<label style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;font-size:12px;border-bottom:${i<senzaMatch.length-1?'1px solid var(--border)':'none'};cursor:pointer">
+        <input type="checkbox" class="excel-nuovo-check" data-index="${i}" checked style="margin-top:2px">
+        <span><strong>${r.nome}</strong><br><span style="color:var(--text-2)">${campiTesto||nessunAltroDato}</span></span>
+      </label>`;
+    });
+    html += `</div>`;
   }
 
   html += `<button class="btn btn-primary" id="btn-conferma-import-excel" onclick="confermaImportExcel()"><i class="ti ti-check"></i>Conferma e completa contatti</button>`;
@@ -3477,16 +3487,20 @@ async function confermaImportExcel(){
       ...(_excelDubbiCorrenti||[]).filter(d=>d.sceltaClienteId).map(d=>({ clienteId:d.sceltaClienteId, campiDaCompletare:d.campiDaCompletare }))
     ];
 
-    if(conferme.length===0){ alert('Nessun aggiornamento da applicare.'); return; }
+    const nuovi = Array.from(document.querySelectorAll('.excel-nuovo-check:checked'))
+      .map(chk => _excelSenzaMatch[parseInt(chk.dataset.index)])
+      .filter(Boolean);
 
-    const r = await api.post('/api/clienti/importa-excel/conferma', { conferme });
+    if(conferme.length===0 && nuovi.length===0){ alert('Nessun aggiornamento da applicare.'); return; }
+
+    const r = await api.post('/api/clienti/importa-excel/conferma', { conferme, nuovi });
     if(r.error){ alert('Errore: '+r.error); return; }
 
     const clientiAggiornati = await api.get('/api/clienti');
     if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
     renderClienti();
 
-    alert(`✅ Importazione completata!\n\n📊 ${r.aggiornati} clienti completati con i nuovi dati.`);
+    alert(`✅ Importazione completata!\n\n📊 ${r.aggiornati||0} clienti completati con i nuovi dati.\n➕ ${r.creati||0} nuovi contatti creati.`);
     showSave();
 
     // Reset
