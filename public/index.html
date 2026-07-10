@@ -1088,6 +1088,18 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
+      <!-- Catalogo prodotti (gestito qui, indipendente da FIC) -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-package" style="color:var(--brand)"></i>Catalogo prodotti</div>
+          <button class="btn btn-sm btn-primary" onclick="apriModalProdottoCatalogo()"><i class="ti ti-plus"></i>Nuovo prodotto</button>
+        </div>
+        <div class="card-body">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:12px">Nome, codice e descrizione da qui vengono riportati esattamente così sul DDT. Il codice deve corrispondere a quello registrato su Fatture in Cloud per lo stesso prodotto.</div>
+          <div class="table-wrap"><table><thead><tr><th>Nome</th><th>Codice</th><th>Descrizione</th><th>Peso sacco</th><th>Prezzo default</th><th></th></tr></thead><tbody id="tbl-catalogo-prodotti"></tbody></table></div>
+        </div>
+      </div>
+
       <!-- Connessione Gmail -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -1342,6 +1354,25 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" onclick="closeModal('modal-destinazione')">Annulla</button>
         <button class="btn btn-primary" onclick="salvaDestinazioneOrdine()"><i class="ti ti-check"></i>Usa questo indirizzo</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-prodotto-catalogo">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header"><div class="modal-title" id="modal-prodotto-catalogo-titolo">Nuovo prodotto</div><button class="btn btn-icon" onclick="closeModal('modal-prodotto-catalogo')"><i class="ti ti-x"></i></button></div>
+    <div class="modal-body">
+      <input type="hidden" id="pc-id">
+      <div class="form-group"><label class="form-label">Nome prodotto</label><input type="text" id="pc-nome" placeholder="Es. Semola Rimacinata di Grano Duro"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Codice (deve corrispondere a FIC)</label><input type="text" id="pc-codice" placeholder="Es. SEMOLA-RIM-30KG"></div>
+        <div class="form-group"><label class="form-label">Peso sacco (kg)</label><input type="number" id="pc-peso" step="0.5" placeholder="30"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Descrizione (compare sul DDT)</label><input type="text" id="pc-descrizione" placeholder="Es. Semola Rimacinata di Grano Duro sacco kg. 30"></div>
+      <div class="form-group"><label class="form-label">Prezzo €/kg di default (opzionale)</label><input type="number" id="pc-prezzo" step="0.001" placeholder="0.000"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="closeModal('modal-prodotto-catalogo')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaProdottoCatalogo()"><i class="ti ti-check"></i>Salva</button>
       </div>
     </div>
   </div>
@@ -2310,7 +2341,7 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); renderCatalogoProdotti(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -4215,6 +4246,65 @@ function filterOrdini(f,el){
 }
 
 // ── RIGHE PRODOTTO ORDINE ─────────────────────────────────────────────────
+// ── CATALOGO PRODOTTI (Impostazioni, admin) ─────────────────────────────────
+let _catalogoProdottiLista = [];
+async function renderCatalogoProdotti(){
+  const tb = document.getElementById('tbl-catalogo-prodotti');
+  if(!tb) return;
+  const data = await api.get('/api/prodotti-catalogo');
+  if(!Array.isArray(data)){ tb.innerHTML = '<tr><td colspan="6"><div class="empty-state">Errore nel caricamento</div></td></tr>'; return; }
+  _catalogoProdottiLista = data;
+  _catalogoFIC = null; // forza il ricaricamento del catalogo usato nel form ordine al prossimo utilizzo
+  if(!data.length){ tb.innerHTML = '<tr><td colspan="6"><div class="empty-state">Nessun prodotto nel catalogo. Aggiungine uno.</div></td></tr>'; return; }
+  tb.innerHTML = data.map(p=>`
+    <tr>
+      <td style="font-weight:600">${p.nome}</td>
+      <td><span style="font-family:monospace;font-size:12px;background:var(--surface-2);padding:2px 6px;border-radius:4px">${p.codice}</span></td>
+      <td style="font-size:12px;color:var(--text-2)">${p.descrizione||'—'}</td>
+      <td>${p.peso_kg?p.peso_kg+' kg':'—'}</td>
+      <td>${p.prezzo_default?'€'+parseFloat(p.prezzo_default).toFixed(3):'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="apriModalProdottoCatalogo(${p.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaProdottoCatalogo(${p.id},'${p.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>
+    </tr>`).join('');
+}
+
+function apriModalProdottoCatalogo(id){
+  const p = id ? _catalogoProdottiLista.find(x=>x.id===id) : null;
+  document.getElementById('modal-prodotto-catalogo-titolo').textContent = p ? 'Modifica prodotto' : 'Nuovo prodotto';
+  document.getElementById('pc-id').value = p?.id || '';
+  document.getElementById('pc-nome').value = p?.nome || '';
+  document.getElementById('pc-codice').value = p?.codice || '';
+  document.getElementById('pc-peso').value = p?.peso_kg || '';
+  document.getElementById('pc-descrizione').value = p?.descrizione || '';
+  document.getElementById('pc-prezzo').value = p?.prezzo_default || '';
+  openModal('modal-prodotto-catalogo');
+}
+
+async function salvaProdottoCatalogo(){
+  const id = document.getElementById('pc-id').value;
+  const body = {
+    nome: document.getElementById('pc-nome').value.trim(),
+    codice: document.getElementById('pc-codice').value.trim(),
+    descrizione: document.getElementById('pc-descrizione').value.trim(),
+    peso_kg: parseFloat(document.getElementById('pc-peso').value) || null,
+    prezzo_default: parseFloat(document.getElementById('pc-prezzo').value) || null,
+  };
+  if(!body.nome || !body.codice) return alert('Nome e codice sono obbligatori');
+  const data = id ? await api.put('/api/prodotti-catalogo/'+id, body) : await api.post('/api/prodotti-catalogo', body);
+  if(data.error) return alert('Errore: '+data.error);
+  closeModal('modal-prodotto-catalogo');
+  renderCatalogoProdotti();
+}
+
+async function eliminaProdottoCatalogo(id, nome){
+  if(!confirm(`Rimuovere "${nome}" dal catalogo? Non comparirà più tra i prodotti selezionabili nei nuovi ordini.`)) return;
+  const data = await api.del('/api/prodotti-catalogo/'+id);
+  if(data?.error) return alert('Errore: '+data.error);
+  renderCatalogoProdotti();
+}
+
 const PRODOTTI_MULINO = [
   {nome:'Semola rimacinata di grano duro', kg_sacco:30, sacchi_bancale:42},
   {nome:'Semola Senatore Cappelli',         kg_sacco:25, sacchi_bancale:42},
@@ -4223,29 +4313,24 @@ const PRODOTTI_MULINO = [
   {nome:'Altro',                            kg_sacco:25, sacchi_bancale:0},
 ];
 
-// ── CATALOGO PRODOTTI REALE DA FATTURE IN CLOUD ─────────────────────────────
+// ── CATALOGO PRODOTTI (gestito in Impostazioni, non dipende da FIC) ────────
 // Raggruppa per nome prodotto, con le varianti di peso/codice disponibili per ciascuno.
-let _catalogoFIC = null; // { nomi:[...], gruppi:{ nome: [{codice,descrizione,peso,prezzo,measure}] } }
+let _catalogoFIC = null; // { nomi:[...], gruppi:{ nome: [{codice,descrizione,peso,prezzo}] } }
 async function caricaCatalogoFIC(){
   if(_catalogoFIC) return _catalogoFIC;
   try {
-    const prods = await api.get('/api/fatture/products');
+    const prods = await api.get('/api/prodotti-catalogo');
     if(!Array.isArray(prods)) { _catalogoFIC = {nomi:[], gruppi:{}}; return _catalogoFIC; }
     const gruppi = {};
     prods.forEach(p=>{
-      if((p.category||'').trim().toUpperCase()==='MAT.PRIMA') return; // escludi materia prima, non si vende ai clienti
-      if(!p.name || !p.code) return; // serve sempre un codice per finire nel DDT
-      let peso = null;
-      const mCat = (p.category||'').match(/(\d+(?:[.,]\d+)?)\s*kg/i);
-      if(mCat) peso = parseFloat(mCat[1].replace(',','.'));
-      else { const mCod = (p.code||'').match(/(\d+(?:[.,]\d+)?)\s*KG/i); if(mCod) peso = parseFloat(mCod[1].replace(',','.')); }
-      if(!gruppi[p.name]) gruppi[p.name] = [];
-      gruppi[p.name].push({ codice: p.code, descrizione: p.description||'', peso, prezzo: p.net_price||0, measure: p.measure||'Kg' });
+      if(!p.nome || !p.codice) return;
+      if(!gruppi[p.nome]) gruppi[p.nome] = [];
+      gruppi[p.nome].push({ codice: p.codice, descrizione: p.descrizione||'', peso: p.peso_kg?parseFloat(p.peso_kg):null, prezzo: p.prezzo_default?parseFloat(p.prezzo_default):0 });
     });
     Object.values(gruppi).forEach(arr=>arr.sort((a,b)=>(a.peso||0)-(b.peso||0)));
     _catalogoFIC = { nomi: Object.keys(gruppi).sort(), gruppi };
   } catch(e) {
-    console.error('Errore caricamento catalogo FIC:', e);
+    console.error('Errore caricamento catalogo prodotti:', e);
     _catalogoFIC = { nomi:[], gruppi:{} };
   }
   return _catalogoFIC;
@@ -4293,7 +4378,7 @@ function renderRigheOrdine(mode='new'){
           </select>
         </div>
         <div>
-          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Codice FIC</label>
+          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Codice</label>
           <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;font-family:monospace;text-align:center;background:var(--surface-2);color:var(--text-2)">${variante?.codice||'—'}</div>
         </div>
       </div>`;
@@ -4302,7 +4387,7 @@ function renderRigheOrdine(mode='new'){
       kgSacco = r.kgSacco !== undefined ? r.kgSacco : prodInfo.kg_sacco;
       blocProdotto = `
       <div class="form-group" style="margin-bottom:8px">
-        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto <span style="color:var(--text-3);font-weight:400">(catalogo FIC non disponibile)</span></label>
+        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto <span style="color:var(--text-3);font-weight:400">(catalogo vuoto — aggiungine da Impostazioni)</span></label>
         <select onchange="onRigaProdottoChange(${i},'${mode}')" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
           ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
         </select>
