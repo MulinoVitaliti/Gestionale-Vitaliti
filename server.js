@@ -1002,10 +1002,7 @@ app.post('/api/clienti', async (req, res) => {
   const { nome, ref, tel, email, citta, regione, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
   try {
     const tipoRecord = tipo || 'cliente';
-    const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
-    const countR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipoRecord]);
-    const n = parseInt(countR.rows[0].count) + 1;
-    const codice = prefisso + String(n).padStart(3, '0');
+    const codice = await generaProssimoCodiceCliente(tipoRecord);
 
     // Crea prima nel gestionale
     const r = await pool.query(
@@ -1312,9 +1309,7 @@ app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
     let creati = 0;
     for (const riga of (nuovi || [])) {
       if (!riga.nome) continue;
-      const countR = await pool.query("SELECT COUNT(*) FROM clienti WHERE tipo='cliente'");
-      const n = parseInt(countR.rows[0].count) + 1;
-      const codice = 'C' + String(n).padStart(3, '0');
+      const codice = await generaProssimoCodiceCliente('cliente');
       await pool.query(
         `INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind_legale,ind_consegna,sdi,pec,piva)
          VALUES ($1,'cliente',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
@@ -1381,9 +1376,7 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
       }
 
       // Nuovo — importa con codice progressivo per tipo
-      const cntR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipo]);
-      const cN = parseInt(cntR.rows[0].count) + 1;
-      const codice = prefisso + String(cN).padStart(3, '0');
+      const codice = await generaProssimoCodiceCliente(tipo);
       await pool.query(
         'INSERT INTO clienti (codice,tipo,nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING',
         [codice, tipo, c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
@@ -2452,6 +2445,20 @@ app.get('/api/fatture/clients', async (req, res) => {
 
 // ── PRODOTTI FIC: cache in memoria + endpoint ─────────────────────────────
 let ficProductsCache = null;
+
+// Genera il prossimo codice cliente/fornitore libero, basandosi sul numero più alto già usato
+// (non sul conteggio dei record: quello si rompe se in passato è stato cancellato un contatto,
+// perché rigenera un codice già esistente e va in conflitto con il vincolo UNIQUE).
+async function generaProssimoCodiceCliente(tipoRecord) {
+  const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
+  const r = await pool.query(
+    `SELECT COALESCE(MAX(CAST(SUBSTRING(codice FROM 2) AS INTEGER)), 0) AS max_num
+     FROM clienti WHERE tipo=$1 AND codice ~ '^[A-Z][0-9]+$'`,
+    [tipoRecord]
+  );
+  const prossimo = (parseInt(r.rows[0].max_num) || 0) + 1;
+  return prefisso + String(prossimo).padStart(3, '0');
+}
 
 async function getFicProducts() {
   if (ficProductsCache && Date.now() - ficProductsCache.timestamp < 10 * 60 * 1000) {
