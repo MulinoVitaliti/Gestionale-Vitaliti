@@ -280,6 +280,18 @@ async function initDB() {
       -- Migrazione: aggiunge destinazione ordine se non esiste già
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS destinazione TEXT;
 
+      -- Catalogo prodotti gestito internamente (nome, codice e descrizione da riportare sul DDT)
+      CREATE TABLE IF NOT EXISTS prodotti_catalogo (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        codice TEXT NOT NULL UNIQUE,
+        descrizione TEXT,
+        peso_kg NUMERIC,
+        prezzo_default NUMERIC,
+        attivo BOOLEAN DEFAULT true,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
         tipo TEXT NOT NULL DEFAULT 'chiamata',
@@ -383,6 +395,24 @@ async function initDB() {
         pending BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       );
+    `);
+
+    // Catalogo prodotti: inserisce i prodotti reali (da export FIC) se non già presenti,
+    // riconoscendoli per codice — così è sicuro rieseguirlo ad ogni avvio senza duplicare nulla
+    await client.query(`
+      INSERT INTO prodotti_catalogo (nome, codice, descrizione, peso_kg, prezzo_default) VALUES
+      ('Crusca di Grano Duro', 'CRUSCA-GD-30KG', 'Crusca di Grano Duro', 30, 0.3),
+      ('Farina Integrale di Grano Duro', 'FARINA-INT-5KG', 'Farina integrale di Grano Duro sacco kg.5', 5, 1.5),
+      ('Farina Integrale di Grano Duro', 'FARINA-INT-10KG', 'Farina integrale di Grano Duro sacco kg.10', 10, 1.5),
+      ('Farina Integrale di Grano Duro', 'FARINA-INT-30KG', 'Farina integrale di Grano Duro sacco kg.30', 30, 1.5),
+      ('Perciasacchi Grano Duro', 'PERCIASACCHI-GD-25KG', 'Semola Rimacinata di Grano Duro Perciasacchi', 25, 3.0),
+      ('Russello Grano Duro', 'RUSSELLO-GD-25KG', 'Semola Integrale di Grano Duro Russello', 25, 2.5),
+      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-5KG', 'Semola Rimacinata di Grano Duro sacco kg. 5', 5, 1.2),
+      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-10KG', 'Semola Rimacinata di Grano Duro sacco kg. 10', 10, 1.0),
+      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-30KG', 'Semola Rimacinata di Grano Duro sacco kg. 30', 30, 1.0),
+      ('Senatore Cappelli Grano Duro', 'SENATORE CAPPELLI-GD-25KG', 'Semola Rimacinata di Grano Duro Senatore Cappelli', 25, 3.0),
+      ('Tumminia', 'TUMMINIA-GD-25KG', 'Semola Integrale Tumminia', 25, 2.5)
+      ON CONFLICT (codice) DO NOTHING;
     `);
 
     // Dati iniziali fasi
@@ -1429,48 +1459,49 @@ app.post('/api/ordini', async (req, res) => {
         const clienteRow = cli.rows[0] || null;
         const ficClienteId = clienteRow?.fic_id || null;
 
-        // Righe DDT: nome, descrizione e codice presi dal catalogo FIC (coerenza con l'elenco prodotti su Fatture in Cloud)
+        // Righe DDT: nome, descrizione e codice presi dal catalogo prodotti gestito nel gestionale
+        // (non dipende dal permesso "products:r" di Fatture in Cloud, che al momento risulta bloccato)
         const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
-        // Carica indici prodotti FIC per codice (primario) e nome (ripiego, per ordini creati prima del selettore a catalogo)
-        const { byCode: ficByCode, byName: ficByName } = await getFicProducts();
-        function trovaProdottoFic(p) {
-          if (p.codice) {
-            const t = ficByCode[p.codice.toLowerCase().trim()];
-            if (t) return t;
-          }
-          return ficByName[(p.nome||'').toLowerCase().trim()];
+        const catR = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true');
+        const catalogoByCode = {}, catalogoByNome = {};
+        catR.rows.forEach(p => {
+          catalogoByCode[p.codice.toLowerCase().trim()] = p;
+          catalogoByNome[p.nome.toLowerCase().trim()] = p;
+        });
+        function trovaProdottoCatalogo(p) {
+          if (p.codice && catalogoByCode[p.codice.toLowerCase().trim()]) return catalogoByCode[p.codice.toLowerCase().trim()];
+          return catalogoByNome[(p.nome||'').toLowerCase().trim()];
         }
 
-        // Verifica PRIMA che tutti i prodotti dell'ordine esistano nel catalogo FIC.
-        // Se manca anche uno solo, non creiamo il DDT: va prima censito su Fatture in Cloud.
+        // Verifica PRIMA che tutti i prodotti dell'ordine esistano nel catalogo del gestionale.
+        // Se manca anche uno solo, non creiamo il DDT: va prima aggiunto in Impostazioni → Catalogo prodotti.
         const prodottiMancanti = prodList
-          .filter(p => !trovaProdottoFic(p))
+          .filter(p => !trovaProdottoCatalogo(p))
           .map(p => p.nome);
 
         if (prodottiMancanti.length > 0) {
-          ordine.ddt_errore = `Prodotto/i non ancora presenti nel catalogo di Fatture in Cloud: ${[...new Set(prodottiMancanti)].join(', ')}. Creali su FIC (con codice e descrizione) e poi riprova a generare il DDT.`;
+          ordine.ddt_errore = `Prodotto/i non ancora presenti nel catalogo del gestionale: ${[...new Set(prodottiMancanti)].join(', ')}. Aggiungili da Impostazioni → Catalogo prodotti e poi riprova a generare il DDT.`;
         } else {
 
         const righe = prodList.map(p => {
           const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
-          // Prodotto trovato nel catalogo FIC (garantito: abbiamo già controllato sopra)
-          const ficProd = trovaProdottoFic(p);
+          // Prodotto trovato nel catalogo del gestionale (garantito: abbiamo già controllato sopra)
+          const catProd = trovaProdottoCatalogo(p);
 
-          // Quantità sempre in kg totali, prezzo sempre €/kg (indipendentemente da come è impostato il prodotto su FIC)
+          // Quantità sempre in kg totali, prezzo sempre €/kg
           const qty = kgTot;
           const net_price = p.prezzoKg || 0;
 
           return {
-            name: ficProd.name,
-            description: ficProd.description || '',
+            name: catProd.nome,
+            description: catProd.descrizione || '',
             qty: qty,
             measure: 'Kg',
             net_price: net_price,
-            vat: ficProd.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
+            vat: { id: 0 },
             gross_price: net_price,
             not_taxable: false,
-            product_id: ficProd.id,
-            code: ficProd.code,
+            code: catProd.codice,
           };
         });
 
@@ -2105,6 +2136,7 @@ app.get('/auth/fattureincloud/login', (req, res) => {
   if (!FIC_CLIENT_ID || !FIC_REDIRECT_URI) return res.status(500).send('Fatture in Cloud non configurato (manca FIC_CLIENT_ID o redirect URI)');
   const scopes = [
     'entity.clients:r', 'entity.clients:a',
+    'products:r',
     'issued_documents.invoices:r', 'issued_documents.invoices:a',
     'issued_documents.delivery_notes:r', 'issued_documents.delivery_notes:a',
     'issued_documents.receipts:r'
@@ -2412,6 +2444,51 @@ async function getFicProducts() {
     return ficProductsCache;
   } catch (e) { console.error('[FIC Products] Errore:', e.message); return { byName: {}, byCode: {}, list: [] }; }
 }
+
+// ── CATALOGO PRODOTTI (gestito internamente, indipendente da FIC) ──────────
+app.get('/api/prodotti-catalogo', async (req, res) => {
+  try {
+    const r = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true ORDER BY nome, peso_kg');
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/prodotti-catalogo', async (req, res) => {
+  const { nome, codice, descrizione, peso_kg, prezzo_default } = req.body;
+  if (!nome || !codice) return res.json({ error: 'Nome e codice sono obbligatori' });
+  try {
+    const r = await pool.query(
+      'INSERT INTO prodotti_catalogo (nome,codice,descrizione,peso_kg,prezzo_default) VALUES ($1,$2,$3,$4,$5) RETURNING *',
+      [nome, codice, descrizione||'', peso_kg||null, prezzo_default||null]
+    );
+    res.json(r.rows[0]);
+  } catch (err) {
+    if (err.code === '23505') return res.json({ error: 'Esiste già un prodotto con questo codice' });
+    res.json({ error: err.message });
+  }
+});
+
+app.put('/api/prodotti-catalogo/:id', async (req, res) => {
+  const { nome, codice, descrizione, peso_kg, prezzo_default } = req.body;
+  try {
+    await pool.query(
+      'UPDATE prodotti_catalogo SET nome=$1,codice=$2,descrizione=$3,peso_kg=$4,prezzo_default=$5 WHERE id=$6',
+      [nome, codice, descrizione||'', peso_kg||null, prezzo_default||null, req.params.id]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    if (err.code === '23505') return res.json({ error: 'Esiste già un prodotto con questo codice' });
+    res.json({ error: err.message });
+  }
+});
+
+app.delete('/api/prodotti-catalogo/:id', async (req, res) => {
+  try {
+    // Disattiva invece di cancellare, così gli ordini passati che lo referenziano restano leggibili
+    await pool.query('UPDATE prodotti_catalogo SET attivo=false WHERE id=$1', [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
 
 app.get('/api/fatture/products', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
