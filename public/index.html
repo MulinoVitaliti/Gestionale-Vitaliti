@@ -672,6 +672,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
       <!-- Tab switcher -->
       <div class="pills" style="margin-bottom:14px" id="contatti-tabs">
         <div class="pill active" onclick="switchContattiTab('clienti',this)"><i class="ti ti-users" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Clienti</div>
+        <div class="pill" onclick="switchContattiTab('attivi',this)"><i class="ti ti-circle-check" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Attivi</div>
         <div class="pill" onclick="switchContattiTab('fornitori',this)"><i class="ti ti-building-factory-2" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Fornitori</div>
       </div>
 
@@ -688,6 +689,21 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
           <select id="filtro-regione-clienti" onchange="renderClienti()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
         <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th>Attivo</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+      </div>
+
+      <!-- Vista Attivi (solo clienti che stanno acquistando) -->
+      <div id="contatti-vista-attivi" style="display:none">
+        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
+          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
+            <div class="search-bar-box">
+              <i class="ti ti-search search-icon"></i>
+              <input type="text" placeholder="Cerca tra i clienti attivi per nome, città, telefono..." id="search-attivi" oninput="renderClientiAttivi()">
+              <span id="attivi-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
+            </div>
+          </div>
+          <select id="filtro-regione-attivi" onchange="renderClientiAttivi()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
+        </div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th>Attivo</th><th></th></tr></thead><tbody id="tbl-attivi"></tbody></table></div>
       </div>
 
       <!-- Vista Fornitori -->
@@ -3036,7 +3052,9 @@ function switchContattiTab(tab, el){
   document.querySelectorAll('#contatti-tabs .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
   document.getElementById('contatti-vista-clienti').style.display = tab==='clienti' ? 'block' : 'none';
+  document.getElementById('contatti-vista-attivi').style.display = tab==='attivi' ? 'block' : 'none';
   document.getElementById('contatti-vista-fornitori').style.display = tab==='fornitori' ? 'block' : 'none';
+  if(tab==='attivi') renderClientiAttivi();
   // Aggiorna il pulsante "Nuovo"
   const btn = document.getElementById('btn-nuovo-contatto');
   if(btn){
@@ -3076,7 +3094,7 @@ function popolaSelectRegioni(){
     sel.innerHTML = '<option value="">— Seleziona regione —</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
     sel.dataset.popolato='1';
   });
-  const filterSelects = ['filtro-regione-clienti','filtro-regione-fornitori'];
+  const filterSelects = ['filtro-regione-clienti','filtro-regione-attivi','filtro-regione-fornitori'];
   filterSelects.forEach(id=>{
     const sel=document.getElementById(id); if(!sel||sel.dataset.popolato) return;
     sel.innerHTML = '<option value="">Tutte le regioni</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
@@ -3146,6 +3164,34 @@ async function applicaRegioniConfermate(){
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
+function rigaClienteHTML(c){
+  const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
+  const isManuale = c.attivo_manuale !== null && c.attivo_manuale !== undefined;
+  const titoloToggle = isManuale
+    ? `Impostato a mano · clicca destro per tornare automatico`
+    : `Automatico (ultimo ordine: ${c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString('it-IT') : 'mai'})`;
+  return `
+    <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
+    <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
+    <td>${c.citta||'—'}</td>
+    <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
+    <td>${c.tel||'—'}</td>
+    <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
+    <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
+    <td>
+      <label class="toggle-attivo" title="${titoloToggle}" oncontextmenu="resetAttivoAutomatico(${c.id});return false;">
+        <input type="checkbox" ${c.attivo?'checked':''} onchange="toggleClienteAttivo(${c.id},this.checked)">
+        <span class="slider"></span>
+      </label>
+      ${isManuale?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">manuale</div>':''}
+    </td>
+    <td style="white-space:nowrap">
+      <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
+      <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+      <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+    </td>`;
+}
+
 // Filtra solo clienti (non fornitori)
 function renderClienti(){
   popolaSelectRegioni();
@@ -3158,32 +3204,26 @@ function renderClienti(){
   const tb=document.getElementById('tbl-clienti'); if(!tb)return; tb.innerHTML='';
   if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
-    const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
-    const isManuale = c.attivo_manuale !== null && c.attivo_manuale !== undefined;
-    const titoloToggle = isManuale
-      ? `Impostato a mano · clicca destro per tornare automatico`
-      : `Automatico (ultimo ordine: ${c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString('it-IT') : 'mai'})`;
-    tr.innerHTML=`
-      <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
-      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
-      <td>${c.citta||'—'}</td>
-      <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
-      <td>${c.tel||'—'}</td>
-      <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
-      <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
-      <td>
-        <label class="toggle-attivo" title="${titoloToggle}" oncontextmenu="resetAttivoAutomatico(${c.id});return false;">
-          <input type="checkbox" ${c.attivo?'checked':''} onchange="toggleClienteAttivo(${c.id},this.checked)">
-          <span class="slider"></span>
-        </label>
-        ${isManuale?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">manuale</div>':''}
-      </td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
-        <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
-        <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
-      </td>`;
+    tr.innerHTML = rigaClienteHTML(c);
+    tb.appendChild(tr);
+  });
+}
+
+// Solo clienti attivi (quelli che stanno acquistando davvero) — stesso formato, stesso filtro regione
+function renderClientiAttivi(){
+  popolaSelectRegioni();
+  const q=(document.getElementById('search-attivi')?.value||'').toLowerCase();
+  const regioneSel=document.getElementById('filtro-regione-attivi')?.value||'';
+  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.attivo && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
+  const cnt=document.getElementById('attivi-count');
+  const soloAttivi=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.attivo);
+  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloAttivi.length} clienti attivi`;
+  const tb=document.getElementById('tbl-attivi'); if(!tb)return; tb.innerHTML='';
+  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state">Nessun cliente attivo trovato</div></td></tr>';return;}
+  list.forEach(c=>{
+    const tr=document.createElement('tr'); tr.id='cl-attivo-row-'+c.id;
+    tr.innerHTML = rigaClienteHTML(c);
     tb.appendChild(tr);
   });
 }
