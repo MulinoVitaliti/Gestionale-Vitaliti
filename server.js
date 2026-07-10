@@ -2393,7 +2393,11 @@ async function getFicProducts() {
     while (true) {
       const r = await ficFetch(`/c/${ficCompanyId}/products?per_page=100&page=${page}`);
       const data = await r.json();
-      if (!r.ok || !data.data || data.data.length === 0) break;
+      if (!r.ok) {
+        console.error(`[FIC Products] Errore HTTP ${r.status} alla pagina ${page}:`, JSON.stringify(data));
+        break;
+      }
+      if (!data.data || data.data.length === 0) break;
       allProducts = allProducts.concat(data.data);
       if (data.data.length < 100) break;
       page++;
