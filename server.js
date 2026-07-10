@@ -279,6 +279,8 @@ async function initDB() {
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS regione TEXT;
       -- Migrazione: aggiunge destinazione ordine se non esiste già
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS destinazione TEXT;
+      -- Migrazione: override manuale stato attivo/non attivo cliente (NULL = decide automaticamente dagli ordini)
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS attivo_manuale BOOLEAN DEFAULT NULL;
 
       -- Catalogo prodotti gestito internamente (nome, codice e descrizione da riportare sul DDT)
       CREATE TABLE IF NOT EXISTS prodotti_catalogo (
@@ -921,10 +923,31 @@ app.delete('/api/leads/:id', async (req, res) => {
 app.get('/api/clienti', async (req, res) => {
   try {
     const tipo = req.query.tipo;
-    const r = tipo
-      ? await pool.query('SELECT * FROM clienti WHERE tipo=$1 ORDER BY nome', [tipo])
-      : await pool.query('SELECT * FROM clienti ORDER BY tipo, nome');
+    const query = `
+      SELECT c.*,
+        o.ultimo_ordine,
+        CASE
+          WHEN c.attivo_manuale IS NOT NULL THEN c.attivo_manuale
+          ELSE COALESCE(o.ultimo_ordine >= (CURRENT_DATE - INTERVAL '6 months'), false)
+        END AS attivo
+      FROM clienti c
+      LEFT JOIN (
+        SELECT cliente_id, MAX(data) AS ultimo_ordine FROM ordini WHERE cliente_id IS NOT NULL GROUP BY cliente_id
+      ) o ON o.cliente_id = c.id
+      ${tipo ? 'WHERE c.tipo=$1' : ''}
+      ORDER BY c.tipo, c.nome
+    `;
+    const r = tipo ? await pool.query(query, [tipo]) : await pool.query(query);
     res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Imposta manualmente attivo/non attivo per un cliente, oppure torna alla modalità automatica (valore null)
+app.put('/api/clienti/:id/attivo', async (req, res) => {
+  try {
+    const { attivo_manuale } = req.body; // true, false, o null per tornare automatico
+    await pool.query('UPDATE clienti SET attivo_manuale=$1 WHERE id=$2', [attivo_manuale, req.params.id]);
+    res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
 
