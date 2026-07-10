@@ -4504,6 +4504,32 @@ function rimuoviRiga(i, mode){
   renderRigheOrdine(mode);
 }
 
+// ── LOTTO E SCADENZA SUGGERITI ───────────────────────────────────────────
+// Lotto = martedì più recente (produzione settimanale, sempre di martedì).
+// Scadenza = lotto + 3 mesi se il lotto cade in stagione estiva (giugno-settembre),
+//            + 6 mesi negli altri mesi (stagione invernale).
+function formattaDataIT(d){
+  const gg = String(d.getDate()).padStart(2,'0');
+  const mm = String(d.getMonth()+1).padStart(2,'0');
+  const aa = String(d.getFullYear()).slice(-2);
+  return `${gg}/${mm}/${aa}`;
+}
+function calcolaLottoScadenzaSuggeriti(){
+  const oggi = new Date();
+  const giornoSettimana = oggi.getDay(); // 0=domenica ... 2=martedì ... 6=sabato
+  // Giorni da sottrarre per arrivare al martedì più recente (oggi incluso se è martedì)
+  const diffDaMartedi = (giornoSettimana - 2 + 7) % 7;
+  const martedi = new Date(oggi);
+  martedi.setDate(oggi.getDate() - diffDaMartedi);
+
+  const meseEstivo = martedi.getMonth() >= 5 && martedi.getMonth() <= 8; // 5=giugno ... 8=settembre (0-indexed)
+  const mesiScadenza = meseEstivo ? 3 : 6;
+  const scadenza = new Date(martedi);
+  scadenza.setMonth(scadenza.getMonth() + mesiScadenza);
+
+  return { lotto: formattaDataIT(martedi), scadenza: formattaDataIT(scadenza) };
+}
+
 async function apriNuovoOrdine(){
   await caricaCatalogoFIC();
   if(_catalogoFIC && _catalogoFIC.nomi.length){
@@ -4522,8 +4548,11 @@ async function apriNuovoOrdine(){
   try{ document.getElementById('ord-note').value = ''; }catch(e){}
   try{ document.getElementById('ord-canale').value = 'telefono'; }catch(e){}
   try{ document.getElementById('ord-note-cliente-box').style.display = 'none'; }catch(e){}
-  try{ document.getElementById('ord-lotto').value = ''; }catch(e){}
-  try{ document.getElementById('ord-scadenza').value = ''; }catch(e){}
+  try{
+    const { lotto, scadenza } = calcolaLottoScadenzaSuggeriti();
+    document.getElementById('ord-lotto').value = lotto;
+    document.getElementById('ord-scadenza').value = scadenza;
+  }catch(e){}
   try{ document.getElementById('ord-destinazione').value = ''; }catch(e){}
   try{ document.getElementById('ord-destinazione-vuota').style.display = 'none'; }catch(e){}
   try{ document.getElementById('ord-causale').value = 'Vendita'; }catch(e){}
