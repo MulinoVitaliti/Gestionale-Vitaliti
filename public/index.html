@@ -1180,7 +1180,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
             Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo. <strong>I nominativi che non esistono ancora nel gestionale vengono proposti come nuovi contatti da creare</strong>, con tutti i dati già presenti nel file — li rivedi e confermi con un click, invece di inserirli uno per uno.
           </div>
           <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px">
-            <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA.
+            <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA. Riconosce anche gli export da CRM contatti tipo "Persona - Organizzazione", "Persona - Nome", "Persona - Email/Telefono - Lavoro/Casa/Cellulare".
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <input type="file" id="excel-import-file" accept=".xlsx,.xls" style="display:none" onchange="onExcelFileSelected(this)">
@@ -3328,6 +3328,12 @@ const EXCEL_COLONNE_ALIAS = {
   'sdi': 'sdi', 'codicesdi': 'sdi', 'codicedestinatario': 'sdi',
   'pec': 'pec', 'emailpec': 'pec',
   'referente': 'ref', 'contatto': 'ref', 'refente': 'ref',
+  // Export da CRM contatti (es. Google Contacts / Pipedrive): "Persona - Organizzazione" è il nome
+  // dell'azienda (quello giusto da usare come "nome" cliente), "Persona - Nome" è il referente/titolare.
+  'persona-organizzazione': 'nome',
+  'persona-nome': 'ref',
+  'persona-email-lavoro': 'email', 'persona-email-casa': 'email', 'persona-email-altro': 'email',
+  'persona-telefono-lavoro': 'tel', 'persona-telefono-cellulare': 'tel', 'persona-telefono-casa': 'tel', 'persona-telefono-altro': 'tel',
 };
 
 function normalizzaIntestazioneColonna(s){
@@ -3357,8 +3363,8 @@ function onExcelFileSelected(input){
         if(EXCEL_COLONNE_ALIAS[norm]) mappaColonne[col] = EXCEL_COLONNE_ALIAS[norm];
       });
 
-      if(!Object.values(mappaColonne).includes('nome')){
-        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" nel file. Controlla le intestazioni delle colonne.');
+      if(!Object.values(mappaColonne).includes('nome') && !Object.values(mappaColonne).includes('ref')){
+        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" / "Organizzazione" nel file. Controlla le intestazioni delle colonne.');
         return;
       }
 
@@ -3366,10 +3372,19 @@ function onExcelFileSelected(input){
         const obj = {};
         Object.keys(row).forEach(col=>{
           const campo = mappaColonne[col];
-          if(campo && row[col]!==''){ obj[campo] = String(row[col]).trim(); }
+          // La prima colonna non vuota vince: utile quando più colonne (es. email lavoro/casa/altro) puntano allo stesso campo
+          if(campo && row[col]!=='' && !obj[campo]){ obj[campo] = String(row[col]).trim(); }
         });
+        // Ripiego: se manca il nome azienda ma c'è un referente (es. export CRM senza "Organizzazione" compilata),
+        // usa il nome del referente come nome contatto invece di scartare la riga
+        if(!obj.nome && obj.ref){ obj.nome = obj.ref; delete obj.ref; }
         return obj;
       }).filter(r=>r.nome);
+
+      if(!_excelImportRighe.length){
+        alert('Ho trovato le colonne giuste, ma nessuna riga ha un nome o un\'organizzazione valorizzati.');
+        return;
+      }
 
       await analizzaImportExcel();
     }catch(err){
