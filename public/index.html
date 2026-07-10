@@ -107,6 +107,12 @@ tbody td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--surface-2)}
 .badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
+.toggle-attivo{position:relative;display:inline-block;width:38px;height:21px;flex-shrink:0;cursor:pointer}
+.toggle-attivo input{opacity:0;width:0;height:0}
+.toggle-attivo .slider{position:absolute;inset:0;background:var(--border-strong);border-radius:21px;transition:.15s}
+.toggle-attivo .slider:before{content:"";position:absolute;height:15px;width:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
+.toggle-attivo input:checked + .slider{background:var(--green)}
+.toggle-attivo input:checked + .slider:before{transform:translateX(17px)}
 .badge::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor;opacity:0.7}
 .badge-lead{background:var(--blue-light);color:var(--blue)}.badge-camp{background:var(--orange-light);color:var(--orange)}
 .badge-att{background:#FFFBEB;color:#92400E}.badge-acq{background:var(--green-light);color:var(--green)}
@@ -681,7 +687,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
           </div>
           <select id="filtro-regione-clienti" onchange="renderClienti()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th>Attivo</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
       </div>
 
       <!-- Vista Fornitori -->
@@ -3150,10 +3156,14 @@ function renderClienti(){
   const soloClienti=(state.clienti||[]).filter(c=>c.tipo!=='fornitore');
   if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloClienti.length} clienti`;
   const tb=document.getElementById('tbl-clienti'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
     const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
+    const isManuale = c.attivo_manuale !== null && c.attivo_manuale !== undefined;
+    const titoloToggle = isManuale
+      ? `Impostato a mano · clicca destro per tornare automatico`
+      : `Automatico (ultimo ordine: ${c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString('it-IT') : 'mai'})`;
     tr.innerHTML=`
       <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
       <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
@@ -3162,6 +3172,13 @@ function renderClienti(){
       <td>${c.tel||'—'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
       <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
+      <td>
+        <label class="toggle-attivo" title="${titoloToggle}" oncontextmenu="resetAttivoAutomatico(${c.id});return false;">
+          <input type="checkbox" ${c.attivo?'checked':''} onchange="toggleClienteAttivo(${c.id},this.checked)">
+          <span class="slider"></span>
+        </label>
+        ${isManuale?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">manuale</div>':''}
+      </td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
         <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
@@ -3578,6 +3595,22 @@ async function eliminaCliente(id, nome){
       showSave();
     }catch(e){ alert('Errore di rete: '+e.message); }
   });
+}
+async function toggleClienteAttivo(id, nuovoStato){
+  const data = await api.put(`/api/clienti/${id}/attivo`, { attivo_manuale: nuovoStato });
+  if(data?.error){ alert('Errore: '+data.error); renderClienti(); return; }
+  const c = state.clienti.find(x=>x.id===id);
+  if(c){ c.attivo_manuale = nuovoStato; c.attivo = nuovoStato; }
+  renderClienti();
+  showSave();
+}
+async function resetAttivoAutomatico(id){
+  const data = await api.put(`/api/clienti/${id}/attivo`, { attivo_manuale: null });
+  if(data?.error){ alert('Errore: '+data.error); return; }
+  const aggiornati = await api.get('/api/clienti');
+  if(!aggiornati.error) state.clienti = aggiornati;
+  renderClienti();
+  showSave();
 }
 function apriDettaglio(id){
   apriDettaglioCliente(id);
