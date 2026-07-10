@@ -1279,19 +1279,19 @@ app.post('/api/clienti/importa-excel/anteprima', async (req, res) => {
       if (certo) certi.push(entry); else dubbi.push(entry);
     }
 
-    res.json({ certi, dubbi, senzaMatch: senzaMatch.map(r => r.nome || '(riga senza nome)') });
+    res.json({ certi, dubbi, senzaMatch });
   } catch (err) { res.json({ error: err.message }); }
 });
 
 // FASE 2: applica gli aggiornamenti confermati (lista di {clienteId, campiDaCompletare})
 app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
-  const { conferme } = req.body; // [{ clienteId, campiDaCompletare: {tel:'...', email:'...'} }, ...]
-  if (!Array.isArray(conferme) || conferme.length === 0) {
+  const { conferme, nuovi } = req.body; // conferme: aggiornamenti a clienti esistenti. nuovi: righe da creare come nuovi contatti
+  if ((!Array.isArray(conferme) || conferme.length === 0) && (!Array.isArray(nuovi) || nuovi.length === 0)) {
     return res.json({ error: 'Nessuna conferma da applicare' });
   }
   try {
     let aggiornati = 0;
-    for (const c of conferme) {
+    for (const c of (conferme || [])) {
       const campi = c.campiDaCompletare || {};
       const setClauses = [];
       const values = [];
@@ -1308,7 +1308,22 @@ app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
       await pool.query(`UPDATE clienti SET ${setClauses.join(', ')} WHERE id=$${i}`, values);
       aggiornati++;
     }
-    res.json({ aggiornati });
+
+    let creati = 0;
+    for (const riga of (nuovi || [])) {
+      if (!riga.nome) continue;
+      const countR = await pool.query("SELECT COUNT(*) FROM clienti WHERE tipo='cliente'");
+      const n = parseInt(countR.rows[0].count) + 1;
+      const codice = 'C' + String(n).padStart(3, '0');
+      await pool.query(
+        `INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind_legale,ind_consegna,sdi,pec,piva)
+         VALUES ($1,'cliente',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+        [codice, riga.nome, riga.ref||'', riga.tel||'', riga.email||'', riga.citta||'', riga.ind_legale||'', riga.ind_consegna||'', riga.sdi||'', riga.pec||'', riga.piva||'']
+      );
+      creati++;
+    }
+
+    res.json({ aggiornati, creati });
   } catch (err) { res.json({ error: err.message }); }
 });
 
