@@ -1581,8 +1581,42 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
             <option value="consegnato">Consegnato</option>
           </select>
         </div>
+        <div class="form-group">
+          <label class="form-label">Trasportatore <span style="font-size:11px;color:var(--text-3)">— chi effettua la consegna</span></label>
+          <input type="text" id="edit-ord-trasportatore" placeholder="Es. Mittente, Bartolotta, GLS..." style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        </div>
       </div>
-      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
+
+      <!-- Dati lotto e causale DDT -->
+      <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">📦 Dati DDT</div>
+      <div class="form-row">
+        <div class="form-group">
+          <label class="form-label">Lotto <span style="font-size:11px;color:var(--text-3)">— appare nelle note DDT</span></label>
+          <input type="text" id="edit-ord-lotto" placeholder="Es. 12/06/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Scadenza merce</label>
+          <input type="text" id="edit-ord-scadenza" placeholder="Es. 12/09/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+        </div>
+        <div class="form-group">
+          <label class="form-label">Causale trasporto</label>
+          <select id="edit-ord-causale" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%;background:#fff">
+            <option value="Vendita">Vendita</option>
+            <option value="Reso">Reso</option>
+            <option value="Omaggio">Omaggio</option>
+            <option value="Conto lavorazione">Conto lavorazione</option>
+            <option value="Conto visione">Conto visione</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Luogo di destinazione <span style="font-size:11px;color:var(--text-3)">— dove va consegnata QUESTA merce, se diverso dalla sede legale del cliente</span></label>
+        <input type="text" id="edit-ord-destinazione" placeholder="Es. Via Roma 10, 90100 Palermo (PA)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
+      </div>
+
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;margin-top:14px">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="edit-ord-facchinaggio"><span>Facchinaggio</span></label>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="font-size:13px">Chiamare:</label>
@@ -1590,9 +1624,11 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         </div>
       </div>
       <div class="form-group"><label class="form-label">Note</label><textarea id="edit-ord-note" style="min-height:50px"></textarea></div>
+      <div id="edit-ord-ddt-stato" style="font-size:12px;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" onclick="closeModal('modal-edit-ordine')">Annulla</button>
-        <button class="btn btn-primary" onclick="aggiornaOrdine()"><i class="ti ti-check"></i>Salva</button>
+        <button class="btn" id="btn-salva-edit-ordine" onclick="aggiornaOrdine(false)"><i class="ti ti-check"></i>Salva</button>
+        <button class="btn btn-primary" id="btn-salva-ddt-edit-ordine" onclick="aggiornaOrdine(true)"><i class="ti ti-truck-delivery"></i>Salva e aggiorna DDT</button>
       </div>
     </div>
   </div>
@@ -4816,13 +4852,14 @@ async function salvaOrdine(creaDdt){
   renderOrdini(); renderDash(); showSave();
 }
 
-function editOrdine(id){
+async function editOrdine(id){
   const o=state.ordini.find(x=>x.id===id); if(!o)return;
+  await caricaCatalogoFIC();
   document.getElementById('edit-ord-id').value=o.id;
 
   // Popola clienti
   const sel=document.getElementById('edit-ord-cliente');
-  sel.innerHTML = (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" ${c.nome===o.cliente?'selected':''}>${c.nome}</option>`).join('');
+  sel.innerHTML = (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" ${c.id===o.cliente_id?'selected':''}>${c.nome}</option>`).join('');
 
   document.getElementById('edit-ord-data').value=(o.data||'').slice(0,10);
   document.getElementById('edit-ord-data-consegna').value=(o.data_consegna||'').slice(0,10);
@@ -4831,40 +4868,106 @@ function editOrdine(id){
   document.getElementById('edit-ord-facchinaggio').checked=!!o.facchinaggio;
   document.getElementById('edit-ord-chiamata-tel').value=o.chiamata_tel||'';
   document.getElementById('edit-ord-note').value=o.note||'';
+  document.getElementById('edit-ord-trasportatore').value=o.trasporto_tipo||'';
+  document.getElementById('edit-ord-lotto').value=o.lotto||'';
+  document.getElementById('edit-ord-scadenza').value=o.scadenza_merce||'';
+  document.getElementById('edit-ord-causale').value=o.causale_trasporto||'Vendita';
+  document.getElementById('edit-ord-destinazione').value=o.destinazione||'';
 
-  // Righe prodotti
+  // Stato DDT: fa sapere se questo ordine ha già un DDT, prima ancora di premere "Salva"
+  const ddtStatoEl = document.getElementById('edit-ord-ddt-stato');
+  if(o.fic_ddt_numero){
+    ddtStatoEl.innerHTML = `<i class="ti ti-file-check" style="color:var(--brand)"></i> DDT già creato: <strong>${o.fic_ddt_numero}</strong>. "Salva e aggiorna DDT" lo elimina e ne crea uno nuovo con le modifiche.`;
+    ddtStatoEl.style.color = 'var(--text-2)';
+  } else {
+    ddtStatoEl.innerHTML = `<i class="ti ti-file-off" style="color:var(--text-3)"></i> Nessun DDT ancora creato per questo ordine.`;
+    ddtStatoEl.style.color = 'var(--text-3)';
+  }
+
+  // Righe prodotti — stessa struttura usata in creazione (nome, codice, descrizione, sacchi, kgSacco, prezzoKg)
   try{
     const prods = typeof o.prodotti==='string' ? JSON.parse(o.prodotti||'[]') : (o.prodotti||[]);
-    _ordineRigheEdit = prods.length ? prods.map(p=>({nome:p.nome||p.prodotto||'Semola rimacinata di grano duro',bancali:p.bancali||p.qty||1,prezzoUnitario:p.prezzoUnitario||0})) : [{nome:'Semola rimacinata di grano duro',bancali:o.qty||1,prezzoUnitario:0}];
-  }catch(e){ _ordineRigheEdit=[{nome:'Semola rimacinata di grano duro',bancali:1,prezzoUnitario:0}]; }
+    _ordineRigheEdit = prods.length ? prods.map(p=>({
+      nome: p.nome || 'Semola Rimacinata di Grano Duro',
+      codice: p.codice || '',
+      descrizione: p.descrizione || '',
+      sacchi: p.sacchi !== undefined ? p.sacchi : (p.qty||1),
+      kgSacco: p.kgSacco || 0,
+      prezzoKg: p.prezzoKg || 0,
+    })) : [{nome:'Semola Rimacinata di Grano Duro', codice:'', descrizione:'', sacchi:'', kgSacco:0, prezzoKg:0}];
+  }catch(e){ _ordineRigheEdit=[{nome:'Semola Rimacinata di Grano Duro', codice:'', descrizione:'', sacchi:'', kgSacco:0, prezzoKg:0}]; }
   renderRigheOrdine('edit');
   openModal('modal-edit-ordine');
 }
 
-async function aggiornaOrdine(){
+async function aggiornaOrdine(creaDdt){
   const id=parseInt(document.getElementById('edit-ord-id').value);
   const sel=document.getElementById('edit-ord-cliente');
   const clienteId=parseInt(sel.value)||null;
   const clienteNome=sel.options[sel.selectedIndex]?.text||'';
-  const prodotti=_ordineRigheEdit.map(r=>({nome:r.nome,bancali:r.bancali,prezzoUnitario:r.prezzoUnitario,totale:r.bancali*r.prezzoUnitario}));
-  const importoTot=prodotti.reduce((s,p)=>s+p.totale,0);
-  const bancaliTot=prodotti.reduce((s,p)=>s+p.bancali,0);
-  const pesoTot=prodotti.reduce((s,p)=>{const prod=PRODOTTI_MULINO.find(x=>x.nome===p.nome);return s+(p.bancali*(prod?.kg_bancale||0));},0);
-  const body={
-    cliente:clienteNome, cliente_id:clienteId, prodotti,
-    prodotto:prodotti.map(p=>p.nome).join(', '),
-    qty:bancaliTot, peso_totale:pesoTot, importo:importoTot,
-    data:document.getElementById('edit-ord-data').value,
-    data_consegna:document.getElementById('edit-ord-data-consegna').value||null,
-    stato:document.getElementById('edit-ord-stato').value,
-    canale:document.getElementById('edit-ord-canale').value,
-    facchinaggio:document.getElementById('edit-ord-facchinaggio').checked,
-    chiamata_tel:document.getElementById('edit-ord-chiamata-tel').value.trim(),
-    note:document.getElementById('edit-ord-note').value,
+
+  const prodotti = _ordineRigheEdit.map(r=>{
+    const kgTot = (r.sacchi||0) * (r.kgSacco||0);
+    return {
+      nome: r.nome,
+      codice: r.codice||'',
+      descrizione: r.descrizione||'',
+      sacchi: r.sacchi||0,
+      kgSacco: r.kgSacco||0,
+      kgTotale: kgTot,
+      prezzoKg: r.prezzoKg||0,
+      totale: kgTot * (r.prezzoKg||0)
+    };
+  });
+  const importoTot = prodotti.reduce((s,p)=>s+p.totale,0);
+  const sacchiTot = prodotti.reduce((s,p)=>s+p.sacchi,0);
+  const pesoTot = prodotti.reduce((s,p)=>s+p.kgTotale,0);
+
+  const btnSalva = document.getElementById('btn-salva-edit-ordine');
+  const btnDdt = document.getElementById('btn-salva-ddt-edit-ordine');
+  [btnSalva, btnDdt].forEach(b=>{ if(b) b.disabled = true; });
+  const btnAttivo = creaDdt ? btnDdt : btnSalva;
+  if(btnAttivo){ btnAttivo.innerHTML = '<i class="ti ti-loader"></i> Salvataggio...'; }
+
+  const body = {
+    cliente: clienteNome,
+    cliente_id: clienteId,
+    prodotti,
+    prodotto: prodotti.map(p=>p.nome).join(', '),
+    qty: sacchiTot,
+    peso_totale: pesoTot,
+    peso_trasporto: pesoTot,
+    importo: importoTot,
+    data: document.getElementById('edit-ord-data').value,
+    data_consegna: document.getElementById('edit-ord-data-consegna').value,
+    stato: document.getElementById('edit-ord-stato').value,
+    canale: document.getElementById('edit-ord-canale').value,
+    facchinaggio: document.getElementById('edit-ord-facchinaggio').checked,
+    chiamata_tel: document.getElementById('edit-ord-chiamata-tel').value.trim(),
+    note: document.getElementById('edit-ord-note').value,
+    lotto: document.getElementById('edit-ord-lotto').value.trim(),
+    scadenza_merce: document.getElementById('edit-ord-scadenza').value.trim(),
+    causale_trasporto: document.getElementById('edit-ord-causale').value,
+    trasporto_tipo: document.getElementById('edit-ord-trasportatore').value.trim(),
+    destinazione: document.getElementById('edit-ord-destinazione').value.trim(),
+    crea_ddt: !!creaDdt,
   };
-  await api.put('/api/ordini/'+id, body);
-  const o=state.ordini.find(x=>x.id===id); if(o)Object.assign(o,body);
-  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); showSave();
+
+  const data = await api.put(`/api/ordini/${id}`, body);
+  if(!data.error){
+    const idx = state.ordini.findIndex(o=>o.id===id);
+    if(idx>=0) state.ordini[idx] = data;
+    if(data.fic_ddt_numero) mostraToast(`✅ Ordine aggiornato · DDT ${data.fic_ddt_numero} creato su FIC`);
+    else if(data.ddt_errore) mostraToast('⚠️ Ordine aggiornato, ma DDT non creato: '+data.ddt_errore, 'error');
+    else mostraToast('✅ Ordine aggiornato');
+  } else {
+    mostraToast('Errore: '+data.error, 'error');
+  }
+
+  if(btnSalva){ btnSalva.disabled=false; btnSalva.innerHTML='<i class="ti ti-check"></i>Salva'; }
+  if(btnDdt){ btnDdt.disabled=false; btnDdt.innerHTML='<i class="ti ti-truck-delivery"></i>Salva e aggiorna DDT'; }
+  closeModal('modal-edit-ordine');
+  renderOrdini(); renderDash(); showSave();
 }
 
 function onOrdClienteChange(){ } // legacy compat
