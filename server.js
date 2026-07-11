@@ -3174,6 +3174,11 @@ async function fatturaOrdineDaDDT(ordine) {
     // Il DDT non ha un elenco pagamenti (non ha prezzi), quindi la fattura trasformata nasce
     // senza pagamenti che coprano il totale. fix_payments dice a FIC di sistemarlo da solo.
     trasformaBody.options = { ...(trasformaBody.options||{}), fix_payments: true };
+    // Le fatture elettroniche richiedono sempre un metodo di pagamento (obbligatorio per lo SDI).
+    // MP05 = bonifico bancario, il più comune nei pagamenti tra aziende. Modificabile a mano su FIC prima dell'invio.
+    if (trasformaBody.data) {
+      trasformaBody.data.ei_data = { ...(trasformaBody.data.ei_data||{}), payment_method: trasformaBody.data.ei_data?.payment_method || 'MP05' };
+    }
 
     const creaRes = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
       method: 'POST',
