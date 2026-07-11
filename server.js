@@ -284,6 +284,13 @@ async function initDB() {
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS scadenza_merce TEXT;
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS causale_trasporto TEXT;
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS trasporto_tipo TEXT;
+      -- Migrazione: fatturazione automatica da DDT dopo 10 giorni
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_ddt_creato_at TIMESTAMP;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_creata_at TIMESTAMP;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fattura_email_inviata BOOLEAN DEFAULT false;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fattura_email_inviata_at TIMESTAMP;
       -- Migrazione: override manuale stato attivo/non attivo cliente (NULL = decide automaticamente dagli ordini)
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS attivo_manuale BOOLEAN DEFAULT NULL;
 
@@ -1557,7 +1564,7 @@ async function creaDdtPerOrdine(ordineId, dati) {
       const ddtNum = ddtData.data?.number;
       console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
       if (ddtId) {
-        await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordineId]);
+        await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2, fic_ddt_creato_at=NOW() WHERE id=$3', [ddtId, ddtNum, ordineId]);
         return { fic_ddt_id: ddtId, fic_ddt_numero: ddtNum };
       }
       return {};
@@ -1635,6 +1642,47 @@ app.delete('/api/ordini/:id', async (req, res) => {
 
     await pool.query('DELETE FROM ordini WHERE id=$1', [req.params.id]);
     res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── FATTURAZIONE AUTOMATICA: stato e trigger manuale ────────────────────────
+app.get('/api/fatturazione-automatica/stato', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT id, cliente, fic_ddt_id, fic_ddt_numero, fic_ddt_creato_at,
+             fic_fattura_id, fic_fattura_numero, fic_fattura_creata_at,
+             fattura_email_inviata, fattura_email_inviata_at,
+             EXTRACT(DAY FROM (NOW() - fic_ddt_creato_at))::int AS giorni_da_ddt
+      FROM ordini
+      WHERE fic_ddt_id IS NOT NULL
+      ORDER BY fic_ddt_creato_at DESC NULLS LAST
+      LIMIT 200
+    `);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/fatturazione-automatica/esegui-ora', async (req, res) => {
+  try {
+    await elaboraFatturazioneAutomaticaDaDDT();
+    await elaboraEmailFattureDopoSDI();
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Forza la fatturazione di UN ordine specifico, senza aspettare i 10 giorni — utile per testare
+app.post('/api/ordini/:id/forza-fatturazione', async (req, res) => {
+  if (!ficTokens || !ficCompanyId) return res.json({ error: 'Fatture in Cloud non è collegato' });
+  try {
+    const o = await pool.query('SELECT id, fic_ddt_id, fic_fattura_id, cliente FROM ordini WHERE id=$1', [req.params.id]);
+    const ordine = o.rows[0];
+    if (!ordine) return res.json({ error: 'Ordine non trovato' });
+    if (!ordine.fic_ddt_id) return res.json({ error: 'Questo ordine non ha ancora un DDT creato su Fatture in Cloud' });
+    if (ordine.fic_fattura_id) return res.json({ error: 'Questo ordine ha già una fattura collegata' });
+
+    const risultato = await fatturaOrdineDaDDT(ordine);
+    if (!risultato.ok) return res.json({ error: risultato.errore });
+    res.json({ success: true, fic_fattura_id: risultato.fatturaId, fic_fattura_numero: risultato.fatturaNum });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -3110,6 +3158,126 @@ async function eseguiAutomazioni() {
 
 // Job ogni ora
 setInterval(eseguiAutomazioni, 60 * 60 * 1000);
+
+// Trasforma il DDT di UN ordine in fattura su FIC (senza controllare i 10 giorni: la soglia
+// la applica solo il chiamante). Ritorna { ok, fatturaId, fatturaNum } oppure { ok:false, errore }.
+async function fatturaOrdineDaDDT(ordine) {
+  try {
+    const trasformaUrl = `/c/${ficCompanyId}/issued_documents/transform?original_document_id=${ordine.fic_ddt_id}&type=delivery_note&new_type=invoice&e_invoice=1&transform_keep_copy=1`;
+    const trasformaRes = await ficFetch(trasformaUrl);
+    if (!trasformaRes.ok) {
+      const errTxt = await trasformaRes.text();
+      console.error(`[Fatturazione] Errore transform ordine ${ordine.id}: ${trasformaRes.status} ${errTxt}`);
+      return { ok: false, errore: `Errore trasformazione DDT→fattura: ${errTxt}` };
+    }
+    const trasformaBody = await trasformaRes.json();
+
+    const creaRes = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+      method: 'POST',
+      body: JSON.stringify(trasformaBody)
+    });
+    if (!creaRes.ok) {
+      const errTxt = await creaRes.text();
+      console.error(`[Fatturazione] Errore creazione fattura ordine ${ordine.id}: ${creaRes.status} ${errTxt}`);
+      return { ok: false, errore: `Errore creazione fattura: ${errTxt}` };
+    }
+    const creaData = await creaRes.json();
+    const fatturaId = creaData.data?.id;
+    const fatturaNum = creaData.data?.number;
+    await pool.query(
+      'UPDATE ordini SET fic_fattura_id=$1, fic_fattura_numero=$2, fic_fattura_creata_at=NOW() WHERE id=$3',
+      [fatturaId, fatturaNum, ordine.id]
+    );
+    console.log(`[Fatturazione] Ordine ${ordine.id} (${ordine.cliente}): fattura ${fatturaNum} creata da DDT ${ordine.fic_ddt_id}.`);
+    return { ok: true, fatturaId, fatturaNum };
+  } catch (e) {
+    console.error(`[Fatturazione] Errore ordine ${ordine.id}:`, e.message);
+    return { ok: false, errore: e.message };
+  }
+}
+
+// ── FATTURAZIONE AUTOMATICA DA DDT (dopo 10 giorni) ─────────────────────────
+// Ogni DDT, 10 giorni dopo la sua creazione, viene trasformato in fattura su FIC.
+// La fattura NON viene inviata allo SDI in automatico: resta lì finché Giovanni non la
+// controlla e la invia lui stesso da Fatture in Cloud (scelta esplicita, per prudenza fiscale).
+async function elaboraFatturazioneAutomaticaDaDDT() {
+  if (!ficTokens || !ficCompanyId) return;
+  try {
+    const r = await pool.query(`
+      SELECT id, fic_ddt_id, cliente FROM ordini
+      WHERE fic_ddt_id IS NOT NULL AND fic_fattura_id IS NULL
+        AND fic_ddt_creato_at IS NOT NULL AND fic_ddt_creato_at <= NOW() - INTERVAL '10 days'
+    `);
+    for (const ordine of r.rows) {
+      await fatturaOrdineDaDDT(ordine);
+    }
+  } catch (e) { console.error('[Fatturazione auto] Errore job:', e.message); }
+}
+
+// ── EMAIL AUTOMATICA DOPO INVIO SDI ─────────────────────────────────────────
+// Controlla le fatture create automaticamente ma non ancora mandate via email: se Giovanni
+// le ha nel frattempo inviate allo SDI da Fatture in Cloud, manda l'email al cliente usando
+// i dati che FIC ha già configurato per quel cliente (mittente/destinatario/testo). Se FIC
+// non ha un'email di destinazione configurata, non manda nulla — è così che Giovanni "autorizza"
+// l'invio: configurandolo o no direttamente su Fatture in Cloud.
+async function elaboraEmailFattureDopoSDI() {
+  if (!ficTokens || !ficCompanyId) return;
+  try {
+    const r = await pool.query(`
+      SELECT id, fic_fattura_id, cliente FROM ordini
+      WHERE fic_fattura_id IS NOT NULL AND (fattura_email_inviata IS NULL OR fattura_email_inviata = false)
+    `);
+    for (const ordine of r.rows) {
+      try {
+        const docRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}?fieldset=detailed`);
+        if (!docRes.ok) { console.error(`[Email fattura] Errore lettura fattura ordine ${ordine.id}: ${docRes.status}`); continue; }
+        const docData = await docRes.json();
+        const eiStatus = docData.data?.ei_status;
+
+        // Considera "inviata allo SDI" qualsiasi stato diverso da "non ancora inviata"
+        const inviataSDI = eiStatus && eiStatus !== 'not_sent';
+        if (!inviataSDI) continue; // aspetta ancora il controllo/invio manuale di Giovanni
+
+        const emailDataRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}/email`);
+        if (!emailDataRes.ok) { console.error(`[Email fattura] Errore lettura dati email ordine ${ordine.id}: ${emailDataRes.status}`); continue; }
+        const emailData = (await emailDataRes.json()).data || {};
+
+        if (!emailData.recipient_email) {
+          console.log(`[Email fattura] Ordine ${ordine.id} (${ordine.cliente}): nessuna email destinatario configurata su FIC, salto l'invio.`);
+          await pool.query('UPDATE ordini SET fattura_email_inviata=true, fattura_email_inviata_at=NOW() WHERE id=$1', [ordine.id]); // non ritentare ogni ora
+          continue;
+        }
+
+        const sendRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}/email`, {
+          method: 'POST',
+          body: JSON.stringify({ data: {
+            sender_email: emailData.sender_email,
+            recipient_email: emailData.recipient_email,
+            subject: emailData.subject,
+            body: emailData.body,
+            include: { document: true, delivery_note: false, attachment: false, accompanying_invoice: false },
+            attach_pdf: true,
+            send_copy: false,
+          }})
+        });
+        if (sendRes.ok) {
+          await pool.query('UPDATE ordini SET fattura_email_inviata=true, fattura_email_inviata_at=NOW() WHERE id=$1', [ordine.id]);
+          console.log(`[Email fattura] Ordine ${ordine.id} (${ordine.cliente}): email inviata a ${emailData.recipient_email}.`);
+        } else {
+          console.error(`[Email fattura] Errore invio email ordine ${ordine.id}: ${sendRes.status} ${await sendRes.text()}`);
+        }
+      } catch (e) {
+        console.error(`[Email fattura] Errore ordine ${ordine.id}:`, e.message);
+      }
+    }
+  } catch (e) { console.error('[Email fattura] Errore job:', e.message); }
+}
+
+// Controllo ogni 6 ore: sufficiente per un processo che si basa su soglie di giorni, non serve più frequente
+setInterval(elaboraFatturazioneAutomaticaDaDDT, 6 * 60 * 60 * 1000);
+setInterval(elaboraEmailFattureDopoSDI, 6 * 60 * 60 * 1000);
+// Primo controllo poco dopo l'avvio (non subito, per dare tempo alla connessione FIC di caricarsi)
+setTimeout(() => { elaboraFatturazioneAutomaticaDaDDT(); elaboraEmailFattureDopoSDI(); }, 2 * 60 * 1000);
 
 
 // ── ASSICURAZIONI ─────────────────────────────────────────────────────────
