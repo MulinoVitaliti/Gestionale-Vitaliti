@@ -1110,6 +1110,20 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
+      <!-- Fatturazione automatica da DDT -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-receipt" style="color:var(--brand)"></i>Fatturazione automatica da DDT</div>
+          <button class="btn btn-sm" onclick="eseguiFatturazioneAutomaticaOra()"><i class="ti ti-refresh"></i>Controlla ora</button>
+        </div>
+        <div class="card-body">
+          <div style="font-size:12px;color:var(--text-2);margin-bottom:12px">
+            Ogni DDT diventa automaticamente una fattura su Fatture in Cloud dopo <strong>10 giorni</strong> dalla sua creazione. La fattura <strong>non</strong> viene inviata allo SDI da sola: la controlli e la invii tu da Fatture in Cloud quando sei pronto. Una volta che l'hai inviata, il gestionale se ne accorge da solo e manda l'email col PDF al cliente — usando i dati email che hai configurato per quel cliente su FIC (se non ne hai configurata una, non manda nulla).
+          </div>
+          <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>DDT</th><th>Giorni trascorsi</th><th>Fattura</th><th>Email al cliente</th></tr></thead><tbody id="tbl-fatturazione-automatica"></tbody></table></div>
+        </div>
+      </div>
+
       <!-- Catalogo prodotti (gestito qui, indipendente da FIC) -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -2396,7 +2410,7 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); renderCatalogoProdotti(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); renderCatalogoProdotti(); renderFatturazioneAutomatica(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -4439,6 +4453,54 @@ function filterOrdini(f,el){
 }
 
 // ── RIGHE PRODOTTO ORDINE ─────────────────────────────────────────────────
+// ── FATTURAZIONE AUTOMATICA (Impostazioni, admin) ───────────────────────────
+async function renderFatturazioneAutomatica(){
+  const tb = document.getElementById('tbl-fatturazione-automatica');
+  if(!tb) return;
+  const data = await api.get('/api/fatturazione-automatica/stato');
+  if(!Array.isArray(data)){ tb.innerHTML = '<tr><td colspan="5"><div class="empty-state">Errore nel caricamento</div></td></tr>'; return; }
+  if(!data.length){ tb.innerHTML = '<tr><td colspan="5"><div class="empty-state">Nessun DDT ancora creato.</div></td></tr>'; return; }
+  tb.innerHTML = data.map(o=>{
+    const giorni = o.giorni_da_ddt ?? 0;
+    let statoFattura;
+    if(o.fic_fattura_numero){
+      statoFattura = `<span class="badge" style="background:var(--green-light);color:var(--green)"><i class="ti ti-check"></i> ${o.fic_fattura_numero}</span>`;
+    } else if(giorni >= 10){
+      statoFattura = `<span class="badge" style="background:var(--gold-light);color:var(--gold)">In elaborazione...</span>`;
+    } else {
+      statoFattura = `<span style="font-size:12px;color:var(--text-3)">tra ${10-giorni} giorni</span> <button class="btn btn-sm" onclick="forzaFatturazioneOrdine(${o.id})" title="Salta l'attesa e fattura subito questo ordine, per test">Forza (test)</button>`;
+    }
+    let statoEmail;
+    if(!o.fic_fattura_numero) statoEmail = `<span style="font-size:12px;color:var(--text-3)">—</span>`;
+    else if(o.fattura_email_inviata) statoEmail = `<span class="badge" style="background:var(--green-light);color:var(--green)"><i class="ti ti-mail-check"></i> Inviata</span>`;
+    else statoEmail = `<span style="font-size:12px;color:var(--text-3)">In attesa che tu la invii allo SDI</span>`;
+    return `<tr>
+      <td style="font-weight:600">${o.cliente}</td>
+      <td style="font-size:12px">${o.fic_ddt_numero||'—'}</td>
+      <td>${giorni}</td>
+      <td>${statoFattura}</td>
+      <td>${statoEmail}</td>
+    </tr>`;
+  }).join('');
+}
+
+async function eseguiFatturazioneAutomaticaOra(){
+  const btn = event?.target?.closest('button');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Controllo...'; }
+  const r = await api.post('/api/fatturazione-automatica/esegui-ora', {});
+  if(r?.error) alert('Errore: '+r.error);
+  await renderFatturazioneAutomatica();
+  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-refresh"></i>Controlla ora'; }
+}
+
+async function forzaFatturazioneOrdine(ordineId){
+  if(!confirm('Questo crea SUBITO una fattura vera su Fatture in Cloud da questo DDT, saltando l\'attesa dei 10 giorni — utile solo per testare che funzioni. La fattura non viene inviata allo SDI. Procedere?')) return;
+  const r = await api.post(`/api/ordini/${ordineId}/forza-fatturazione`, {});
+  if(r?.error){ alert('Errore: '+r.error); return; }
+  alert(`✅ Fattura ${r.fic_fattura_numero} creata su Fatture in Cloud. Vai a controllarla lì.`);
+  renderFatturazioneAutomatica();
+}
+
 // ── CATALOGO PRODOTTI (Impostazioni, admin) ─────────────────────────────────
 let _catalogoProdottiLista = [];
 async function renderCatalogoProdotti(){
