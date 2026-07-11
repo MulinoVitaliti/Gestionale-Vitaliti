@@ -3200,6 +3200,64 @@ async function applicaRegioniConfermate(){
 }
 
 // ── CLIENTI ───────────────────────────────────────────────────────────────
+// ── ETICHETTA SPEDIZIONE PALLET ─────────────────────────────────────────────
+// Genera un'etichetta stampabile Mittente → Destinatario, con la città in grande.
+// Usata sia dalla scheda contatto (indirizzo abituale) sia dall'ordine (indirizzo specifico di quell'ordine, se diverso).
+const MITTENTE_ETICHETTA = { nome: 'VITALITI ANTONIO', indirizzo: 'Via I Retta Levante 134', citta: 'Belpasso (CT)' };
+
+function stampaEtichetta(nomeDestinatario, indirizzoCompleto, cittaDestinatario){
+  if(!nomeDestinatario){ alert('Nome destinatario mancante, impossibile generare l\'etichetta.'); return; }
+  const citta = (cittaDestinatario||'').toUpperCase() || 'CITTÀ NON INDICATA';
+  const win = window.open('', '_blank', 'width=850,height=1100');
+  if(!win){ alert('Il browser ha bloccato l\'apertura della finestra di stampa. Consenti i popup per questo sito.'); return; }
+  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etichetta — ${nomeDestinatario}</title>
+  <style>
+    @page{ size:A4; margin:2cm; }
+    body{ font-family:'Segoe UI',Arial,sans-serif; text-align:center; color:#2b2b2b; margin:0; padding:60px 40px; }
+    .logo{ width:130px; margin-bottom:30px; }
+    .brand-nome{ font-size:26px; font-weight:700; color:#A8412A; letter-spacing:1px; margin-bottom:2px; }
+    .brand-sub{ font-size:12px; color:#C9A84C; letter-spacing:3px; text-transform:uppercase; margin-bottom:2px; }
+    .brand-anno{ font-size:10px; color:#999; margin-bottom:50px; }
+    .label{ font-size:18px; color:#A8412A; margin-bottom:6px; }
+    .arrow{ font-size:28px; color:#2b2b2b; margin:8px 0 40px; }
+    .nome-dest{ font-size:22px; font-weight:700; text-decoration:underline; margin-bottom:24px; }
+    .citta-dest{ font-size:44px; font-weight:700; text-decoration:underline; color:#C9622D; margin-bottom:36px; letter-spacing:1px; }
+    .indirizzo-dest{ font-size:16px; text-decoration:underline; }
+  </style></head><body>
+    <div class="brand-nome">Vitaliti</div>
+    <div class="brand-sub">Mulino</div>
+    <div class="brand-anno">DAL 1930</div>
+
+    <div class="label">Mittente</div>
+    <div class="arrow">↓</div>
+
+    <div class="label">Destinatario</div>
+    <div class="nome-dest">${nomeDestinatario}</div>
+    <div class="citta-dest">${citta}</div>
+    ${indirizzoCompleto ? `<div class="indirizzo-dest">${indirizzoCompleto}</div>` : ''}
+  </body></html>`);
+  win.document.close();
+  win.onload = () => { win.focus(); win.print(); };
+}
+
+// Stampa l'etichetta per un cliente, usando l'indirizzo di consegna abituale salvato sulla scheda
+function stampaEtichettaCliente(clienteId){
+  const c = (state.clienti||[]).find(x=>x.id===clienteId);
+  if(!c){ alert('Cliente non trovato'); return; }
+  const indirizzo = c.ind_consegna || c.ind_legale || c.ind || '';
+  stampaEtichetta(c.nome, indirizzo, c.citta);
+}
+
+// Stampa l'etichetta per un ordine specifico: usa la destinazione di QUELL'ordine se diversa, altrimenti quella del cliente
+function stampaEtichettaOrdine(ordineId){
+  const o = (state.ordini||[]).find(x=>x.id===ordineId);
+  if(!o){ alert('Ordine non trovato'); return; }
+  const c = (state.clienti||[]).find(x=>x.id===o.cliente_id);
+  const indirizzo = (o.destinazione||'').trim() || c?.ind_consegna || c?.ind_legale || c?.ind || '';
+  const citta = (o.destinazione||'').trim() ? '' : (c?.citta||''); // se la destinazione è scritta per esteso, non duplico la città a parte
+  stampaEtichetta(o.cliente || c?.nome, indirizzo, citta || c?.citta);
+}
+
 function rigaClienteHTML(c){
   const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
   const isManuale = c.attivo_manuale !== null && c.attivo_manuale !== undefined;
@@ -3223,6 +3281,7 @@ function rigaClienteHTML(c){
     </td>
     <td style="white-space:nowrap">
       <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
+      <button class="btn btn-sm" onclick="stampaEtichettaCliente(${c.id})" title="Stampa etichetta spedizione"><i class="ti ti-tag"></i></button>
       <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
       <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
     </td>`;
@@ -4368,6 +4427,7 @@ function renderOrdini(){
       <td>${ddtBadge}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editOrdine(${o.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm" onclick="stampaEtichettaOrdine(${o.id})" title="Stampa etichetta spedizione"><i class="ti ti-tag"></i></button>
         <button class="btn btn-sm btn-danger" onclick="eliminaOrdine(${o.id})" title="Elimina"><i class="ti ti-trash"></i></button>
       </td>`;
     tb.appendChild(tr);
