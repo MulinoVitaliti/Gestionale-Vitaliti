@@ -3171,6 +3171,9 @@ async function fatturaOrdineDaDDT(ordine) {
       return { ok: false, errore: `Errore trasformazione DDT→fattura: ${errTxt}` };
     }
     const trasformaBody = await trasformaRes.json();
+    // Il DDT non ha un elenco pagamenti (non ha prezzi), quindi la fattura trasformata nasce
+    // senza pagamenti che coprano il totale. fix_payments dice a FIC di sistemarlo da solo.
+    trasformaBody.options = { ...(trasformaBody.options||{}), fix_payments: true };
 
     const creaRes = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
       method: 'POST',
