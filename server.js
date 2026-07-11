@@ -279,6 +279,11 @@ async function initDB() {
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS regione TEXT;
       -- Migrazione: aggiunge destinazione ordine se non esiste già
       ALTER TABLE ordini ADD COLUMN IF NOT EXISTS destinazione TEXT;
+      -- Migrazione: campi DDT che prima non venivano salvati nell'ordine (si perdevano dopo la creazione)
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS lotto TEXT;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS scadenza_merce TEXT;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS causale_trasporto TEXT;
+      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS trasporto_tipo TEXT;
       -- Migrazione: override manuale stato attivo/non attivo cliente (NULL = decide automaticamente dagli ordini)
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS attivo_manuale BOOLEAN DEFAULT NULL;
 
@@ -1462,146 +1467,135 @@ app.get('/api/ordini', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// Crea un DDT su Fatture in Cloud per un ordine (usata sia da creazione che da modifica ordine).
+// Ritorna { fic_ddt_id, fic_ddt_numero } se creato, oppure { ddt_errore } se qualcosa impedisce la creazione.
+async function creaDdtPerOrdine(ordineId, dati) {
+  const { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto } = dati;
+
+  if (!ficTokens || !ficCompanyId) {
+    return { ddt_errore: 'Fatture in Cloud non è collegato: il DDT non è stato creato.' };
+  }
+
+  try {
+    let noteArr = [];
+    if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
+    if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
+    if (lotto) noteArr.push(`Lotto:${lotto}`);
+    if (scadenza_merce) noteArr.push(`Scadenza:${scadenza_merce}`);
+    if (note_spedizione) noteArr.push(note_spedizione);
+    if (note) noteArr.push(note);
+
+    const cli = await pool.query('SELECT * FROM clienti WHERE id=$1', [cliente_id||0]);
+    const clienteRow = cli.rows[0] || null;
+    const ficClienteId = clienteRow?.fic_id || null;
+
+    const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
+    const catR = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true');
+    const catalogoByCode = {}, catalogoByNome = {};
+    catR.rows.forEach(p => {
+      catalogoByCode[p.codice.toLowerCase().trim()] = p;
+      catalogoByNome[p.nome.toLowerCase().trim()] = p;
+    });
+    function trovaProdottoCatalogo(p) {
+      if (p.codice && catalogoByCode[p.codice.toLowerCase().trim()]) return catalogoByCode[p.codice.toLowerCase().trim()];
+      return catalogoByNome[(p.nome||'').toLowerCase().trim()];
+    }
+
+    const prodottiMancanti = prodList.filter(p => !trovaProdottoCatalogo(p)).map(p => p.nome);
+    if (prodottiMancanti.length > 0) {
+      return { ddt_errore: `Prodotto/i non ancora presenti nel catalogo del gestionale: ${[...new Set(prodottiMancanti)].join(', ')}. Aggiungili da Impostazioni → Catalogo prodotti e poi riprova a generare il DDT.` };
+    }
+
+    const righe = prodList.map(p => {
+      const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
+      const catProd = trovaProdottoCatalogo(p);
+      return {
+        name: catProd.nome,
+        description: catProd.descrizione || '',
+        qty: kgTot,
+        measure: 'Kg',
+        net_price: p.prezzoKg || 0,
+        vat: { id: 0 },
+        gross_price: p.prezzoKg || 0,
+        not_taxable: false,
+        code: catProd.codice,
+      };
+    });
+    if (righe.length === 0) {
+      righe.push({ name: prodotto || 'Semola rimacinata di grano duro', qty: qty || 1, measure: 'Nr', net_price: 0, vat: { id: 0 } });
+    }
+
+    const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
+    const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
+
+    const destinazioneOrdine = (destinazione || '').trim();
+    const luogoDestinazione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+    const entityObj = ficClienteId ? { id: ficClienteId, name: cliente } : { name: cliente };
+
+    const ddtPayload = {
+      type: 'delivery_note',
+      entity: entityObj,
+      date: data || new Date().toISOString().slice(0,10),
+      items_list: righe,
+      delivery_note: true,
+      use_gross_price: false,
+      e_invoice: false,
+      dn_ai_causal: causale_trasporto || 'Vendita',
+      dn_ai_packages_number: String(totSacchi),
+      dn_ai_weight: String(totPeso),
+      dn_ai_transporter: trasporto_tipo || 'Corriere',
+      dn_ai_destination: luogoDestinazione,
+      dn_ai_notes: noteArr.join('\n'),
+    };
+    console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
+
+    const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, { method: 'POST', body: JSON.stringify({ data: ddtPayload }) });
+
+    if (ddt.ok) {
+      const ddtData = await ddt.json();
+      const ddtId = ddtData.data?.id;
+      const ddtNum = ddtData.data?.number;
+      console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
+      if (ddtId) {
+        await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordineId]);
+        return { fic_ddt_id: ddtId, fic_ddt_numero: ddtNum };
+      }
+      return {};
+    } else {
+      const errTxt = await ddt.text();
+      console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
+      return { ddt_errore: 'Errore nella creazione del DDT su Fatture in Cloud: ' + errTxt };
+    }
+  } catch (e) {
+    console.error('Errore creazione DDT FIC:', e.message);
+    return { ddt_errore: 'Errore nella creazione del DDT su Fatture in Cloud: ' + e.message };
+  }
+}
+
+// Elimina il DDT collegato a un ordine su Fatture in Cloud, se presente
+async function eliminaDdtOrdine(ficDdtId) {
+  if (!ficDdtId || !ficTokens || !ficCompanyId) return;
+  try {
+    const del = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficDdtId}`, { method: 'DELETE' });
+    if (del.ok) console.log(`[DDT] Eliminato su FIC: id=${ficDdtId}`);
+    else console.error(`[DDT] Errore eliminazione FIC: ${del.status} ${await del.text()}`);
+  } catch (e) { console.error('[DDT] Errore chiamata eliminazione FIC:', e.message); }
+}
+
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt, destinazione } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt, destinazione, trasporto_tipo } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel,peso_trasporto,destinazione)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *`,
-      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'']
+      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel,peso_trasporto,destinazione,lotto,scadenza_merce,causale_trasporto,trasporto_tipo)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'', lotto||'', scadenza_merce||'', causale_trasporto||'', trasporto_tipo||'']
     );
     const ordine = r.rows[0];
 
-    // Crea bozza DDT su Fatture in Cloud SOLO se richiesto esplicitamente dal pulsante "DDT"
     console.log(`[DDT] crea_ddt=${!!crea_ddt} ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
-    if (crea_ddt && ficTokens && ficCompanyId) {
-      try {
-        // Costruisci note DDT (facchinaggio + tel + lotto + scadenza + note libere)
-        let noteArr = [];
-        if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
-        if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
-        if (lotto) noteArr.push(`Lotto:${lotto}`);
-        if (scadenza_merce) noteArr.push(`Scadenza:${scadenza_merce}`);
-        if (note_spedizione) noteArr.push(note_spedizione);
-        if (note) noteArr.push(note);
-
-        // Trova il cliente completo (per fic_id e indirizzo di spedizione)
-        const cli = await pool.query('SELECT * FROM clienti WHERE id=$1', [cliente_id||0]);
-        const clienteRow = cli.rows[0] || null;
-        const ficClienteId = clienteRow?.fic_id || null;
-
-        // Righe DDT: nome, descrizione e codice presi dal catalogo prodotti gestito nel gestionale
-        // (non dipende dal permesso "products:r" di Fatture in Cloud, che al momento risulta bloccato)
-        const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
-        const catR = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true');
-        const catalogoByCode = {}, catalogoByNome = {};
-        catR.rows.forEach(p => {
-          catalogoByCode[p.codice.toLowerCase().trim()] = p;
-          catalogoByNome[p.nome.toLowerCase().trim()] = p;
-        });
-        function trovaProdottoCatalogo(p) {
-          if (p.codice && catalogoByCode[p.codice.toLowerCase().trim()]) return catalogoByCode[p.codice.toLowerCase().trim()];
-          return catalogoByNome[(p.nome||'').toLowerCase().trim()];
-        }
-
-        // Verifica PRIMA che tutti i prodotti dell'ordine esistano nel catalogo del gestionale.
-        // Se manca anche uno solo, non creiamo il DDT: va prima aggiunto in Impostazioni → Catalogo prodotti.
-        const prodottiMancanti = prodList
-          .filter(p => !trovaProdottoCatalogo(p))
-          .map(p => p.nome);
-
-        if (prodottiMancanti.length > 0) {
-          ordine.ddt_errore = `Prodotto/i non ancora presenti nel catalogo del gestionale: ${[...new Set(prodottiMancanti)].join(', ')}. Aggiungili da Impostazioni → Catalogo prodotti e poi riprova a generare il DDT.`;
-        } else {
-
-        const righe = prodList.map(p => {
-          const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
-          // Prodotto trovato nel catalogo del gestionale (garantito: abbiamo già controllato sopra)
-          const catProd = trovaProdottoCatalogo(p);
-
-          // Quantità sempre in kg totali, prezzo sempre €/kg
-          const qty = kgTot;
-          const net_price = p.prezzoKg || 0;
-
-          return {
-            name: catProd.nome,
-            description: catProd.descrizione || '',
-            qty: qty,
-            measure: 'Kg',
-            net_price: net_price,
-            vat: { id: 0 },
-            gross_price: net_price,
-            not_taxable: false,
-            code: catProd.codice,
-          };
-        });
-
-        if (righe.length === 0) {
-          righe.push({
-            name: prodotto || 'Semola rimacinata di grano duro',
-            qty: qty || 1,
-            measure: 'Nr',
-            net_price: 0,
-            vat: { id: 0 },
-          });
-        }
-
-        // Calcola totali sacchi e peso per il DDT
-        const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
-        const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
-
-        // Luogo di destinazione: priorità a quello scritto per QUESTO ordine, altrimenti quello salvato sul cliente
-        const destinazioneOrdine = (req.body.destinazione || '').trim();
-        const luogoDestinazione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
-        // L'anagrafica del destinatario resta quella ufficiale del cliente su FIC: NON la tocchiamo
-        const entityObj = ficClienteId
-          ? { id: ficClienteId, name: cliente }
-          : { name: cliente };
-
-        const ddtPayload = {
-          type: 'delivery_note',
-          entity: entityObj,
-          date: data || new Date().toISOString().slice(0,10),
-          items_list: righe,
-          delivery_note: true,
-          use_gross_price: false,
-          e_invoice: false,
-          dn_ai_causal: causale_trasporto || 'Vendita',
-          dn_ai_packages_number: String(totSacchi),
-          dn_ai_weight: String(totPeso),
-          dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
-          dn_ai_destination: luogoDestinazione,
-          dn_ai_notes: noteArr.join('\n'),
-        };
-        console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
-
-        const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
-          method: 'POST',
-          body: JSON.stringify({ data: ddtPayload })
-        });
-
-        if (ddt.ok) {
-          const ddtData = await ddt.json();
-          const ddtId = ddtData.data?.id;
-          const ddtNum = ddtData.data?.number;
-          console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
-          if (ddtId) {
-            await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordine.id]);
-            ordine.fic_ddt_id = ddtId;
-            ordine.fic_ddt_numero = ddtNum;
-          }
-        } else {
-          const errTxt = await ddt.text();
-          console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
-          ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + errTxt;
-        }
-        } // chiude l'else di "tutti i prodotti trovati nel catalogo FIC"
-      } catch(e) {
-        console.error('Errore creazione DDT FIC:', e.message);
-        ordine.ddt_errore = 'Errore nella creazione del DDT su Fatture in Cloud: ' + e.message;
-      }
-    } else if (crea_ddt && (!ficTokens || !ficCompanyId)) {
-      ordine.ddt_errore = 'Fatture in Cloud non è collegato: il DDT non è stato creato.';
+    if (crea_ddt) {
+      const risultato = await creaDdtPerOrdine(ordine.id, { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto });
+      Object.assign(ordine, risultato);
     }
 
     res.json(ordine);
@@ -1609,13 +1603,27 @@ app.post('/api/ordini', async (req, res) => {
 });
 
 app.put('/api/ordini/:id', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, destinazione, trasporto_tipo, crea_ddt } = req.body;
   try {
-    await pool.query(
-      `UPDATE ordini SET cliente=$1,cliente_id=$2,prodotti=$3,prodotto=$4,qty=$5,peso_totale=$6,importo=$7,data=$8,data_consegna=$9,stato=$10,canale=$11,note=$12,note_spedizione=$13,facchinaggio=$14,chiamata_tel=$15 WHERE id=$16`,
-      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', req.params.id]
+    const r = await pool.query(
+      `UPDATE ordini SET cliente=$1,cliente_id=$2,prodotti=$3,prodotto=$4,qty=$5,peso_totale=$6,importo=$7,data=$8,data_consegna=$9,stato=$10,canale=$11,note=$12,note_spedizione=$13,facchinaggio=$14,chiamata_tel=$15,peso_trasporto=$16,destinazione=$17,lotto=$18,scadenza_merce=$19,causale_trasporto=$20,trasporto_tipo=$21 WHERE id=$22 RETURNING *`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'', lotto||'', scadenza_merce||'', causale_trasporto||'', trasporto_tipo||'', req.params.id]
     );
-    res.json({ success: true });
+    const ordine = r.rows[0];
+    if (!ordine) return res.json({ error: 'Ordine non trovato' });
+
+    console.log(`[DDT] modifica ordine ${ordine.id}: crea_ddt=${!!crea_ddt} ddt_esistente=${ordine.fic_ddt_id||'nessuno'}`);
+    if (crea_ddt) {
+      // Se l'ordine aveva già un DDT, lo elimina prima su FIC: non deve restare un documento con i dati vecchi
+      if (ordine.fic_ddt_id) {
+        await eliminaDdtOrdine(ordine.fic_ddt_id);
+        await pool.query('UPDATE ordini SET fic_ddt_id=NULL, fic_ddt_numero=NULL WHERE id=$1', [ordine.id]);
+      }
+      const risultato = await creaDdtPerOrdine(ordine.id, { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto });
+      Object.assign(ordine, risultato);
+    }
+
+    res.json(ordine);
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1623,22 +1631,7 @@ app.delete('/api/ordini/:id', async (req, res) => {
   try {
     // Recupera l'ordine per sapere se ha un DDT collegato su FIC
     const o = await pool.query('SELECT fic_ddt_id FROM ordini WHERE id=$1', [req.params.id]);
-    const ficDdtId = o.rows[0]?.fic_ddt_id || null;
-
-    // Elimina il DDT su Fatture in Cloud, se presente
-    if (ficDdtId && ficTokens && ficCompanyId) {
-      try {
-        const del = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficDdtId}`, { method: 'DELETE' });
-        if (del.ok) {
-          console.log(`[DDT] Eliminato su FIC: id=${ficDdtId}`);
-        } else {
-          const errTxt = await del.text();
-          console.error(`[DDT] Errore eliminazione FIC: ${del.status} ${errTxt}`);
-        }
-      } catch (e) {
-        console.error('[DDT] Errore chiamata eliminazione FIC:', e.message);
-      }
-    }
+    await eliminaDdtOrdine(o.rows[0]?.fic_ddt_id || null);
 
     await pool.query('DELETE FROM ordini WHERE id=$1', [req.params.id]);
     res.json({ success: true });
