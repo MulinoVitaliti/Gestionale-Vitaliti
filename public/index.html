@@ -865,7 +865,10 @@ tbody tr:hover{background:var(--surface-2)}
     <div class="page" id="page-contabilita">
       <div class="page-header">
         <div class="page-title">Contabilità</div>
-        <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn" id="btn-sync-fatture-ricevute" onclick="sincronizzaFattureRicevute()"><i class="ti ti-cloud-download"></i>Importa spese da FIC</button>
+          <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
+        </div>
       </div>
       <!-- Banner da pagare -->
       <div id="banner-da-pagare" style="background:linear-gradient(135deg,#fff3e0,#ffe0b2);border:1px solid var(--orange);border-radius:var(--r);padding:14px 18px;margin-bottom:16px;align-items:center;justify-content:space-between;gap:12px;display:none">
@@ -3147,6 +3150,31 @@ async function importaClientiDaFic(){
   }catch(e){ alert('Errore di rete: '+e.message); }
   finally{
     if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-cloud-download"></i>Importa da FIC'; }
+  }
+}
+
+async function sincronizzaFattureRicevute(){
+  const btn = document.getElementById('btn-sync-fatture-ricevute');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Importo...'; }
+  try{
+    const r = await api.post('/api/fatture/sincronizza-ricevute', {});
+    if(r.error){ alert('Errore: '+r.error); return; }
+
+    // Ricarica movimenti
+    const movAggiornati = await api.get('/api/movimenti');
+    if(!movAggiornati.error) state.movimenti = movAggiornati;
+    try{ renderContab(); }catch(e){}
+
+    let msg = `✅ Sincronizzazione completata!\n\n`;
+    msg += `📥 Fatture ricevute da FIC: ${r.totale}\n`;
+    msg += `• ${r.importati} nuove registrate in contabilità (uscite)\n`;
+    msg += `• ${r.saltati} già presenti (ignorate)\n`;
+    if(r.errori) msg += `• ${r.errori} errori (vedi log Railway)`;
+    alert(msg);
+    showSave();
+  }catch(e){ alert('Errore di rete: '+e.message); }
+  finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-cloud-download"></i>Importa spese da FIC'; }
   }
 }
 
