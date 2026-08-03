@@ -107,12 +107,6 @@ tbody td{padding:10px 13px;border-bottom:1px solid var(--border);vertical-align:
 tbody tr:last-child td{border-bottom:none}
 tbody tr:hover{background:var(--surface-2)}
 .badge{display:inline-flex;align-items:center;gap:3px;font-size:11px;font-weight:600;padding:2px 8px;border-radius:20px;white-space:nowrap}
-.toggle-attivo{position:relative;display:inline-block;width:38px;height:21px;flex-shrink:0;cursor:pointer}
-.toggle-attivo input{opacity:0;width:0;height:0}
-.toggle-attivo .slider{position:absolute;inset:0;background:var(--border-strong);border-radius:21px;transition:.15s}
-.toggle-attivo .slider:before{content:"";position:absolute;height:15px;width:15px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.15s}
-.toggle-attivo input:checked + .slider{background:var(--green)}
-.toggle-attivo input:checked + .slider:before{transform:translateX(17px)}
 .badge::before{content:"";width:4px;height:4px;border-radius:50%;background:currentColor;opacity:0.7}
 .badge-lead{background:var(--blue-light);color:var(--blue)}.badge-camp{background:var(--orange-light);color:var(--orange)}
 .badge-att{background:#FFFBEB;color:#92400E}.badge-acq{background:var(--green-light);color:var(--green)}
@@ -202,8 +196,7 @@ tbody tr:hover{background:var(--surface-2)}
 .pill:hover{border-color:var(--brand);color:var(--brand)}.pill.active{background:var(--brand);color:#fff;border-color:var(--brand)}
 .form-group{margin-bottom:12px}
 .form-label{font-size:12px;font-weight:600;color:var(--text);margin-bottom:4px;display:block}
-.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);transition:border-color .15s;color-scheme:light}
-select,option{background:#fff;color:var(--text);color-scheme:light}
+.form-group input,.form-group select,.form-group textarea{width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);transition:border-color .15s}
 .form-group input:focus,.form-group select:focus,.form-group textarea:focus{outline:none;border-color:var(--brand);box-shadow:0 0 0 3px rgba(168,65,42,0.1)}
 .form-group textarea{resize:vertical;min-height:70px;line-height:1.5}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:10px}
@@ -310,6 +303,8 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         <button class="login-btn" onclick="doLogin()">Accedi</button>
         <div class="login-error" id="login-error"></div>
         <div style="text-align:center;margin-top:11px"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
+        <div class="login-divider">oppure</div>
+        <div style="text-align:center;font-size:13px;color:var(--text-2)"><span class="login-link" onclick="switchView('view-reset')">Password dimenticata?</span></div>
       </div>
       <div class="login-view" id="view-register">
         <div class="login-right-title">Nuovo account</div>
@@ -388,6 +383,46 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
       <div class="page-header">
         <div><div class="page-title">Dashboard</div><div style="font-size:12px;color:var(--text-2);margin-top:1px" id="dash-date"></div></div>
         <div id="dash-user-badge"></div>
+      </div>
+
+      <!-- Agente Back Office -->
+      <div class="card" id="backoffice-briefing" style="margin-bottom:18px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-robot" style="color:var(--brand)"></i>Rapporto di oggi</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="bo-generato-il" style="font-size:12px;color:var(--text-3)">Caricamento...</span>
+            <button class="btn btn-sm btn-primary" id="bo-genera-btn" onclick="boGeneraRapporto()"><i class="ti ti-refresh"></i>Rigenera</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="bo-testo" style="font-size:13px;line-height:1.6;color:var(--text);margin-bottom:16px;white-space:pre-line"></div>
+
+          <!-- Alert attivi -->
+          <div id="bo-alert-wrap" style="display:none;margin-bottom:16px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">
+                Alert attivi (<span id="bo-count-alert">0</span>)
+              </div>
+              <button class="btn btn-sm" onclick="boSegnaTuttiLetti()" style="font-size:11px">Segna tutti letti</button>
+            </div>
+            <div id="bo-lista-alert"></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+                <i class="ti ti-file-invoice" style="color:var(--orange);font-size:12px"></i> Non pagate (<span id="bo-count-nonpagati">0</span>) · <span id="bo-totale-esposizione" style="color:var(--orange)"></span>
+              </div>
+              <div id="bo-lista-nonpagati"></div>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+                <i class="ti ti-user-x" style="color:var(--red);font-size:12px"></i> Clienti inattivi (<span id="bo-count-inattivi">0</span>)
+              </div>
+              <div id="bo-lista-inattivi"></div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <!-- Ricerca rapida stile Pipedrive -->
@@ -663,7 +698,6 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         <div style="display:flex;gap:8px" id="contatti-header-actions">
           <button class="btn" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
           <button class="btn" id="btn-sync-indirizzi-fic" onclick="sincronizzaIndirizziFic()"><i class="ti ti-map-pin"></i>Recupera indirizzi da FIC</button>
-          <button class="btn" id="btn-regioni-mancanti" onclick="apriModalRegioni()"><i class="ti ti-map-2"></i>Compila regioni mancanti</button>
           <button class="btn" id="btn-export-contatti" onclick="esportaContatti()"><i class="ti ti-download"></i>Esporta</button>
           <button class="btn btn-primary" id="btn-nuovo-contatto" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
         </div>
@@ -672,53 +706,31 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
       <!-- Tab switcher -->
       <div class="pills" style="margin-bottom:14px" id="contatti-tabs">
         <div class="pill active" onclick="switchContattiTab('clienti',this)"><i class="ti ti-users" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Clienti</div>
-        <div class="pill" onclick="switchContattiTab('attivi',this)"><i class="ti ti-circle-check" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Attivi</div>
         <div class="pill" onclick="switchContattiTab('fornitori',this)"><i class="ti ti-building-factory-2" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Fornitori</div>
       </div>
 
       <!-- Vista Clienti -->
       <div id="contatti-vista-clienti">
-        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
-            <div class="search-bar-box">
-              <i class="ti ti-search search-icon"></i>
-              <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
-              <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
-            </div>
+        <div class="search-bar-wrap" style="margin:0 auto 18px">
+          <div class="search-bar-box">
+            <i class="ti ti-search search-icon"></i>
+            <input type="text" placeholder="Cerca clienti per nome, città, telefono..." id="search-clienti" oninput="renderClienti()">
+            <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
           </div>
-          <select id="filtro-regione-clienti" onchange="renderClienti()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th>Attivo</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
-      </div>
-
-      <!-- Vista Attivi (solo clienti che stanno acquistando) -->
-      <div id="contatti-vista-attivi" style="display:none">
-        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
-            <div class="search-bar-box">
-              <i class="ti ti-search search-icon"></i>
-              <input type="text" placeholder="Cerca tra i clienti attivi per nome, città, telefono..." id="search-attivi" oninput="renderClientiAttivi()">
-              <span id="attivi-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
-            </div>
-          </div>
-          <select id="filtro-regione-attivi" onchange="renderClientiAttivi()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
-        </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Regione</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th>Attivo</th><th></th></tr></thead><tbody id="tbl-attivi"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
       </div>
 
       <!-- Vista Fornitori -->
       <div id="contatti-vista-fornitori" style="display:none">
-        <div style="display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap">
-          <div class="search-bar-wrap" style="margin:0;flex:1;min-width:220px">
-            <div class="search-bar-box">
-              <i class="ti ti-search search-icon"></i>
-              <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
-              <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
-            </div>
+        <div class="search-bar-wrap" style="margin:0 auto 18px">
+          <div class="search-bar-box">
+            <i class="ti ti-search search-icon"></i>
+            <input type="text" placeholder="Cerca fornitori per nome, città, P.IVA..." id="search-fornitori" oninput="renderFornitori()">
+            <span id="fornitori-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
           </div>
-          <select id="filtro-regione-fornitori" onchange="renderFornitori()" style="padding:9px 13px;border-radius:var(--r);border:1px solid var(--border-strong);background:#fff;font-size:13px;font-family:var(--font);color:var(--text);min-width:170px"></select>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Regione</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Fornitore</th><th>Città</th><th>Telefono</th><th>P.IVA</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-fornitori"></tbody></table></div>
       </div>
     </div>
 
@@ -1110,32 +1122,6 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
-      <!-- Fatturazione automatica da DDT -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-receipt" style="color:var(--brand)"></i>Fatturazione automatica da DDT</div>
-          <button class="btn btn-sm" onclick="eseguiFatturazioneAutomaticaOra()"><i class="ti ti-refresh"></i>Controlla ora</button>
-        </div>
-        <div class="card-body">
-          <div style="font-size:12px;color:var(--text-2);margin-bottom:12px">
-            Ogni DDT diventa automaticamente una fattura su Fatture in Cloud dopo <strong>10 giorni</strong> dalla sua creazione. La fattura <strong>non</strong> viene inviata allo SDI da sola: la controlli e la invii tu da Fatture in Cloud quando sei pronto. Una volta che l'hai inviata, il gestionale se ne accorge da solo e manda l'email col PDF al cliente — usando i dati email che hai configurato per quel cliente su FIC (se non ne hai configurata una, non manda nulla).
-          </div>
-          <div class="table-wrap"><table><thead><tr><th>Cliente</th><th>DDT</th><th>Giorni trascorsi</th><th>Fattura</th><th>Email al cliente</th></tr></thead><tbody id="tbl-fatturazione-automatica"></tbody></table></div>
-        </div>
-      </div>
-
-      <!-- Catalogo prodotti (gestito qui, indipendente da FIC) -->
-      <div class="card" style="margin-bottom:20px">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-package" style="color:var(--brand)"></i>Catalogo prodotti</div>
-          <button class="btn btn-sm btn-primary" onclick="apriModalProdottoCatalogo()"><i class="ti ti-plus"></i>Nuovo prodotto</button>
-        </div>
-        <div class="card-body">
-          <div style="font-size:12px;color:var(--text-2);margin-bottom:12px">Nome, codice e descrizione da qui vengono riportati esattamente così sul DDT. Il codice deve corrispondere a quello registrato su Fatture in Cloud per lo stesso prodotto.</div>
-          <div class="table-wrap"><table><thead><tr><th>Nome</th><th>Codice</th><th>Descrizione</th><th>Peso sacco</th><th>Prezzo default</th><th></th></tr></thead><tbody id="tbl-catalogo-prodotti"></tbody></table></div>
-        </div>
-      </div>
-
       <!-- Connessione Gmail -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
@@ -1191,10 +1177,10 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         </div>
         <div class="card-body">
           <div style="font-size:13px;color:var(--text-2);margin-bottom:12px">
-            Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo. <strong>I nominativi che non esistono ancora nel gestionale vengono proposti come nuovi contatti da creare</strong>, con tutti i dati già presenti nel file — li rivedi e confermi con un click, invece di inserirli uno per uno.
+            Carica un file Excel (.xlsx) con i dati dei clienti. Il sistema riconosce ogni cliente per <strong>nome</strong> e completa solo i campi attualmente vuoti (telefono/cellulare, email, indirizzo, città, referente, ecc.) senza sovrascrivere quelli già compilati. Se un nome non corrisponde con certezza, ti verrà chiesto di confermare a quale cliente abbinarlo.
           </div>
           <div style="font-size:12px;color:var(--text-3);margin-bottom:14px;background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:10px 12px">
-            <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA. Riconosce anche gli export da CRM contatti tipo "Persona - Organizzazione", "Persona - Nome", "Persona - Email/Telefono - Lavoro/Casa/Cellulare".
+            <strong>Colonne riconosciute</strong> (l'intestazione può variare leggermente, es. maiuscole/minuscole): Nome / Ragione Sociale, Telefono / Cellulare, Email, Città, Indirizzo / Indirizzo Legale, Indirizzo Consegna, Referente, SDI, PEC, P.IVA.
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap">
             <input type="file" id="excel-import-file" accept=".xlsx,.xls" style="display:none" onchange="onExcelFileSelected(this)">
@@ -1319,8 +1305,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">Regione</label><select id="cl-regione"></select></div></div>
-    <div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
       <input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)" oninput="if(document.getElementById('cl-ind-same').checked){document.getElementById('cl-ind-legale').value=this.value}">
@@ -1348,8 +1333,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">Regione</label><select id="edit-cl-regione"></select></div></div>
-    <div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
       <input type="text" id="edit-cl-ind-consegna" oninput="if(document.getElementById('edit-cl-ind-same').checked){document.getElementById('edit-cl-ind-legale').value=this.value}">
@@ -1377,64 +1361,6 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
     <div class="form-group"><label class="form-label">Note spedizione libere</label><textarea id="edit-cl-note-spedizione" style="min-height:50px" placeholder="Es. Piano terra, campanello nome..."></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-cliente')">Annulla</button><button class="btn btn-primary" onclick="aggiornaCliente()"><i class="ti ti-check"></i>Salva</button></div>
   </div></div>
-</div>
-<div class="modal-overlay" id="modal-destinazione">
-  <div class="modal" style="max-width:440px">
-    <div class="modal-header"><div class="modal-title"><i class="ti ti-map-pin" style="color:var(--brand);margin-right:6px"></i>Aggiungi indirizzo di destinazione</div><button class="btn btn-icon" onclick="closeModal('modal-destinazione')"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div class="form-group"><label class="form-label">Indirizzo (via, civico, CAP, città)</label><input type="text" id="dest-indirizzo" placeholder="Es. Via Roma 10, 90100 Palermo (PA)"></div>
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:12px;color:var(--text-2);margin-bottom:10px">
-        <input type="checkbox" id="dest-salva-cliente" checked>
-        <span>Salva questo indirizzo anche sulla scheda del cliente, per i prossimi ordini</span>
-      </label>
-      <div style="display:flex;gap:8px;justify-content:flex-end">
-        <button class="btn" onclick="closeModal('modal-destinazione')">Annulla</button>
-        <button class="btn btn-primary" onclick="salvaDestinazioneOrdine()"><i class="ti ti-check"></i>Usa questo indirizzo</button>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="modal-overlay" id="modal-prodotto-catalogo">
-  <div class="modal" style="max-width:480px">
-    <div class="modal-header"><div class="modal-title" id="modal-prodotto-catalogo-titolo">Nuovo prodotto</div><button class="btn btn-icon" onclick="closeModal('modal-prodotto-catalogo')"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <input type="hidden" id="pc-id">
-      <div class="form-group"><label class="form-label">Nome prodotto</label><input type="text" id="pc-nome" placeholder="Es. Semola Rimacinata di Grano Duro"></div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Codice (deve corrispondere a FIC)</label><input type="text" id="pc-codice" placeholder="Es. SEMOLA-RIM-30KG"></div>
-        <div class="form-group"><label class="form-label">Peso sacco (kg)</label><input type="number" id="pc-peso" step="0.5" placeholder="30"></div>
-      </div>
-      <div class="form-group"><label class="form-label">Descrizione (compare sul DDT)</label><input type="text" id="pc-descrizione" placeholder="Es. Semola Rimacinata di Grano Duro sacco kg. 30"></div>
-      <div class="form-group"><label class="form-label">Prezzo €/kg di default (opzionale)</label><input type="number" id="pc-prezzo" step="0.001" placeholder="0.000"></div>
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-        <button class="btn" onclick="closeModal('modal-prodotto-catalogo')">Annulla</button>
-        <button class="btn btn-primary" onclick="salvaProdottoCatalogo()"><i class="ti ti-check"></i>Salva</button>
-      </div>
-    </div>
-  </div>
-</div>
-<div class="modal-overlay" id="modal-regioni">
-  <div class="modal" style="max-width:640px">
-    <div class="modal-header"><div class="modal-title"><i class="ti ti-map-2" style="color:var(--brand);margin-right:6px"></i>Compila regioni mancanti</div><button class="btn btn-icon" onclick="closeModal('modal-regioni')"><i class="ti ti-x"></i></button></div>
-    <div class="modal-body">
-      <div id="regioni-loading" style="text-align:center;padding:20px 0;color:var(--text-2)">Analisi contatti in corso...</div>
-      <div id="regioni-content" style="display:none">
-        <div id="regioni-proposte-wrap">
-          <div style="font-size:12px;color:var(--text-2);margin-bottom:10px">Regione dedotta dalla città. Deseleziona quelle che non vuoi applicare, poi conferma.</div>
-          <div id="regioni-lista-proposte" style="max-height:320px;overflow-y:auto;border:1px solid var(--border);border-radius:var(--r);padding:8px"></div>
-        </div>
-        <div id="regioni-non-riconosciuti-wrap" style="margin-top:16px;display:none">
-          <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:8px">Non riconosciuti (da compilare a mano dalla scheda contatto)</div>
-          <div id="regioni-lista-non-riconosciuti" style="font-size:12px;color:var(--text-2);max-height:140px;overflow-y:auto"></div>
-        </div>
-        <div id="regioni-vuoto" style="display:none;text-align:center;padding:16px 0;color:var(--text-2)">Tutti i contatti con città compilata hanno già una regione. Niente da fare.</div>
-        <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
-          <button class="btn" onclick="closeModal('modal-regioni')">Chiudi</button>
-          <button class="btn btn-primary" id="btn-applica-regioni" onclick="applicaRegioniConfermate()"><i class="ti ti-check"></i>Applica selezionate</button>
-        </div>
-      </div>
-    </div>
-  </div>
 </div>
 <div class="modal-overlay" id="modal-ordine">
   <div class="modal" style="max-width:620px">
@@ -1518,14 +1444,6 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         </div>
       </div>
 
-      <div class="form-group">
-        <label class="form-label">Luogo di destinazione <span style="font-size:11px;color:var(--text-3)">— dove va consegnata QUESTA merce, se diverso dalla sede legale del cliente</span></label>
-        <input type="text" id="ord-destinazione" placeholder="Es. Via Roma 10, 90100 Palermo (PA)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
-        <div id="ord-destinazione-vuota" style="display:none;margin-top:6px">
-          <span class="login-link" style="font-size:12px" onclick="apriModalDestinazione()">+ Aggiungi indirizzo di destinazione</span>
-        </div>
-      </div>
-
       <!-- Note spedizione specifiche per questo ordine -->
       <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">Note spedizione</div>
@@ -1542,8 +1460,7 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
 
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
         <button class="btn" onclick="closeModal('modal-ordine')">Annulla</button>
-        <button class="btn" id="btn-salva-ordine" onclick="salvaOrdine(false)"><i class="ti ti-check"></i>Salva</button>
-        <button class="btn btn-primary" id="btn-salva-ddt-ordine" onclick="salvaOrdine(true)"><i class="ti ti-truck-delivery"></i>Salva e crea DDT</button>
+        <button class="btn btn-primary" id="btn-salva-ordine" onclick="salvaOrdine()"><i class="ti ti-check"></i>Salva e crea DDT</button>
       </div>
     </div>
   </div>
@@ -1582,7 +1499,10 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         <button class="btn btn-sm" onclick="aggiungiRigaOrdine('edit')"><i class="ti ti-plus"></i>Aggiungi prodotto</button>
         <div id="edit-ord-totale-riepilogo" style="font-size:13px;color:var(--text-2)"></div>
       </div>
-      <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="edit-ord-data"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Data ordine</label><input type="date" id="edit-ord-data"></div>
+        <div class="form-group"><label class="form-label">Data consegna</label><input type="date" id="edit-ord-data-consegna"></div>
+      </div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Stato</label>
           <select id="edit-ord-stato">
@@ -1592,42 +1512,8 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
             <option value="consegnato">Consegnato</option>
           </select>
         </div>
-        <div class="form-group">
-          <label class="form-label">Trasportatore <span style="font-size:11px;color:var(--text-3)">— chi effettua la consegna</span></label>
-          <input type="text" id="edit-ord-trasportatore" placeholder="Es. Mittente, Bartolotta, GLS..." style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
-        </div>
       </div>
-
-      <!-- Dati lotto e causale DDT -->
-      <div style="border-top:1px solid var(--border);margin:12px 0 14px"></div>
-      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.5px;color:var(--text-3);margin-bottom:10px">📦 Dati DDT</div>
-      <div class="form-row">
-        <div class="form-group">
-          <label class="form-label">Lotto <span style="font-size:11px;color:var(--text-3)">— appare nelle note DDT</span></label>
-          <input type="text" id="edit-ord-lotto" placeholder="Es. 12/06/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Scadenza merce</label>
-          <input type="text" id="edit-ord-scadenza" placeholder="Es. 12/09/26" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
-        </div>
-        <div class="form-group">
-          <label class="form-label">Causale trasporto</label>
-          <select id="edit-ord-causale" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%;background:#fff">
-            <option value="Vendita">Vendita</option>
-            <option value="Reso">Reso</option>
-            <option value="Omaggio">Omaggio</option>
-            <option value="Conto lavorazione">Conto lavorazione</option>
-            <option value="Conto visione">Conto visione</option>
-          </select>
-        </div>
-      </div>
-
-      <div class="form-group">
-        <label class="form-label">Luogo di destinazione <span style="font-size:11px;color:var(--text-3)">— dove va consegnata QUESTA merce, se diverso dalla sede legale del cliente</span></label>
-        <input type="text" id="edit-ord-destinazione" placeholder="Es. Via Roma 10, 90100 Palermo (PA)" style="padding:8px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;width:100%">
-      </div>
-
-      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap;margin-top:14px">
+      <div style="display:flex;gap:16px;margin-bottom:10px;flex-wrap:wrap">
         <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px"><input type="checkbox" id="edit-ord-facchinaggio"><span>Facchinaggio</span></label>
         <div style="display:flex;align-items:center;gap:8px">
           <label style="font-size:13px">Chiamare:</label>
@@ -1635,11 +1521,9 @@ select,option{background:#fff;color:var(--text);color-scheme:light}
         </div>
       </div>
       <div class="form-group"><label class="form-label">Note</label><textarea id="edit-ord-note" style="min-height:50px"></textarea></div>
-      <div id="edit-ord-ddt-stato" style="font-size:12px;margin-bottom:10px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" onclick="closeModal('modal-edit-ordine')">Annulla</button>
-        <button class="btn" id="btn-salva-edit-ordine" onclick="aggiornaOrdine(false)"><i class="ti ti-check"></i>Salva</button>
-        <button class="btn btn-primary" id="btn-salva-ddt-edit-ordine" onclick="aggiornaOrdine(true)"><i class="ti ti-truck-delivery"></i>Salva e aggiorna DDT</button>
+        <button class="btn btn-primary" onclick="aggiornaOrdine()"><i class="ti ti-check"></i>Salva</button>
       </div>
     </div>
   </div>
@@ -2363,10 +2247,6 @@ function applyPermissions(){
   ['pipeline','lead-detail','cliente-detail','contatti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
-  const navImpostazioni=document.getElementById('nav-impostazioni');
-  if(navImpostazioni) navImpostazioni.style.display = currentUser.ruolo==='admin' ? 'flex' : 'none';
-  const btnRegioni=document.getElementById('btn-regioni-mancanti');
-  if(btnRegioni) btnRegioni.style.display = currentUser.ruolo==='admin' ? 'inline-flex' : 'none';
 }
 function canDo(a){return currentUser&&(PERMESSI[currentUser.ruolo]||{})[a];}
 
@@ -2400,7 +2280,7 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
-  if(id==='dashboard')renderDash();
+  if(id==='dashboard'){ renderDash(); boCaricaUltimoRapporto(); }
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
@@ -2410,7 +2290,7 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); renderCatalogoProdotti(); renderFatturazioneAutomatica(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -3099,9 +2979,7 @@ function switchContattiTab(tab, el){
   document.querySelectorAll('#contatti-tabs .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
   document.getElementById('contatti-vista-clienti').style.display = tab==='clienti' ? 'block' : 'none';
-  document.getElementById('contatti-vista-attivi').style.display = tab==='attivi' ? 'block' : 'none';
   document.getElementById('contatti-vista-fornitori').style.display = tab==='fornitori' ? 'block' : 'none';
-  if(tab==='attivi') renderClientiAttivi();
   // Aggiorna il pulsante "Nuovo"
   const btn = document.getElementById('btn-nuovo-contatto');
   if(btn){
@@ -3119,8 +2997,8 @@ function esportaContatti(){
 
   // Esporta come CSV scaricabile
   const cols = tab==='fornitori'
-    ? ['codice','nome','citta','regione','tel','piva','sdi','pec','email','ind_legale','ind_consegna']
-    : ['codice','nome','citta','regione','tel','email','sdi','pec','piva','prod','ind_legale','ind_consegna','note'];
+    ? ['codice','nome','citta','tel','piva','sdi','pec','email','ind_legale','ind_consegna']
+    : ['codice','nome','citta','tel','email','sdi','pec','piva','prod','ind_legale','ind_consegna','note'];
   const intestazione = cols.join(';');
   const righe = lista.map(c=>cols.map(k=>`"${(c[k]||'').toString().replace(/"/g,'""')}"`).join(';'));
   const csv = [intestazione, ...righe].join('\n');
@@ -3131,218 +3009,44 @@ function esportaContatti(){
   document.body.appendChild(a); a.click(); document.body.removeChild(a); URL.revokeObjectURL(url);
 }
 
-// ── REGIONI ───────────────────────────────────────────────────────────────
-const REGIONI_ITALIA = ['Abruzzo','Basilicata','Calabria','Campania','Emilia-Romagna','Friuli-Venezia Giulia','Lazio','Liguria','Lombardia','Marche','Molise','Piemonte','Puglia','Sardegna','Sicilia','Toscana','Trentino-Alto Adige','Umbria',"Valle d'Aosta",'Veneto','Estero'];
-
-function popolaSelectRegioni(){
-  const formSelects = ['cl-regione','edit-cl-regione'];
-  formSelects.forEach(id=>{
-    const sel=document.getElementById(id); if(!sel||sel.dataset.popolato) return;
-    sel.innerHTML = '<option value="">— Seleziona regione —</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
-    sel.dataset.popolato='1';
-  });
-  const filterSelects = ['filtro-regione-clienti','filtro-regione-attivi','filtro-regione-fornitori'];
-  filterSelects.forEach(id=>{
-    const sel=document.getElementById(id); if(!sel||sel.dataset.popolato) return;
-    sel.innerHTML = '<option value="">Tutte le regioni</option>' + REGIONI_ITALIA.map(r=>`<option value="${r}">${r}</option>`).join('');
-    sel.dataset.popolato='1';
-  });
-}
-
-// ── COMPILAZIONE REGIONI MANCANTI (da città, con conferma manuale) ─────────
-async function apriModalRegioni(){
-  if(currentUser.ruolo!=='admin'){ alert('Solo l\'amministratore può usare questa funzione.'); return; }
-  openModal('modal-regioni');
-  document.getElementById('regioni-loading').style.display='block';
-  document.getElementById('regioni-content').style.display='none';
-  const data = await api.get('/api/clienti/regioni-proposte');
-  document.getElementById('regioni-loading').style.display='none';
-  document.getElementById('regioni-content').style.display='block';
-  if(data.error){ alert('Errore: '+data.error); return; }
-
-  const proposteWrap = document.getElementById('regioni-proposte-wrap');
-  const nonRicWrap = document.getElementById('regioni-non-riconosciuti-wrap');
-  const vuoto = document.getElementById('regioni-vuoto');
-  const btnApplica = document.getElementById('btn-applica-regioni');
-
-  if(!data.proposte.length && !data.nonRiconosciuti.length){
-    proposteWrap.style.display='none'; nonRicWrap.style.display='none'; btnApplica.style.display='none';
-    vuoto.style.display='block';
-    return;
-  }
-  vuoto.style.display='none'; btnApplica.style.display=data.proposte.length?'inline-flex':'none';
-
-  const lista = document.getElementById('regioni-lista-proposte');
-  if(data.proposte.length){
-    proposteWrap.style.display='block';
-    lista.innerHTML = data.proposte.map(p=>`
-      <label style="display:flex;align-items:center;gap:10px;padding:7px 4px;border-bottom:1px solid var(--border);cursor:pointer;font-size:13px">
-        <input type="checkbox" class="regione-check" checked data-id="${p.id}" data-regione="${p.regioneProposta}">
-        <span style="flex:1"><strong>${p.nome}</strong> <span style="color:var(--text-3)">— ${p.citta}</span></span>
-        <span class="badge" style="background:var(--brand-light);color:var(--brand)">${p.regioneProposta}</span>
-      </label>`).join('');
-  } else {
-    proposteWrap.style.display='none';
-  }
-
-  const listaNr = document.getElementById('regioni-lista-non-riconosciuti');
-  if(data.nonRiconosciuti.length){
-    nonRicWrap.style.display='block';
-    listaNr.innerHTML = data.nonRiconosciuti.map(p=>`<div>${p.nome} — città: "${p.citta}"</div>`).join('');
-  } else {
-    nonRicWrap.style.display='none';
-  }
-}
-
-async function applicaRegioniConfermate(){
-  const checks = document.querySelectorAll('.regione-check:checked');
-  if(!checks.length){ alert('Nessuna proposta selezionata'); return; }
-  const conferme = Array.from(checks).map(c=>({ id: parseInt(c.dataset.id), regione: c.dataset.regione }));
-  const btn = document.getElementById('btn-applica-regioni');
-  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Applico...';
-  const r = await api.post('/api/clienti/regioni-applica', { conferme });
-  btn.disabled = false; btn.innerHTML = '<i class="ti ti-check"></i>Applica selezionate';
-  if(r.error){ alert('Errore: '+r.error); return; }
-  const aggiornati = await api.get('/api/clienti');
-  if(!aggiornati.error) state.clienti = aggiornati;
-  renderClienti(); renderFornitori(); showSave();
-  closeModal('modal-regioni');
-  alert(`Fatto: ${r.aggiornati} contatti aggiornati con la regione dedotta dalla città.`);
-}
-
 // ── CLIENTI ───────────────────────────────────────────────────────────────
-// ── ETICHETTA SPEDIZIONE PALLET ─────────────────────────────────────────────
-// Genera un'etichetta stampabile Mittente → Destinatario, con la città in grande.
-// Usata sia dalla scheda contatto (indirizzo abituale) sia dall'ordine (indirizzo specifico di quell'ordine, se diverso).
-const MITTENTE_ETICHETTA = { nome: 'VITALITI ANTONIO', indirizzo: 'Via I Retta Levante 134', citta: 'Belpasso (CT)' };
-
-function stampaEtichetta(nomeDestinatario, indirizzoCompleto, cittaDestinatario){
-  if(!nomeDestinatario){ alert('Nome destinatario mancante, impossibile generare l\'etichetta.'); return; }
-  const citta = (cittaDestinatario||'').toUpperCase() || 'CITTÀ NON INDICATA';
-  const win = window.open('', '_blank', 'width=850,height=1100');
-  if(!win){ alert('Il browser ha bloccato l\'apertura della finestra di stampa. Consenti i popup per questo sito.'); return; }
-  const logoUrl = window.location.origin + '/logo.png';
-  win.document.write(`<!DOCTYPE html><html><head><meta charset="utf-8"><title>Etichetta — ${nomeDestinatario}</title>
-  <style>
-    @page{ size:A4; margin:2.5cm; }
-    body{ font-family:'Segoe UI',Arial,sans-serif; text-align:center; color:#2b2b2b; margin:0; padding:40px; }
-    .logo{ width:170px; height:auto; margin-bottom:56px; }
-    .label{ font-size:19px; color:#A8412A; font-weight:600; margin-bottom:4px; }
-    .freccia-wrap{ display:flex; flex-direction:column; align-items:center; margin:6px 0 46px; }
-    .freccia-linea{ width:2px; height:40px; background:#2b2b2b; }
-    .freccia-punta{ width:0; height:0; border-left:8px solid transparent; border-right:8px solid transparent; border-top:12px solid #2b2b2b; margin-top:-1px; }
-    .nome-dest{ font-size:23px; font-weight:700; text-decoration:underline; text-underline-offset:4px; margin-bottom:26px; }
-    .citta-dest{ font-size:46px; font-weight:800; text-decoration:underline; text-underline-offset:6px; color:#C9622D; margin-bottom:38px; letter-spacing:1px; }
-    .indirizzo-dest{ font-size:16px; text-decoration:underline; text-underline-offset:3px; color:#444; }
-  </style></head><body>
-    <img class="logo" src="${logoUrl}" alt="Mulino Vitaliti">
-
-    <div class="label">Mittente</div>
-    <div class="freccia-wrap"><div class="freccia-linea"></div><div class="freccia-punta"></div></div>
-
-    <div class="label">Destinatario</div>
-    <div class="nome-dest">${nomeDestinatario}</div>
-    <div class="citta-dest">${citta}</div>
-    ${indirizzoCompleto ? `<div class="indirizzo-dest">${indirizzoCompleto}</div>` : ''}
-  </body></html>`);
-  win.document.close();
-  win.onload = () => { win.focus(); win.print(); };
-}
-
-// Stampa l'etichetta per un cliente, usando l'indirizzo di consegna abituale salvato sulla scheda
-function stampaEtichettaCliente(clienteId){
-  const c = (state.clienti||[]).find(x=>x.id===clienteId);
-  if(!c){ alert('Cliente non trovato'); return; }
-  const indirizzo = c.ind_consegna || c.ind_legale || c.ind || '';
-  stampaEtichetta(c.nome, indirizzo, c.citta);
-}
-
-// Stampa l'etichetta per un ordine specifico: usa la destinazione di QUELL'ordine se diversa, altrimenti quella del cliente
-function stampaEtichettaOrdine(ordineId){
-  const o = (state.ordini||[]).find(x=>x.id===ordineId);
-  if(!o){ alert('Ordine non trovato'); return; }
-  const c = (state.clienti||[]).find(x=>x.id===o.cliente_id);
-  const indirizzo = (o.destinazione||'').trim() || c?.ind_consegna || c?.ind_legale || c?.ind || '';
-  const citta = (o.destinazione||'').trim() ? '' : (c?.citta||''); // se la destinazione è scritta per esteso, non duplico la città a parte
-  stampaEtichetta(o.cliente || c?.nome, indirizzo, citta || c?.citta);
-}
-
-function rigaClienteHTML(c){
-  const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
-  const isManuale = c.attivo_manuale !== null && c.attivo_manuale !== undefined;
-  const titoloToggle = isManuale
-    ? `Impostato a mano · clicca destro per tornare automatico`
-    : `Automatico (ultimo ordine: ${c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString('it-IT') : 'mai'})`;
-  return `
-    <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
-    <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
-    <td>${c.citta||'—'}</td>
-    <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
-    <td>${c.tel||'—'}</td>
-    <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
-    <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
-    <td>
-      <label class="toggle-attivo" title="${titoloToggle}" oncontextmenu="resetAttivoAutomatico(${c.id});return false;">
-        <input type="checkbox" ${c.attivo?'checked':''} onchange="toggleClienteAttivo(${c.id},this.checked)">
-        <span class="slider"></span>
-      </label>
-      ${isManuale?'<div style="font-size:9px;color:var(--text-3);margin-top:2px">manuale</div>':''}
-    </td>
-    <td style="white-space:nowrap">
-      <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
-      <button class="btn btn-sm" onclick="stampaEtichettaCliente(${c.id})" title="Stampa etichetta spedizione"><i class="ti ti-tag"></i></button>
-      <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
-      <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
-    </td>`;
-}
-
 // Filtra solo clienti (non fornitori)
 function renderClienti(){
-  popolaSelectRegioni();
   const q=(document.getElementById('search-clienti')?.value||'').toLowerCase();
-  const regioneSel=document.getElementById('filtro-regione-clienti')?.value||'';
-  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
+  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
   const cnt=document.getElementById('clienti-count');
   const soloClienti=(state.clienti||[]).filter(c=>c.tipo!=='fornitore');
-  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloClienti.length} clienti`;
+  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloClienti.length} clienti`;
   const tb=document.getElementById('tbl-clienti'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun cliente trovato</div></td></tr>';return;}
   list.forEach(c=>{
+    const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
-    tr.innerHTML = rigaClienteHTML(c);
-    tb.appendChild(tr);
-  });
-}
-
-// Solo clienti attivi (quelli che stanno acquistando davvero) — stesso formato, stesso filtro regione
-function renderClientiAttivi(){
-  popolaSelectRegioni();
-  const q=(document.getElementById('search-attivi')?.value||'').toLowerCase();
-  const regioneSel=document.getElementById('filtro-regione-attivi')?.value||'';
-  const list=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.attivo && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.prod||'').toLowerCase().includes(q)||(c.tel||'').includes(q)||(c.sdi||'').toLowerCase().includes(q)||(c.codice||'').toLowerCase().includes(q)||(c.piva||'').includes(q)));
-  const cnt=document.getElementById('attivi-count');
-  const soloAttivi=(state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.attivo);
-  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloAttivi.length} clienti attivi`;
-  const tb=document.getElementById('tbl-attivi'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="9"><div class="empty-state">Nessun cliente attivo trovato</div></td></tr>';return;}
-  list.forEach(c=>{
-    const tr=document.createElement('tr'); tr.id='cl-attivo-row-'+c.id;
-    tr.innerHTML = rigaClienteHTML(c);
+    tr.innerHTML=`
+      <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
+      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
+      <td>${c.citta||'—'}</td>
+      <td>${c.tel||'—'}</td>
+      <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
+      <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
+      <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
+        <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+        <button class="btn btn-sm btn-danger" onclick="eliminaCliente(${c.id},'${c.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
+      </td>`;
     tb.appendChild(tr);
   });
 }
 
 // ── FORNITORI ─────────────────────────────────────────────────────────────
 function renderFornitori(){
-  popolaSelectRegioni();
   const q=(document.getElementById('search-fornitori')?.value||'').toLowerCase();
-  const regioneSel=document.getElementById('filtro-regione-fornitori')?.value||'';
-  const list=(state.clienti||[]).filter(c=>c.tipo==='fornitore' && (!regioneSel||c.regione===regioneSel) && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.piva||'').includes(q)||(c.tel||'').includes(q)||(c.codice||'').toLowerCase().includes(q)));
+  const list=(state.clienti||[]).filter(c=>c.tipo==='fornitore' && (c.nome.toLowerCase().includes(q)||(c.citta||'').toLowerCase().includes(q)||(c.piva||'').includes(q)||(c.tel||'').includes(q)||(c.codice||'').toLowerCase().includes(q)));
   const cnt=document.getElementById('fornitori-count');
   const soloFornitori=(state.clienti||[]).filter(c=>c.tipo==='fornitore');
-  if(cnt) cnt.textContent = (q||regioneSel) ? `${list.length} risultati` : `${soloFornitori.length} fornitori`;
+  if(cnt) cnt.textContent = q ? `${list.length} risultati` : `${soloFornitori.length} fornitori`;
   const tb=document.getElementById('tbl-fornitori'); if(!tb)return; tb.innerHTML='';
-  if(!list.length){tb.innerHTML='<tr><td colspan="8"><div class="empty-state">Nessun fornitore trovato</div></td></tr>';return;}
+  if(!list.length){tb.innerHTML='<tr><td colspan="7"><div class="empty-state">Nessun fornitore trovato</div></td></tr>';return;}
   list.forEach(c=>{
     const sdiPec = [c.sdi?`<span style="font-family:monospace;font-size:11px;background:var(--brand-light);color:var(--brand);padding:1px 5px;border-radius:4px">${c.sdi}</span>`:'', c.pec?`<span style="font-size:11px;color:var(--text-2)">${c.pec}</span>`:''].filter(Boolean).join('<br>');
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
@@ -3350,7 +3054,6 @@ function renderFornitori(){
       <td><span style="font-family:monospace;font-size:11px;background:var(--green-light);color:var(--green);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
       <td><div class="flex-row"><div class="avatar" style="background:var(--green-light);color:var(--green)">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
       <td>${c.citta||'—'}</td>
-      <td>${c.regione||'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${c.tel||'—'}</td>
       <td style="font-size:12px;color:var(--text-2)">${c.piva||'—'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
@@ -3417,8 +3120,7 @@ async function sincronizzaIndirizziFic(){
 // ── IMPORTAZIONE CONTATTI DA EXCEL ──────────────────────────────────────────
 let _excelImportRighe = []; // righe normalizzate pronte da inviare al server
 let _excelImportCerti = []; // match certi calcolati dal server
-let _excelSenzaMatch = []; // righe complete senza nessuna corrispondenza (candidate a nuovo contatto)
-const CAMPI_AGGIORNABILI_CLIENTE_JS = ['tel', 'email', 'citta', 'ind_legale', 'ind_consegna', 'sdi', 'pec', 'ref', 'piva'];
+let _excelSenzaMatch = []; // nomi senza nessuna corrispondenza
 
 // Mappa alias colonna (minuscolo, senza spazi/punti) -> campo interno
 const EXCEL_COLONNE_ALIAS = {
@@ -3432,12 +3134,6 @@ const EXCEL_COLONNE_ALIAS = {
   'sdi': 'sdi', 'codicesdi': 'sdi', 'codicedestinatario': 'sdi',
   'pec': 'pec', 'emailpec': 'pec',
   'referente': 'ref', 'contatto': 'ref', 'refente': 'ref',
-  // Export da CRM contatti (es. Google Contacts / Pipedrive): "Persona - Organizzazione" è il nome
-  // dell'azienda (quello giusto da usare come "nome" cliente), "Persona - Nome" è il referente/titolare.
-  'persona-organizzazione': 'nome',
-  'persona-nome': 'ref',
-  'persona-email-lavoro': 'email', 'persona-email-casa': 'email', 'persona-email-altro': 'email',
-  'persona-telefono-lavoro': 'tel', 'persona-telefono-cellulare': 'tel', 'persona-telefono-casa': 'tel', 'persona-telefono-altro': 'tel',
 };
 
 function normalizzaIntestazioneColonna(s){
@@ -3467,8 +3163,8 @@ function onExcelFileSelected(input){
         if(EXCEL_COLONNE_ALIAS[norm]) mappaColonne[col] = EXCEL_COLONNE_ALIAS[norm];
       });
 
-      if(!Object.values(mappaColonne).includes('nome') && !Object.values(mappaColonne).includes('ref')){
-        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" / "Organizzazione" nel file. Controlla le intestazioni delle colonne.');
+      if(!Object.values(mappaColonne).includes('nome')){
+        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" nel file. Controlla le intestazioni delle colonne.');
         return;
       }
 
@@ -3476,19 +3172,10 @@ function onExcelFileSelected(input){
         const obj = {};
         Object.keys(row).forEach(col=>{
           const campo = mappaColonne[col];
-          // La prima colonna non vuota vince: utile quando più colonne (es. email lavoro/casa/altro) puntano allo stesso campo
-          if(campo && row[col]!=='' && !obj[campo]){ obj[campo] = String(row[col]).trim(); }
+          if(campo && row[col]!==''){ obj[campo] = String(row[col]).trim(); }
         });
-        // Ripiego: se manca il nome azienda ma c'è un referente (es. export CRM senza "Organizzazione" compilata),
-        // usa il nome del referente come nome contatto invece di scartare la riga
-        if(!obj.nome && obj.ref){ obj.nome = obj.ref; delete obj.ref; }
         return obj;
       }).filter(r=>r.nome);
-
-      if(!_excelImportRighe.length){
-        alert('Ho trovato le colonne giuste, ma nessuna riga ha un nome o un\'organizzazione valorizzati.');
-        return;
-      }
 
       await analizzaImportExcel();
     }catch(err){
@@ -3566,20 +3253,11 @@ function renderAnteprimaExcel(){
     html += `</div>`;
   }
 
-  // ── Senza match: diventano nuovi contatti ──
+  // ── Senza match ──
   if(senzaMatch.length){
-    html += `<div style="font-size:13px;font-weight:600;color:var(--brand);margin-bottom:8px"><i class="ti ti-user-plus"></i> ${senzaMatch.length} nuovi contatti da creare</div>`;
-    html += `<div style="font-size:12px;color:var(--text-2);margin-bottom:8px">Non esistono ancora nel gestionale — verranno creati con i dati del file. Deseleziona quelli che non vuoi importare.</div>`;
-    html += `<div style="border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden;max-height:280px;overflow-y:auto">`;
-    senzaMatch.forEach((r,i)=>{
-      const campiTesto = CAMPI_AGGIORNABILI_CLIENTE_JS.filter(c=>r[c]).map(c=>`<strong>${campoLabel(c)}:</strong> ${r[c]}`).join(' · ');
-      const nessunAltroDato = '<span style="color:var(--text-3)">nessun altro dato</span>';
-      html += `<label style="display:flex;align-items:flex-start;gap:8px;padding:9px 12px;font-size:12px;border-bottom:${i<senzaMatch.length-1?'1px solid var(--border)':'none'};cursor:pointer">
-        <input type="checkbox" class="excel-nuovo-check" data-index="${i}" checked style="margin-top:2px">
-        <span><strong>${r.nome}</strong><br><span style="color:var(--text-2)">${campiTesto||nessunAltroDato}</span></span>
-      </label>`;
-    });
-    html += `</div>`;
+    html += `<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">
+      <strong>${senzaMatch.length} righe senza nessuna corrispondenza</strong> nel gestionale: ${senzaMatch.slice(0,15).join(', ')}${senzaMatch.length>15?` e altri ${senzaMatch.length-15}...`:''}
+    </div>`;
   }
 
   html += `<button class="btn btn-primary" id="btn-conferma-import-excel" onclick="confermaImportExcel()"><i class="ti ti-check"></i>Conferma e completa contatti</button>`;
@@ -3606,20 +3284,16 @@ async function confermaImportExcel(){
       ...(_excelDubbiCorrenti||[]).filter(d=>d.sceltaClienteId).map(d=>({ clienteId:d.sceltaClienteId, campiDaCompletare:d.campiDaCompletare }))
     ];
 
-    const nuovi = Array.from(document.querySelectorAll('.excel-nuovo-check:checked'))
-      .map(chk => _excelSenzaMatch[parseInt(chk.dataset.index)])
-      .filter(Boolean);
+    if(conferme.length===0){ alert('Nessun aggiornamento da applicare.'); return; }
 
-    if(conferme.length===0 && nuovi.length===0){ alert('Nessun aggiornamento da applicare.'); return; }
-
-    const r = await api.post('/api/clienti/importa-excel/conferma', { conferme, nuovi });
+    const r = await api.post('/api/clienti/importa-excel/conferma', { conferme });
     if(r.error){ alert('Errore: '+r.error); return; }
 
     const clientiAggiornati = await api.get('/api/clienti');
     if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
     renderClienti();
 
-    alert(`✅ Importazione completata!\n\n📊 ${r.aggiornati||0} clienti completati con i nuovi dati.\n➕ ${r.creati||0} nuovi contatti creati.`);
+    alert(`✅ Importazione completata!\n\n📊 ${r.aggiornati} clienti completati con i nuovi dati.`);
     showSave();
 
     // Reset
@@ -3768,22 +3442,6 @@ async function eliminaCliente(id, nome){
       showSave();
     }catch(e){ alert('Errore di rete: '+e.message); }
   });
-}
-async function toggleClienteAttivo(id, nuovoStato){
-  const data = await api.put(`/api/clienti/${id}/attivo`, { attivo_manuale: nuovoStato });
-  if(data?.error){ alert('Errore: '+data.error); renderClienti(); return; }
-  const c = state.clienti.find(x=>x.id===id);
-  if(c){ c.attivo_manuale = nuovoStato; c.attivo = nuovoStato; }
-  renderClienti();
-  showSave();
-}
-async function resetAttivoAutomatico(id){
-  const data = await api.put(`/api/clienti/${id}/attivo`, { attivo_manuale: null });
-  if(data?.error){ alert('Errore: '+data.error); return; }
-  const aggiornati = await api.get('/api/clienti');
-  if(!aggiornati.error) state.clienti = aggiornati;
-  renderClienti();
-  showSave();
 }
 function apriDettaglio(id){
   apriDettaglioCliente(id);
@@ -4258,6 +3916,131 @@ async function spostaLeadPipelineFase(leadId){
   if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-arrows-right-left"></i>Sposta'; }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// AGENTE BACK OFFICE — rapporto giornaliero e alert
+// ══════════════════════════════════════════════════════════════════════════
+async function boCaricaUltimoRapporto(){
+  try{
+    const dati = await api.get('/api/backoffice/ultimo-rapporto');
+    const elTesto = document.getElementById('bo-testo');
+    const elData = document.getElementById('bo-generato-il');
+    if(!elTesto) return;
+
+    if(dati && dati.testo){
+      elTesto.textContent = dati.testo;
+      const d = new Date(dati.created_at);
+      const oggi = d.toDateString() === new Date().toDateString();
+      elData.textContent = (oggi ? 'Generato oggi alle ' + d.toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'})
+                                 : 'Ultimo: ' + d.toLocaleString('it-IT'));
+    } else {
+      elTesto.textContent = 'Nessun rapporto ancora generato. Premi "Rigenera" per crearne uno adesso.';
+      elData.textContent = '';
+    }
+  }catch(e){}
+  boCaricaAlert();
+  boCaricaListe();
+}
+
+async function boCaricaAlert(){
+  try{
+    const alert = await api.get('/api/backoffice/alert');
+    if(alert.error) return;
+    const wrap = document.getElementById('bo-alert-wrap');
+    const lista = document.getElementById('bo-lista-alert');
+    const count = document.getElementById('bo-count-alert');
+    if(!wrap) return;
+
+    if(!alert.length){ wrap.style.display='none'; return; }
+    wrap.style.display='block';
+    count.textContent = alert.length;
+
+    const colore = g => g==='alta' ? 'var(--red)' : g==='media' ? 'var(--orange)' : 'var(--text-3)';
+    const icona = t => ({
+      pagamento_critico:'ti-alert-octagon', pagamento_ritardo:'ti-clock-exclamation',
+      ordine_fermo:'ti-package-off', task_scaduto:'ti-calendar-x', esposizione_alta:'ti-trending-down'
+    })[t] || 'ti-bell';
+
+    lista.innerHTML = alert.map(a=>`
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 10px;border-left:3px solid ${colore(a.gravita)};background:var(--surface-2);border-radius:6px;margin-bottom:6px">
+        <i class="ti ${icona(a.tipo)}" style="color:${colore(a.gravita)};font-size:15px;margin-top:1px"></i>
+        <div style="flex:1">
+          <div style="font-size:13px;font-weight:600">${a.titolo}</div>
+          ${a.dettaglio?`<div style="font-size:12px;color:var(--text-2)">${a.dettaglio}</div>`:''}
+        </div>
+        <button class="btn btn-sm" onclick="boSegnaLetto(${a.id})" style="font-size:11px;padding:3px 8px">✓</button>
+      </div>`).join('');
+  }catch(e){}
+}
+
+async function boSegnaLetto(id){
+  try{ await api.post(`/api/backoffice/alert/${id}/letto`, {}); boCaricaAlert(); }catch(e){}
+}
+
+async function boSegnaTuttiLetti(){
+  try{
+    const r = await api.post('/api/backoffice/alert/letti-tutti', {});
+    mostraToast(`${r.aggiornati} alert archiviati`);
+    boCaricaAlert();
+  }catch(e){}
+}
+
+async function boCaricaListe(){
+  try{
+    const dati = await api.get('/api/backoffice/riepilogo');
+    if(dati.error) return;
+
+    // Esposizione totale
+    const elTot = document.getElementById('bo-totale-esposizione');
+    if(elTot) elTot.textContent = '€' + Number(dati.totaleDaIncassare||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+
+    // Non pagati
+    document.getElementById('bo-count-nonpagati').textContent = dati.nonPagati.length;
+    const listaNP = document.getElementById('bo-lista-nonpagati');
+    listaNP.innerHTML = dati.nonPagati.length
+      ? dati.nonPagati.slice(0,6).map(m=>{
+          const gg = Number(m.giorni_attesa||0);
+          const col = gg>60?'var(--red)':gg>30?'var(--orange)':'var(--text-3)';
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+            <span>${m.descrizione||'Senza descrizione'}</span>
+            <span style="white-space:nowrap;margin-left:8px"><strong>€${Number(m.importo).toFixed(2)}</strong> <em style="color:${col};font-style:normal">(${gg}g)</em></span>
+          </div>`;
+        }).join('')
+      : '<div style="font-size:12px;color:var(--green);padding:6px 0">Tutto incassato.</div>';
+
+    // Inattivi
+    document.getElementById('bo-count-inattivi').textContent = dati.inattivi.length;
+    const listaIn = document.getElementById('bo-lista-inattivi');
+    listaIn.innerHTML = dati.inattivi.length
+      ? dati.inattivi.slice(0,6).map(c=>{
+          const ultimo = c.ultimo_ordine ? new Date(c.ultimo_ordine).toLocaleDateString('it-IT') : 'mai';
+          return `<div style="display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid var(--border);font-size:12px">
+            <span>${c.nome}</span>
+            <em style="color:var(--text-3);font-style:normal;white-space:nowrap;margin-left:8px">${ultimo}</em>
+          </div>`;
+        }).join('')
+      : '<div style="font-size:12px;color:var(--green);padding:6px 0">Tutti attivi.</div>';
+  }catch(e){}
+}
+
+async function boGeneraRapporto(){
+  const btn = document.getElementById('bo-genera-btn');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Analizzo...'; }
+  document.getElementById('bo-testo').textContent = 'Sto controllando ordini, pagamenti e clienti...';
+  try{
+    const dati = await api.post('/api/backoffice/genera-rapporto', {});
+    if(dati.error){ document.getElementById('bo-testo').textContent = 'Errore: '+dati.error; return; }
+    document.getElementById('bo-testo').textContent = dati.testo;
+    document.getElementById('bo-generato-il').textContent = 'Generato ora';
+    if(dati.alertNuovi > 0) mostraToast(`${dati.alertNuovi} nuovi alert rilevati`, 'error');
+    boCaricaAlert();
+    boCaricaListe();
+  }catch(e){
+    document.getElementById('bo-testo').textContent = 'Errore di connessione: '+e.message;
+  }finally{
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-refresh"></i>Rigenera'; }
+  }
+}
+
 function mostraToast(msg, tipo='success'){
   let toast = document.getElementById('vv-toast');
   if(!toast){
@@ -4436,7 +4219,6 @@ function renderOrdini(){
       <td>${ddtBadge}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="editOrdine(${o.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
-        <button class="btn btn-sm" onclick="stampaEtichettaOrdine(${o.id})" title="Stampa etichetta spedizione"><i class="ti ti-tag"></i></button>
         <button class="btn btn-sm btn-danger" onclick="eliminaOrdine(${o.id})" title="Elimina"><i class="ti ti-trash"></i></button>
       </td>`;
     tb.appendChild(tr);
@@ -4453,113 +4235,6 @@ function filterOrdini(f,el){
 }
 
 // ── RIGHE PRODOTTO ORDINE ─────────────────────────────────────────────────
-// ── FATTURAZIONE AUTOMATICA (Impostazioni, admin) ───────────────────────────
-async function renderFatturazioneAutomatica(){
-  const tb = document.getElementById('tbl-fatturazione-automatica');
-  if(!tb) return;
-  const data = await api.get('/api/fatturazione-automatica/stato');
-  if(!Array.isArray(data)){ tb.innerHTML = '<tr><td colspan="5"><div class="empty-state">Errore nel caricamento</div></td></tr>'; return; }
-  if(!data.length){ tb.innerHTML = '<tr><td colspan="5"><div class="empty-state">Nessun DDT ancora creato.</div></td></tr>'; return; }
-  tb.innerHTML = data.map(o=>{
-    const giorni = o.giorni_da_ddt ?? 0;
-    let statoFattura;
-    if(o.fic_fattura_numero){
-      statoFattura = `<span class="badge" style="background:var(--green-light);color:var(--green)"><i class="ti ti-check"></i> ${o.fic_fattura_numero}</span>`;
-    } else if(giorni >= 10){
-      statoFattura = `<span class="badge" style="background:var(--gold-light);color:var(--gold)">In elaborazione...</span>`;
-    } else {
-      statoFattura = `<span style="font-size:12px;color:var(--text-3)">tra ${10-giorni} giorni</span> <button class="btn btn-sm" onclick="forzaFatturazioneOrdine(${o.id})" title="Salta l'attesa e fattura subito questo ordine, per test">Forza (test)</button>`;
-    }
-    let statoEmail;
-    if(!o.fic_fattura_numero) statoEmail = `<span style="font-size:12px;color:var(--text-3)">—</span>`;
-    else if(o.fattura_email_inviata) statoEmail = `<span class="badge" style="background:var(--green-light);color:var(--green)"><i class="ti ti-mail-check"></i> Inviata</span>`;
-    else statoEmail = `<span style="font-size:12px;color:var(--text-3)">In attesa che tu la invii allo SDI</span>`;
-    return `<tr>
-      <td style="font-weight:600">${o.cliente}</td>
-      <td style="font-size:12px">${o.fic_ddt_numero||'—'}</td>
-      <td>${giorni}</td>
-      <td>${statoFattura}</td>
-      <td>${statoEmail}</td>
-    </tr>`;
-  }).join('');
-}
-
-async function eseguiFatturazioneAutomaticaOra(){
-  const btn = event?.target?.closest('button');
-  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Controllo...'; }
-  const r = await api.post('/api/fatturazione-automatica/esegui-ora', {});
-  if(r?.error) alert('Errore: '+r.error);
-  await renderFatturazioneAutomatica();
-  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-refresh"></i>Controlla ora'; }
-}
-
-async function forzaFatturazioneOrdine(ordineId){
-  if(!confirm('Questo crea SUBITO una fattura vera su Fatture in Cloud da questo DDT, saltando l\'attesa dei 10 giorni — utile solo per testare che funzioni. La fattura non viene inviata allo SDI. Procedere?')) return;
-  const r = await api.post(`/api/ordini/${ordineId}/forza-fatturazione`, {});
-  if(r?.error){ alert('Errore: '+r.error); return; }
-  alert(`✅ Fattura ${r.fic_fattura_numero} creata su Fatture in Cloud. Vai a controllarla lì.`);
-  renderFatturazioneAutomatica();
-}
-
-// ── CATALOGO PRODOTTI (Impostazioni, admin) ─────────────────────────────────
-let _catalogoProdottiLista = [];
-async function renderCatalogoProdotti(){
-  const tb = document.getElementById('tbl-catalogo-prodotti');
-  if(!tb) return;
-  const data = await api.get('/api/prodotti-catalogo');
-  if(!Array.isArray(data)){ tb.innerHTML = '<tr><td colspan="6"><div class="empty-state">Errore nel caricamento</div></td></tr>'; return; }
-  _catalogoProdottiLista = data;
-  _catalogoFIC = null; // forza il ricaricamento del catalogo usato nel form ordine al prossimo utilizzo
-  if(!data.length){ tb.innerHTML = '<tr><td colspan="6"><div class="empty-state">Nessun prodotto nel catalogo. Aggiungine uno.</div></td></tr>'; return; }
-  tb.innerHTML = data.map(p=>`
-    <tr>
-      <td style="font-weight:600">${p.nome}</td>
-      <td><span style="font-family:monospace;font-size:12px;background:var(--surface-2);padding:2px 6px;border-radius:4px">${p.codice}</span></td>
-      <td style="font-size:12px;color:var(--text-2)">${p.descrizione||'—'}</td>
-      <td>${p.peso_kg?p.peso_kg+' kg':'—'}</td>
-      <td>${p.prezzo_default?'€'+parseFloat(p.prezzo_default).toFixed(3):'—'}</td>
-      <td style="white-space:nowrap">
-        <button class="btn btn-sm" onclick="apriModalProdottoCatalogo(${p.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
-        <button class="btn btn-sm btn-danger" onclick="eliminaProdottoCatalogo(${p.id},'${p.nome.replace(/'/g,"\\'")}')" title="Elimina"><i class="ti ti-trash"></i></button>
-      </td>
-    </tr>`).join('');
-}
-
-function apriModalProdottoCatalogo(id){
-  const p = id ? _catalogoProdottiLista.find(x=>x.id===id) : null;
-  document.getElementById('modal-prodotto-catalogo-titolo').textContent = p ? 'Modifica prodotto' : 'Nuovo prodotto';
-  document.getElementById('pc-id').value = p?.id || '';
-  document.getElementById('pc-nome').value = p?.nome || '';
-  document.getElementById('pc-codice').value = p?.codice || '';
-  document.getElementById('pc-peso').value = p?.peso_kg || '';
-  document.getElementById('pc-descrizione').value = p?.descrizione || '';
-  document.getElementById('pc-prezzo').value = p?.prezzo_default || '';
-  openModal('modal-prodotto-catalogo');
-}
-
-async function salvaProdottoCatalogo(){
-  const id = document.getElementById('pc-id').value;
-  const body = {
-    nome: document.getElementById('pc-nome').value.trim(),
-    codice: document.getElementById('pc-codice').value.trim(),
-    descrizione: document.getElementById('pc-descrizione').value.trim(),
-    peso_kg: parseFloat(document.getElementById('pc-peso').value) || null,
-    prezzo_default: parseFloat(document.getElementById('pc-prezzo').value) || null,
-  };
-  if(!body.nome || !body.codice) return alert('Nome e codice sono obbligatori');
-  const data = id ? await api.put('/api/prodotti-catalogo/'+id, body) : await api.post('/api/prodotti-catalogo', body);
-  if(data.error) return alert('Errore: '+data.error);
-  closeModal('modal-prodotto-catalogo');
-  renderCatalogoProdotti();
-}
-
-async function eliminaProdottoCatalogo(id, nome){
-  if(!confirm(`Rimuovere "${nome}" dal catalogo? Non comparirà più tra i prodotti selezionabili nei nuovi ordini.`)) return;
-  const data = await api.del('/api/prodotti-catalogo/'+id);
-  if(data?.error) return alert('Errore: '+data.error);
-  renderCatalogoProdotti();
-}
-
 const PRODOTTI_MULINO = [
   {nome:'Semola rimacinata di grano duro', kg_sacco:30, sacchi_bancale:42},
   {nome:'Semola Senatore Cappelli',         kg_sacco:25, sacchi_bancale:42},
@@ -4568,41 +4243,12 @@ const PRODOTTI_MULINO = [
   {nome:'Altro',                            kg_sacco:25, sacchi_bancale:0},
 ];
 
-// ── CATALOGO PRODOTTI (gestito in Impostazioni, non dipende da FIC) ────────
-// Raggruppa per nome prodotto, con le varianti di peso/codice disponibili per ciascuno.
-let _catalogoFIC = null; // { nomi:[...], gruppi:{ nome: [{codice,descrizione,peso,prezzo}] } }
-async function caricaCatalogoFIC(){
-  if(_catalogoFIC) return _catalogoFIC;
-  try {
-    const prods = await api.get('/api/prodotti-catalogo');
-    if(!Array.isArray(prods)) { _catalogoFIC = {nomi:[], gruppi:{}}; return _catalogoFIC; }
-    const gruppi = {};
-    prods.forEach(p=>{
-      if(!p.nome || !p.codice) return;
-      if(!gruppi[p.nome]) gruppi[p.nome] = [];
-      gruppi[p.nome].push({ codice: p.codice, descrizione: p.descrizione||'', peso: p.peso_kg?parseFloat(p.peso_kg):null, prezzo: p.prezzo_default?parseFloat(p.prezzo_default):0 });
-    });
-    Object.values(gruppi).forEach(arr=>arr.sort((a,b)=>(a.peso||0)-(b.peso||0)));
-    _catalogoFIC = { nomi: Object.keys(gruppi).sort(), gruppi };
-  } catch(e) {
-    console.error('Errore caricamento catalogo prodotti:', e);
-    _catalogoFIC = { nomi:[], gruppi:{} };
-  }
-  return _catalogoFIC;
-}
-
 let _ordineRighe = [];
 let _ordineRigheEdit = [];
 
 function aggiungiRigaOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
-  if(_catalogoFIC && _catalogoFIC.nomi.length){
-    const nome = _catalogoFIC.nomi[0];
-    const prima = _catalogoFIC.gruppi[nome][0];
-    righe.push({ nome, codice: prima?.codice||'', descrizione: prima?.descrizione||'', sacchi: '', kgSacco: prima?.peso||0, prezzoKg: 0 });
-  } else {
-    righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: '', kgSacco: 30, prezzoKg: 0 });
-  }
+  righe.push({ nome: PRODOTTI_MULINO[0].nome, sacchi: 1, kgSacco: 30, prezzoKg: 0 });
   renderRigheOrdine(mode);
 }
 
@@ -4610,67 +4256,39 @@ function renderRigheOrdine(mode='new'){
   const righe = mode==='edit' ? _ordineRigheEdit : _ordineRighe;
   const cont = document.getElementById(mode==='edit'?'edit-ord-righe':'ord-righe');
   if(!cont) return;
-  const catalogoOk = _catalogoFIC && _catalogoFIC.nomi.length > 0;
 
   cont.innerHTML = righe.map((r,i)=>{
-    let kgSacco, blocProdotto;
-    if(catalogoOk){
-      const varianti = _catalogoFIC.gruppi[r.nome] || _catalogoFIC.gruppi[_catalogoFIC.nomi[0]] || [];
-      const variante = varianti.find(v=>v.codice===r.codice) || varianti[0];
-      kgSacco = variante?.peso ?? (r.kgSacco||0);
-      blocProdotto = `
-      <div class="form-group" style="margin-bottom:8px">
-        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto</label>
-        <select onchange="onRigaTipoChange(${i},'${mode}',this.value)" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
-          ${_catalogoFIC.nomi.map(nome=>`<option value="${nome}" ${nome===r.nome?'selected':''}>${nome}</option>`).join('')}
-        </select>
-      </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px">
-        <div>
-          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Peso sacco</label>
-          <select onchange="onRigaPesoChange(${i},'${mode}',this.value)" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
-            ${varianti.map(v=>`<option value="${v.codice}" ${v.codice===variante?.codice?'selected':''}>${v.peso?v.peso+' kg':'(peso non indicato)'}</option>`).join('')}
-          </select>
-        </div>
-        <div>
-          <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">Codice</label>
-          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:12px;font-family:monospace;text-align:center;background:var(--surface-2);color:var(--text-2)">${variante?.codice||'—'}</div>
-        </div>
-      </div>`;
-    } else {
-      const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
-      kgSacco = r.kgSacco !== undefined ? r.kgSacco : prodInfo.kg_sacco;
-      blocProdotto = `
-      <div class="form-group" style="margin-bottom:8px">
-        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto <span style="color:var(--text-3);font-weight:400">(catalogo vuoto — aggiungine da Impostazioni)</span></label>
-        <select onchange="onRigaProdottoChange(${i},'${mode}')" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
-          ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
-        </select>
-      </div>`;
-    }
+    const prodInfo = PRODOTTI_MULINO.find(p=>p.nome===r.nome)||PRODOTTI_MULINO[0];
+    const kgSacco = r.kgSacco !== undefined ? r.kgSacco : prodInfo.kg_sacco;
     const kgTot = (r.sacchi||0) * (kgSacco||0);
     const totRiga = kgTot * (r.prezzoKg||0);
     return `
     <div style="background:var(--surface-2);border:1.5px solid var(--border);border-radius:var(--r);padding:10px 12px;position:relative">
       <button onclick="rimuoviRiga(${i},'${mode}')" style="position:absolute;top:8px;right:8px;background:none;border:none;cursor:pointer;color:var(--text-3);font-size:18px;line-height:1;padding:0" title="Rimuovi">×</button>
-      ${blocProdotto}
-      <!-- Riga: sacchi / kg sacco / kg tot / €/kg / totale -->
+      <!-- Riga 1: prodotto -->
+      <div class="form-group" style="margin-bottom:8px">
+        <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px">Prodotto</label>
+        <select onchange="onRigaProdottoChange(${i},'${mode}')" style="width:100%;padding:7px 10px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-family:var(--font);background:#fff">
+          ${PRODOTTI_MULINO.map(p=>`<option value="${p.nome}" ${p.nome===r.nome?'selected':''}>${p.nome}</option>`).join('')}
+        </select>
+      </div>
+      <!-- Riga 2: sacchi / kg sacco / kg tot / €/kg / totale -->
       <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr 1fr;gap:8px;align-items:end">
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">N° sacchi</label>
-          <input type="number" value="${r.sacchi===undefined||r.sacchi===''?'':r.sacchi}" min="1" step="1" placeholder="0"
+          <input type="number" value="${r.sacchi||1}" min="1" step="1"
             onchange="aggiornaRiga(${i},'sacchi',this.value,'${mode}')"
             style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">kg/sacco</label>
-          ${catalogoOk
-            ? `<div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:var(--surface-2);color:var(--text-2)">${kgSacco||'—'}</div>`
-            : `<input type="number" value="${kgSacco}" min="1" step="0.5" onchange="aggiornaRiga(${i},'kgSacco',this.value,'${mode}')" style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">`}
+          <input type="number" value="${kgSacco}" min="1" step="0.5"
+            onchange="aggiornaRiga(${i},'kgSacco',this.value,'${mode}')"
+            style="width:100%;padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;text-align:center;background:#fff">
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">kg totali</label>
-          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-weight:700;text-align:center;background:var(--surface-2);color:var(--text-2)">${r.sacchi?kgTot:''}</div>
+          <div style="padding:7px 8px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px;font-weight:700;text-align:center;background:var(--surface-2);color:var(--text-2)">${kgTot}</div>
         </div>
         <div>
           <label style="font-size:10px;text-transform:uppercase;color:var(--text-3);letter-spacing:0.4px;display:block;margin-bottom:3px">€ / kg</label>
@@ -4702,10 +4320,7 @@ function aggiornaRiepilogoOrdine(mode){
     kgTot += kg;
     importoTot += kg*(r.prezzoKg||0);
   });
-  if(riepiEl){
-    const importoIva = importoTot * 1.04;
-    riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?` · <strong style="color:var(--brand)">€${importoTot.toFixed(2)}</strong> <span style="color:var(--text-3);font-size:12px">(netto)</span> · <strong style="color:var(--brand)">€${importoIva.toFixed(2)}</strong> <span style="color:var(--text-3);font-size:12px">(IVA 4% incl.)</span>`:''}`;
-  }
+  if(riepiEl) riepiEl.innerHTML = `<span style="color:var(--text-3)">Totale:</span> <strong>${sacchiTot} sacchi · ${kgTot} kg</strong>${importoTot>0?' · <strong style="color:var(--brand)">€'+importoTot.toFixed(2)+'</strong>':''}`;
   // Auto-compila peso trasporto se il campo esiste (solo in edit, dove resta editabile)
   const pesoEl = document.getElementById(mode==='edit'?'edit-ord-peso-trasporto':'ord-peso-trasporto');
   if(pesoEl && !pesoEl.dataset.manuale) pesoEl.value = kgTot || '';
@@ -4723,33 +4338,9 @@ function onRigaProdottoChange(i, mode){
   renderRigheOrdine(mode);
 }
 
-// Cambio "Prodotto": aggiorna il nome e seleziona di default la prima variante di peso disponibile
-function onRigaTipoChange(i, mode, nomeSelezionato){
-  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
-  righe[i].nome = nomeSelezionato;
-  const varianti = _catalogoFIC?.gruppi[nomeSelezionato] || [];
-  const prima = varianti[0];
-  righe[i].codice = prima?.codice || '';
-  righe[i].kgSacco = prima?.peso || 0;
-  righe[i].descrizione = prima?.descrizione || '';
-  renderRigheOrdine(mode);
-}
-
-// Cambio "Peso sacco": aggiorna codice e kg/sacco in base alla variante scelta per lo stesso prodotto
-function onRigaPesoChange(i, mode, codiceSelezionato){
-  const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
-  const varianti = _catalogoFIC?.gruppi[righe[i].nome] || [];
-  const scelta = varianti.find(v=>v.codice===codiceSelezionato);
-  righe[i].codice = scelta?.codice || '';
-  righe[i].kgSacco = scelta?.peso || 0;
-  righe[i].descrizione = scelta?.descrizione || '';
-  renderRigheOrdine(mode);
-}
-
 function aggiornaRiga(i, campo, val, mode){
   const righe = mode==='edit'?_ordineRigheEdit:_ordineRighe;
   righe[i][campo] = parseFloat(val)||0;
-  renderRigheOrdine(mode);
   aggiornaRiepilogoOrdine(mode);
 }
 
@@ -4759,41 +4350,8 @@ function rimuoviRiga(i, mode){
   renderRigheOrdine(mode);
 }
 
-// ── LOTTO E SCADENZA SUGGERITI ───────────────────────────────────────────
-// Lotto = martedì più recente (produzione settimanale, sempre di martedì).
-// Scadenza = lotto + 3 mesi se il lotto cade in stagione estiva (giugno-settembre),
-//            + 6 mesi negli altri mesi (stagione invernale).
-function formattaDataIT(d){
-  const gg = String(d.getDate()).padStart(2,'0');
-  const mm = String(d.getMonth()+1).padStart(2,'0');
-  const aa = String(d.getFullYear()).slice(-2);
-  return `${gg}/${mm}/${aa}`;
-}
-function calcolaLottoScadenzaSuggeriti(){
-  const oggi = new Date();
-  const giornoSettimana = oggi.getDay(); // 0=domenica ... 2=martedì ... 6=sabato
-  // Giorni da sottrarre per arrivare al martedì più recente (oggi incluso se è martedì)
-  const diffDaMartedi = (giornoSettimana - 2 + 7) % 7;
-  const martedi = new Date(oggi);
-  martedi.setDate(oggi.getDate() - diffDaMartedi);
-
-  const meseEstivo = martedi.getMonth() >= 5 && martedi.getMonth() <= 8; // 5=giugno ... 8=settembre (0-indexed)
-  const mesiScadenza = meseEstivo ? 3 : 6;
-  const scadenza = new Date(martedi);
-  scadenza.setMonth(scadenza.getMonth() + mesiScadenza);
-
-  return { lotto: formattaDataIT(martedi), scadenza: formattaDataIT(scadenza) };
-}
-
-async function apriNuovoOrdine(){
-  await caricaCatalogoFIC();
-  if(_catalogoFIC && _catalogoFIC.nomi.length){
-    const primoNome = _catalogoFIC.nomi.includes('Semola Rimacinata di Grano Duro') ? 'Semola Rimacinata di Grano Duro' : _catalogoFIC.nomi[0];
-    const prima = _catalogoFIC.gruppi[primoNome][0];
-    _ordineRighe = [{nome:primoNome, codice:prima?.codice||'', descrizione:prima?.descrizione||'', sacchi:'', kgSacco:prima?.peso||0, prezzoKg:0}];
-  } else {
-    _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:'', kgSacco:30, prezzoKg:0}];
-  }
+function apriNuovoOrdine(){
+  _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:1, kgSacco:30, prezzoKg:0}];
   try{ document.getElementById('ord-cliente-search').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente').value = ''; }catch(e){}
   try{ document.getElementById('ord-cliente-suggestions').style.display = 'none'; }catch(e){}
@@ -4803,13 +4361,8 @@ async function apriNuovoOrdine(){
   try{ document.getElementById('ord-note').value = ''; }catch(e){}
   try{ document.getElementById('ord-canale').value = 'telefono'; }catch(e){}
   try{ document.getElementById('ord-note-cliente-box').style.display = 'none'; }catch(e){}
-  try{
-    const { lotto, scadenza } = calcolaLottoScadenzaSuggeriti();
-    document.getElementById('ord-lotto').value = lotto;
-    document.getElementById('ord-scadenza').value = scadenza;
-  }catch(e){}
-  try{ document.getElementById('ord-destinazione').value = ''; }catch(e){}
-  try{ document.getElementById('ord-destinazione-vuota').style.display = 'none'; }catch(e){}
+  try{ document.getElementById('ord-lotto').value = ''; }catch(e){}
+  try{ document.getElementById('ord-scadenza').value = ''; }catch(e){}
   try{ document.getElementById('ord-causale').value = 'Vendita'; }catch(e){}
   try{ document.getElementById('ord-trasportatore').value = ''; }catch(e){}
   renderRigheOrdine('new');
@@ -4833,31 +4386,6 @@ function filtraClientiOrdine(){
   box.style.display='block';
 }
 
-function apriModalDestinazione(){
-  document.getElementById('dest-indirizzo').value = '';
-  document.getElementById('dest-salva-cliente').checked = true;
-  openModal('modal-destinazione');
-}
-
-async function salvaDestinazioneOrdine(){
-  const indirizzo = document.getElementById('dest-indirizzo').value.trim();
-  if(!indirizzo) return alert('Scrivi un indirizzo');
-  document.getElementById('ord-destinazione').value = indirizzo;
-  document.getElementById('ord-destinazione-vuota').style.display = 'none';
-
-  if(document.getElementById('dest-salva-cliente').checked){
-    const clienteId = parseInt(document.getElementById('ord-cliente').value)||0;
-    const c = (state.clienti||[]).find(x=>x.id===clienteId);
-    if(c){
-      const body = { ...c, ind_consegna: indirizzo };
-      const r = await api.put(`/api/clienti/${clienteId}`, body);
-      if(!r.error){ c.ind_consegna = indirizzo; mostraToast('✅ Indirizzo salvato anche sulla scheda cliente'); }
-      else mostraToast('Indirizzo usato per questo ordine, ma non salvato sul cliente: '+r.error, 'error');
-    }
-  }
-  closeModal('modal-destinazione');
-}
-
 function selezionaClienteOrdine(clienteId){
   const c = (state.clienti||[]).find(x=>x.id===clienteId);
   if(!c) return;
@@ -4879,14 +4407,6 @@ function onOrdClienteChange(){
   const box = document.getElementById('ord-note-cliente-box');
   const testo = document.getElementById('ord-note-cliente-testo');
   if(c){
-    // Precompila il luogo di destinazione dal cliente (priorità: consegna > legale > ind)
-    const indirizzoDefault = (c.ind_consegna || c.ind_legale || c.ind || '') + (c.citta && !(c.ind_consegna||c.ind_legale||c.ind||'').includes(c.citta) ? ', '+c.citta : '');
-    const destInput = document.getElementById('ord-destinazione');
-    const destVuota = document.getElementById('ord-destinazione-vuota');
-    if(destInput){
-      destInput.value = indirizzoDefault.trim();
-      if(destVuota) destVuota.style.display = indirizzoDefault.trim() ? 'none' : 'block';
-    }
     // Auto-compila note spedizione del cliente
     if(c.facchinaggio) document.getElementById('ord-facchinaggio').checked = true;
     if(c.chiamata_tel) document.getElementById('ord-chiamata-tel').value = c.chiamata_tel;
@@ -4902,7 +4422,7 @@ function onOrdClienteChange(){
   }
 }
 
-async function salvaOrdine(creaDdt){
+async function salvaOrdine(){
   const clienteId = parseInt(document.getElementById('ord-cliente').value)||null;
   if(!clienteId) return alert('Seleziona un cliente dalla ricerca');
   const clienteNome = document.getElementById('ord-cliente-search').value.trim();
@@ -4911,8 +4431,6 @@ async function salvaOrdine(creaDdt){
     const kgTot = (r.sacchi||0) * (r.kgSacco||0);
     return {
       nome: r.nome,
-      codice: r.codice||'',
-      descrizione: r.descrizione||'',
       sacchi: r.sacchi||0,
       kgSacco: r.kgSacco||0,
       kgTotale: kgTot,
@@ -4924,11 +4442,8 @@ async function salvaOrdine(creaDdt){
   const sacchiTot = prodotti.reduce((s,p)=>s+p.sacchi,0);
   const pesoTot = prodotti.reduce((s,p)=>s+p.kgTotale,0);
 
-  const btnSalva = document.getElementById('btn-salva-ordine');
-  const btnDdt = document.getElementById('btn-salva-ddt-ordine');
-  [btnSalva, btnDdt].forEach(b=>{ if(b) b.disabled = true; });
-  const btnAttivo = creaDdt ? btnDdt : btnSalva;
-  if(btnAttivo){ btnAttivo.innerHTML = '<i class="ti ti-loader"></i> Salvataggio...'; }
+  const btn = document.getElementById('btn-salva-ordine');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Salvataggio...'; }
 
   const body = {
     cliente: clienteNome,
@@ -4949,140 +4464,71 @@ async function salvaOrdine(creaDdt){
     scadenza_merce: document.getElementById('ord-scadenza')?.value.trim()||'',
     causale_trasporto: document.getElementById('ord-causale')?.value||'Vendita',
     trasporto_tipo: document.getElementById('ord-trasportatore')?.value.trim()||'',
-    destinazione: document.getElementById('ord-destinazione')?.value.trim()||'',
-    crea_ddt: !!creaDdt,
   };
 
   const data = await api.post('/api/ordini', body);
   if(!data.error){
     state.ordini.unshift(data);
     if(data.fic_ddt_numero) mostraToast(`✅ Ordine salvato · DDT ${data.fic_ddt_numero} creato su FIC`);
-    else if(data.ddt_errore) mostraToast('⚠️ Ordine salvato, ma DDT non creato: '+data.ddt_errore, 'error');
     else mostraToast('✅ Ordine salvato');
   } else {
     mostraToast('Errore: '+data.error, 'error');
   }
 
-  if(btnSalva){ btnSalva.disabled=false; btnSalva.innerHTML='<i class="ti ti-check"></i>Salva'; }
-  if(btnDdt){ btnDdt.disabled=false; btnDdt.innerHTML='<i class="ti ti-truck-delivery"></i>Salva e crea DDT'; }
+  if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-check"></i>Salva e crea DDT'; }
   closeModal('modal-ordine');
   renderOrdini(); renderDash(); showSave();
 }
 
-async function editOrdine(id){
+function editOrdine(id){
   const o=state.ordini.find(x=>x.id===id); if(!o)return;
-  await caricaCatalogoFIC();
   document.getElementById('edit-ord-id').value=o.id;
 
   // Popola clienti
   const sel=document.getElementById('edit-ord-cliente');
-  sel.innerHTML = (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" ${c.id===o.cliente_id?'selected':''}>${c.nome}</option>`).join('');
+  sel.innerHTML = (state.clienti||[]).filter(c=>c.tipo!=='fornitore').map(c=>`<option value="${c.id}" ${c.nome===o.cliente?'selected':''}>${c.nome}</option>`).join('');
 
   document.getElementById('edit-ord-data').value=(o.data||'').slice(0,10);
+  document.getElementById('edit-ord-data-consegna').value=(o.data_consegna||'').slice(0,10);
   document.getElementById('edit-ord-stato').value=o.stato||'bozza';
   document.getElementById('edit-ord-canale').value=o.canale||'telefono';
   document.getElementById('edit-ord-facchinaggio').checked=!!o.facchinaggio;
   document.getElementById('edit-ord-chiamata-tel').value=o.chiamata_tel||'';
   document.getElementById('edit-ord-note').value=o.note||'';
-  document.getElementById('edit-ord-trasportatore').value=o.trasporto_tipo||'';
-  document.getElementById('edit-ord-lotto').value=o.lotto||'';
-  document.getElementById('edit-ord-scadenza').value=o.scadenza_merce||'';
-  document.getElementById('edit-ord-causale').value=o.causale_trasporto||'Vendita';
-  document.getElementById('edit-ord-destinazione').value=o.destinazione||'';
 
-  // Stato DDT: fa sapere se questo ordine ha già un DDT, prima ancora di premere "Salva"
-  const ddtStatoEl = document.getElementById('edit-ord-ddt-stato');
-  if(o.fic_ddt_numero){
-    ddtStatoEl.innerHTML = `<i class="ti ti-file-check" style="color:var(--brand)"></i> DDT già creato: <strong>${o.fic_ddt_numero}</strong>. "Salva e aggiorna DDT" lo elimina e ne crea uno nuovo con le modifiche.`;
-    ddtStatoEl.style.color = 'var(--text-2)';
-  } else {
-    ddtStatoEl.innerHTML = `<i class="ti ti-file-off" style="color:var(--text-3)"></i> Nessun DDT ancora creato per questo ordine.`;
-    ddtStatoEl.style.color = 'var(--text-3)';
-  }
-
-  // Righe prodotti — stessa struttura usata in creazione (nome, codice, descrizione, sacchi, kgSacco, prezzoKg)
+  // Righe prodotti
   try{
     const prods = typeof o.prodotti==='string' ? JSON.parse(o.prodotti||'[]') : (o.prodotti||[]);
-    _ordineRigheEdit = prods.length ? prods.map(p=>({
-      nome: p.nome || 'Semola Rimacinata di Grano Duro',
-      codice: p.codice || '',
-      descrizione: p.descrizione || '',
-      sacchi: p.sacchi !== undefined ? p.sacchi : (p.qty||1),
-      kgSacco: p.kgSacco || 0,
-      prezzoKg: p.prezzoKg || 0,
-    })) : [{nome:'Semola Rimacinata di Grano Duro', codice:'', descrizione:'', sacchi:'', kgSacco:0, prezzoKg:0}];
-  }catch(e){ _ordineRigheEdit=[{nome:'Semola Rimacinata di Grano Duro', codice:'', descrizione:'', sacchi:'', kgSacco:0, prezzoKg:0}]; }
+    _ordineRigheEdit = prods.length ? prods.map(p=>({nome:p.nome||p.prodotto||'Semola rimacinata di grano duro',bancali:p.bancali||p.qty||1,prezzoUnitario:p.prezzoUnitario||0})) : [{nome:'Semola rimacinata di grano duro',bancali:o.qty||1,prezzoUnitario:0}];
+  }catch(e){ _ordineRigheEdit=[{nome:'Semola rimacinata di grano duro',bancali:1,prezzoUnitario:0}]; }
   renderRigheOrdine('edit');
   openModal('modal-edit-ordine');
 }
 
-async function aggiornaOrdine(creaDdt){
+async function aggiornaOrdine(){
   const id=parseInt(document.getElementById('edit-ord-id').value);
   const sel=document.getElementById('edit-ord-cliente');
   const clienteId=parseInt(sel.value)||null;
   const clienteNome=sel.options[sel.selectedIndex]?.text||'';
-
-  const prodotti = _ordineRigheEdit.map(r=>{
-    const kgTot = (r.sacchi||0) * (r.kgSacco||0);
-    return {
-      nome: r.nome,
-      codice: r.codice||'',
-      descrizione: r.descrizione||'',
-      sacchi: r.sacchi||0,
-      kgSacco: r.kgSacco||0,
-      kgTotale: kgTot,
-      prezzoKg: r.prezzoKg||0,
-      totale: kgTot * (r.prezzoKg||0)
-    };
-  });
-  const importoTot = prodotti.reduce((s,p)=>s+p.totale,0);
-  const sacchiTot = prodotti.reduce((s,p)=>s+p.sacchi,0);
-  const pesoTot = prodotti.reduce((s,p)=>s+p.kgTotale,0);
-
-  const btnSalva = document.getElementById('btn-salva-edit-ordine');
-  const btnDdt = document.getElementById('btn-salva-ddt-edit-ordine');
-  [btnSalva, btnDdt].forEach(b=>{ if(b) b.disabled = true; });
-  const btnAttivo = creaDdt ? btnDdt : btnSalva;
-  if(btnAttivo){ btnAttivo.innerHTML = '<i class="ti ti-loader"></i> Salvataggio...'; }
-
-  const body = {
-    cliente: clienteNome,
-    cliente_id: clienteId,
-    prodotti,
-    prodotto: prodotti.map(p=>p.nome).join(', '),
-    qty: sacchiTot,
-    peso_totale: pesoTot,
-    peso_trasporto: pesoTot,
-    importo: importoTot,
-    data: document.getElementById('edit-ord-data').value,
-    stato: document.getElementById('edit-ord-stato').value,
-    canale: document.getElementById('edit-ord-canale').value,
-    facchinaggio: document.getElementById('edit-ord-facchinaggio').checked,
-    chiamata_tel: document.getElementById('edit-ord-chiamata-tel').value.trim(),
-    note: document.getElementById('edit-ord-note').value,
-    lotto: document.getElementById('edit-ord-lotto').value.trim(),
-    scadenza_merce: document.getElementById('edit-ord-scadenza').value.trim(),
-    causale_trasporto: document.getElementById('edit-ord-causale').value,
-    trasporto_tipo: document.getElementById('edit-ord-trasportatore').value.trim(),
-    destinazione: document.getElementById('edit-ord-destinazione').value.trim(),
-    crea_ddt: !!creaDdt,
+  const prodotti=_ordineRigheEdit.map(r=>({nome:r.nome,bancali:r.bancali,prezzoUnitario:r.prezzoUnitario,totale:r.bancali*r.prezzoUnitario}));
+  const importoTot=prodotti.reduce((s,p)=>s+p.totale,0);
+  const bancaliTot=prodotti.reduce((s,p)=>s+p.bancali,0);
+  const pesoTot=prodotti.reduce((s,p)=>{const prod=PRODOTTI_MULINO.find(x=>x.nome===p.nome);return s+(p.bancali*(prod?.kg_bancale||0));},0);
+  const body={
+    cliente:clienteNome, cliente_id:clienteId, prodotti,
+    prodotto:prodotti.map(p=>p.nome).join(', '),
+    qty:bancaliTot, peso_totale:pesoTot, importo:importoTot,
+    data:document.getElementById('edit-ord-data').value,
+    data_consegna:document.getElementById('edit-ord-data-consegna').value||null,
+    stato:document.getElementById('edit-ord-stato').value,
+    canale:document.getElementById('edit-ord-canale').value,
+    facchinaggio:document.getElementById('edit-ord-facchinaggio').checked,
+    chiamata_tel:document.getElementById('edit-ord-chiamata-tel').value.trim(),
+    note:document.getElementById('edit-ord-note').value,
   };
-
-  const data = await api.put(`/api/ordini/${id}`, body);
-  if(!data.error){
-    const idx = state.ordini.findIndex(o=>o.id===id);
-    if(idx>=0) state.ordini[idx] = data;
-    if(data.fic_ddt_numero) mostraToast(`✅ Ordine aggiornato · DDT ${data.fic_ddt_numero} creato su FIC`);
-    else if(data.ddt_errore) mostraToast('⚠️ Ordine aggiornato, ma DDT non creato: '+data.ddt_errore, 'error');
-    else mostraToast('✅ Ordine aggiornato');
-  } else {
-    mostraToast('Errore: '+data.error, 'error');
-  }
-
-  if(btnSalva){ btnSalva.disabled=false; btnSalva.innerHTML='<i class="ti ti-check"></i>Salva'; }
-  if(btnDdt){ btnDdt.disabled=false; btnDdt.innerHTML='<i class="ti ti-truck-delivery"></i>Salva e aggiorna DDT'; }
-  closeModal('modal-edit-ordine');
-  renderOrdini(); renderDash(); showSave();
+  await api.put('/api/ordini/'+id, body);
+  const o=state.ordini.find(x=>x.id===id); if(o)Object.assign(o,body);
+  closeModal('modal-edit-ordine'); renderOrdini(); renderDash(); showSave();
 }
 
 function onOrdClienteChange(){ } // legacy compat
@@ -5533,7 +4979,6 @@ async function salvaCliente(){
     nome, ref:document.getElementById('cl-ref').value,
     tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
     citta:document.getElementById('cl-citta').value,
-    regione:document.getElementById('cl-regione')?.value||'',
     piva:document.getElementById('cl-piva').value.trim(),
     ind_legale:document.getElementById('cl-ind-legale').value.trim(),
     ind_consegna:document.getElementById('cl-ind-consegna').value.trim(),
@@ -5549,7 +4994,7 @@ async function salvaCliente(){
   closeModal('modal-cliente');
   if(tipoModal==='fornitore') renderFornitori(); else renderClienti();
   renderDash(); showSave();
-  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-regione','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
 function setEditTipo(tipo){
@@ -5568,8 +5013,7 @@ function setEditTipo(tipo){
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  popolaSelectRegioni();
-  ['nome','ref','tel','email','citta','regione','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
+  ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
     const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
   });
   const same = document.getElementById('edit-cl-ind-same');
@@ -5585,7 +5029,6 @@ async function aggiornaCliente(){
     nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
     tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
     citta:document.getElementById('edit-cl-citta').value,
-    regione:document.getElementById('edit-cl-regione')?.value||'',
     piva:document.getElementById('edit-cl-piva')?.value.trim()||'',
     ind_legale:document.getElementById('edit-cl-ind-legale')?.value.trim()||'',
     ind_consegna:document.getElementById('edit-cl-ind-consegna')?.value.trim()||'',
@@ -6508,6 +5951,12 @@ function sendChat(){
       const aDiv=document.createElement('div'); aDiv.className='msg-ai';
       aDiv.innerHTML=`<div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">${reply}</div>`;
       msgs.appendChild(aDiv);
+      // Mostra toast se è stato creato un task
+      if(data.taskCreato){
+        mostraToast(`📋 Task creato: "${data.taskCreato.titolo}"${data.taskCreato.scadenza ? ' · scadenza ' + data.taskCreato.scadenza : ''}`);
+        // Aggiorna la lista task se visibile
+        try{ if(typeof renderTasks === 'function') api.get('/api/tasks').then(t=>{ if(!t.error){ state.tasks=t; renderTasks(); }}); }catch(e){}
+      }
     }).catch(()=>{
       document.getElementById('ai-load').remove();
       const eDiv=document.createElement('div'); eDiv.className='msg-ai';
