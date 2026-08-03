@@ -385,47 +385,6 @@ tbody tr:hover{background:var(--surface-2)}
         <div id="dash-user-badge"></div>
       </div>
 
-      <!-- Agente Back Office -->
-      <div class="card" id="backoffice-briefing" style="margin-bottom:18px">
-        <div class="card-header">
-          <div class="card-title"><i class="ti ti-robot" style="color:var(--brand)"></i>Rapporto di oggi</div>
-          <div style="display:flex;align-items:center;gap:10px">
-            <span id="bo-generato-il" style="font-size:12px;color:var(--text-3)">Caricamento...</span>
-            <button class="btn btn-sm btn-primary" id="bo-genera-btn" onclick="boGeneraRapporto()"><i class="ti ti-refresh"></i>Rigenera</button>
-          </div>
-        </div>
-        <div class="card-body">
-          <div id="bo-testo" style="font-size:13px;line-height:1.6;color:var(--text);margin-bottom:16px;white-space:pre-line"></div>
-
-          <!-- Alert attivi -->
-          <div id="bo-alert-wrap" style="display:none;margin-bottom:16px">
-            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">
-                Alert attivi (<span id="bo-count-alert">0</span>)
-              </div>
-              <button class="btn btn-sm" onclick="boSegnaTuttiLetti()" style="font-size:11px">Segna tutti letti</button>
-            </div>
-            <div id="bo-lista-alert"></div>
-          </div>
-
-          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
-            <div>
-              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
-                <i class="ti ti-file-invoice" style="color:var(--orange);font-size:12px"></i> Non pagate (<span id="bo-count-nonpagati">0</span>) · <span id="bo-totale-esposizione" style="color:var(--orange)"></span>
-              </div>
-              <div id="bo-lista-nonpagati"></div>
-              <button class="btn btn-sm" onclick="boPreparaSolleciti()" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-mail-forward"></i>Prepara solleciti</button>
-            </div>
-            <div>
-              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
-                <i class="ti ti-user-x" style="color:var(--red);font-size:12px"></i> Clienti inattivi (<span id="bo-count-inattivi">0</span>)
-              </div>
-              <div id="bo-lista-inattivi"></div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Ricerca rapida stile Pipedrive -->
       <div class="search-bar-wrap" id="dash-search-wrap" style="margin:0 auto 18px">
         <div class="search-bar-box" id="dash-search-box">
@@ -1103,19 +1062,88 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
     </div>
     <div class="page" id="page-ai">
-      <div class="page-header"><div class="page-title">Assistente AI <span>Powered by Claude</span></div><button class="btn" onclick="clearChat()"><i class="ti ti-trash"></i>Pulisci</button></div>
-      <div class="quick-actions">
-        <div class="quick-action" onclick="sendAIMessage('Analizza le vendite: dimmi i clienti principali, il fatturato totale e i prodotti più venduti.')"><div style="font-size:20px;margin-bottom:5px">👥</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Analisi clienti</div><div style="font-size:11px;color:var(--text-2)">Chi ordina di più?</div></div>
-        <div class="quick-action" onclick="sendAIMessage('Analizza gli ordini aperti e spediti. Cosa devo seguire prioritariamente?')"><div style="font-size:20px;margin-bottom:5px">📦</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Ordini da seguire</div><div style="font-size:11px;color:var(--text-2)">Cosa è ancora aperto?</div></div>
-        <div class="quick-action" onclick="sendAIMessage('Analizza la contabilità e dimmi come stiamo andando. Suggerisci azioni concrete.')"><div style="font-size:20px;margin-bottom:5px">💰</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Situazione finanziaria</div><div style="font-size:11px;color:var(--text-2)">Come stiamo?</div></div>
+      <div class="page-header">
+        <div class="page-title">Assistente AI <span>Powered by Claude</span></div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="boToggleBriefing()" id="btn-toggle-briefing"><i class="ti ti-clipboard-list"></i>Rapporto</button>
+          <button class="btn btn-sm" onclick="clearChat()"><i class="ti ti-trash"></i>Pulisci</button>
+        </div>
       </div>
+
+      <!-- Agente Back Office (collassabile) -->
+      <div class="card" id="backoffice-briefing" style="margin-bottom:14px;display:none">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-robot" style="color:var(--brand)"></i>Rapporto di oggi</div>
+          <div style="display:flex;align-items:center;gap:10px">
+            <span id="bo-generato-il" style="font-size:12px;color:var(--text-3)"></span>
+            <button class="btn btn-sm btn-primary" id="bo-genera-btn" onclick="boGeneraRapporto()"><i class="ti ti-refresh"></i>Rigenera</button>
+          </div>
+        </div>
+        <div class="card-body">
+          <div id="bo-testo" style="font-size:13px;line-height:1.6;color:var(--text);margin-bottom:14px;white-space:pre-line"></div>
+
+          <div id="bo-alert-wrap" style="display:none;margin-bottom:14px">
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">
+                Alert attivi (<span id="bo-count-alert">0</span>)
+              </div>
+              <button class="btn btn-sm" onclick="boSegnaTuttiLetti()" style="font-size:11px">Segna tutti letti</button>
+            </div>
+            <div id="bo-lista-alert"></div>
+          </div>
+
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+                <i class="ti ti-file-invoice" style="color:var(--orange);font-size:12px"></i> Non pagate (<span id="bo-count-nonpagati">0</span>) · <span id="bo-totale-esposizione" style="color:var(--orange)"></span>
+              </div>
+              <div id="bo-lista-nonpagati"></div>
+              <button class="btn btn-sm" onclick="boPreparaSolleciti()" style="margin-top:8px;width:100%;justify-content:center"><i class="ti ti-mail-forward"></i>Prepara solleciti</button>
+            </div>
+            <div>
+              <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+                <i class="ti ti-user-x" style="color:var(--red);font-size:12px"></i> Clienti inattivi (<span id="bo-count-inattivi">0</span>)
+              </div>
+              <div id="bo-lista-inattivi"></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Ricerca cliente rapida -->
+      <div style="position:relative;margin-bottom:14px">
+        <input type="text" id="ai-cliente-search" placeholder="🔍 Scrivi il nome di un cliente per vedere la sua scheda completa..." autocomplete="off"
+          oninput="aiFiltraClienti()" onfocus="aiFiltraClienti()"
+          style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px">
+        <div id="ai-cliente-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:var(--r);max-height:240px;overflow-y:auto;z-index:60;box-shadow:0 6px 16px rgba(0,0,0,0.12);margin-top:2px"></div>
+      </div>
+
+      <div class="quick-actions">
+        <div class="quick-action" onclick="sendAIMessage('Chi sono i clienti che rischio di perdere? Dimmi cosa fare per ognuno, in modo concreto.')"><div style="font-size:20px;margin-bottom:5px">⚠️</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Clienti a rischio</div><div style="font-size:11px;color:var(--text-2)">Chi sto perdendo?</div></div>
+        <div class="quick-action" onclick="sendAIMessage('Guarda gli ordini aperti e dimmi esattamente cosa devo fare oggi, in ordine di priorità.')"><div style="font-size:20px;margin-bottom:5px">📋</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Cosa faccio oggi</div><div style="font-size:11px;color:var(--text-2)">Priorità di giornata</div></div>
+        <div class="quick-action" onclick="sendAIMessage('Analizza la situazione incassi: quanto devo recuperare, da chi, e con che strategia. Sii concreto.')"><div style="font-size:20px;margin-bottom:5px">💰</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Recupero crediti</div><div style="font-size:11px;color:var(--text-2)">Come rientro?</div></div>
+      </div>
+
       <div class="chat-container">
         <div class="chat-messages" id="chat-messages">
-          <div class="msg-ai"><div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">Ciao! 👋 Sono l'assistente AI del Mulino Vitaliti. Ho accesso a tutti i dati del gestionale.</div></div>
+          <div class="msg-ai"><div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">Ciao Giovanni 👋 Conosco ordini, incassi, clienti e task in tempo reale.<br><br>Posso anche <strong>agire</strong>: dimmi "ricordati di..." e creo il task, chiedimi di scrivere a un cliente e preparo l'email. Scrivi il nome di un cliente qui sopra per aprire la sua scheda.</div></div>
         </div>
         <div class="chat-input-wrap">
-          <textarea class="chat-input" id="chat-input" placeholder="Scrivi una domanda..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+          <textarea class="chat-input" id="chat-input" placeholder="Chiedimi qualsiasi cosa sul mulino..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
           <button class="btn btn-primary" onclick="sendChat()" id="send-btn" style="height:38px;padding:0 13px"><i class="ti ti-send"></i></button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Modal scheda cliente -->
+    <div class="modal-overlay" id="modal-scheda-cliente">
+      <div class="modal" style="max-width:760px">
+        <div class="modal-header">
+          <div class="modal-title"><i class="ti ti-user-circle" style="color:var(--brand)"></i><span id="sc-nome">Scheda cliente</span></div>
+          <button class="modal-close" onclick="closeModal('modal-scheda-cliente')"><i class="ti ti-x"></i></button>
+        </div>
+        <div class="modal-body" id="sc-body">
+          <div style="padding:20px;text-align:center;color:var(--text-2)"><i class="ti ti-loader"></i> Carico...</div>
         </div>
       </div>
     </div>
@@ -2304,7 +2332,7 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
-  if(id==='dashboard'){ renderDash(); boCaricaUltimoRapporto(); }
+  if(id==='dashboard')renderDash();
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
@@ -4152,6 +4180,153 @@ async function boInviaSollecito(i){
       card.style.borderColor = 'var(--green)';
       if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-check"></i>Inviato'; }
     }
+  }catch(e){
+    mostraToast('Errore di rete: '+e.message, 'error');
+    if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-send"></i>Riprova'; }
+  }
+}
+
+// ── RICERCA E SCHEDA CLIENTE (sezione AI) ────────────────────────────────
+function boToggleBriefing(){
+  const card = document.getElementById('backoffice-briefing');
+  if(!card) return;
+  const visibile = card.style.display !== 'none';
+  card.style.display = visibile ? 'none' : 'block';
+  if(!visibile) boCaricaUltimoRapporto();
+}
+
+function aiFiltraClienti(){
+  const q = (document.getElementById('ai-cliente-search').value||'').toLowerCase().trim();
+  const box = document.getElementById('ai-cliente-suggestions');
+  if(!q){ box.style.display='none'; box.innerHTML=''; return; }
+  const match = (state.clienti||[]).filter(c=>c.tipo!=='fornitore' && c.nome.toLowerCase().includes(q)).slice(0,12);
+  if(!match.length){ box.innerHTML='<div style="padding:10px 12px;font-size:13px;color:var(--text-3)">Nessun cliente trovato</div>'; box.style.display='block'; return; }
+  box.innerHTML = match.map(c=>`
+    <div onclick="apriSchedaCliente(${c.id})" style="padding:9px 12px;font-size:13px;cursor:pointer;border-bottom:1px solid var(--border)"
+      onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background='#fff'">
+      <strong>${c.nome}</strong>${c.citta?` <span style="color:var(--text-3)">— ${c.citta}</span>`:''}
+    </div>`).join('');
+  box.style.display='block';
+}
+
+document.addEventListener('click', function(e){
+  const box = document.getElementById('ai-cliente-suggestions');
+  const inp = document.getElementById('ai-cliente-search');
+  if(box && inp && !box.contains(e.target) && e.target!==inp) box.style.display='none';
+});
+
+async function apriSchedaCliente(id){
+  const box = document.getElementById('ai-cliente-suggestions');
+  if(box) box.style.display='none';
+  openModal('modal-scheda-cliente');
+  const body = document.getElementById('sc-body');
+  body.innerHTML = '<div style="padding:20px;text-align:center;color:var(--text-2)"><i class="ti ti-loader"></i> Carico la scheda...</div>';
+
+  try{
+    const d = await api.get(`/api/clienti/${id}/scheda`);
+    if(d.error){ body.innerHTML = `<div style="color:var(--red);padding:16px">${d.error}</div>`; return; }
+
+    document.getElementById('sc-nome').textContent = d.cliente.nome;
+
+    const coloreSalute = {buono:'var(--green)', attenzione:'var(--orange)', critico:'var(--red)'}[d.salute];
+    const labelSalute = {buono:'Relazione sana', attenzione:'Da tenere d\'occhio', critico:'Situazione critica'}[d.salute];
+    const iconaSalute = {buono:'ti-circle-check', attenzione:'ti-alert-triangle', critico:'ti-alert-octagon'}[d.salute];
+
+    const fmtEuro = n => '€' + Number(n||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const fmtData = s => s ? new Date(s).toLocaleDateString('it-IT') : '—';
+
+    body.innerHTML = `
+      <!-- Stato relazione -->
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--surface-2);border-left:3px solid ${coloreSalute};border-radius:var(--r);margin-bottom:16px">
+        <i class="ti ${iconaSalute}" style="color:${coloreSalute};font-size:20px"></i>
+        <div>
+          <div style="font-size:14px;font-weight:700;color:${coloreSalute}">${labelSalute}</div>
+          ${d.motivoSalute?`<div style="font-size:12px;color:var(--text-2)">${d.motivoSalute}</div>`:''}
+        </div>
+      </div>
+
+      <!-- Metriche -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:18px">
+        <div style="text-align:center;padding:10px;background:var(--surface-2);border-radius:var(--r)">
+          <div style="font-size:18px;font-weight:800">${d.numOrdini}</div>
+          <div style="font-size:11px;color:var(--text-3)">Ordini</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--surface-2);border-radius:var(--r)">
+          <div style="font-size:18px;font-weight:800">${fmtEuro(d.fatturatoTotale)}</div>
+          <div style="font-size:11px;color:var(--text-3)">Fatturato</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--surface-2);border-radius:var(--r)">
+          <div style="font-size:18px;font-weight:800;color:${d.giorniInattivo>60?'var(--red)':'var(--text)'}">${d.giorniInattivo!==null?d.giorniInattivo+'g':'—'}</div>
+          <div style="font-size:11px;color:var(--text-3)">Da ultimo ordine</div>
+        </div>
+        <div style="text-align:center;padding:10px;background:var(--surface-2);border-radius:var(--r)">
+          <div style="font-size:18px;font-weight:800;color:${d.totaleInsoluto>0?'var(--orange)':'var(--green)'}">${fmtEuro(d.totaleInsoluto)}</div>
+          <div style="font-size:11px;color:var(--text-3)">Da incassare</div>
+        </div>
+      </div>
+
+      <!-- Contatti -->
+      <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Contatti</div>
+      <div style="font-size:13px;line-height:1.7;margin-bottom:18px;padding:10px 12px;background:var(--surface-2);border-radius:var(--r)">
+        ${d.cliente.tel?`<div><i class="ti ti-phone" style="font-size:13px;color:var(--text-3)"></i> ${d.cliente.tel}</div>`:''}
+        ${d.cliente.email?`<div><i class="ti ti-mail" style="font-size:13px;color:var(--text-3)"></i> ${d.cliente.email}</div>`:''}
+        ${d.cliente.ind_consegna||d.cliente.ind_legale?`<div><i class="ti ti-map-pin" style="font-size:13px;color:var(--text-3)"></i> ${d.cliente.ind_consegna||d.cliente.ind_legale}${d.cliente.citta?', '+d.cliente.citta:''}</div>`:''}
+        ${d.cliente.piva?`<div><i class="ti ti-id" style="font-size:13px;color:var(--text-3)"></i> P.IVA ${d.cliente.piva}</div>`:''}
+        ${!d.cliente.tel&&!d.cliente.email?'<div style="color:var(--orange)">⚠️ Nessun contatto in anagrafica</div>':''}
+      </div>
+
+      ${d.insoluti.length?`
+      <div style="font-size:11px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">Insoluti (${d.insoluti.length})</div>
+      <div style="margin-bottom:18px">
+        ${d.insoluti.map(m=>{
+          const gg=Number(m.giorni_attesa||0);
+          const col=gg>60?'var(--red)':gg>30?'var(--orange)':'var(--text-3)';
+          return `<div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+            <span>${m.descrizione||'Senza descrizione'} <em style="color:var(--text-3);font-style:normal">${fmtData(m.data)}</em></span>
+            <span style="white-space:nowrap;margin-left:10px"><strong>${fmtEuro(m.importo)}</strong> <em style="color:${col};font-style:normal">(${gg}g)</em></span>
+          </div>`;
+        }).join('')}
+      </div>`:''}
+
+      <!-- Storico ordini -->
+      <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:6px">
+        Ultimi ordini${d.frequenzaMedia?` · ordina in media ogni ${d.frequenzaMedia} giorni`:''}
+      </div>
+      <div style="max-height:200px;overflow-y:auto;margin-bottom:16px">
+        ${d.ordini.length?d.ordini.slice(0,12).map(o=>`
+          <div style="display:flex;justify-content:space-between;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+            <span>${fmtData(o.data)} · ${o.prodotto||'—'}</span>
+            <span style="white-space:nowrap;margin-left:10px">${o.importo?fmtEuro(o.importo):''} <em style="color:var(--text-3);font-style:normal">${o.stato}</em></span>
+          </div>`).join(''):'<div style="font-size:12.5px;color:var(--text-3);padding:6px 0">Nessun ordine registrato.</div>'}
+      </div>
+
+      <!-- Azioni -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;border-top:1px solid var(--border);padding-top:14px">
+        <button class="btn btn-primary btn-sm" onclick="closeModal('modal-scheda-cliente');sendAIMessage('Analizza il cliente ${d.cliente.nome.replace(/'/g,"\\'")}: come sta andando la relazione, cosa rischio e cosa dovrei fare adesso. Sii concreto.')">
+          <i class="ti ti-robot"></i>Chiedi all'AI
+        </button>
+        ${d.cliente.email?`<button class="btn btn-sm" onclick="closeModal('modal-scheda-cliente');sendAIMessage('Scrivi un''email a ${d.cliente.nome.replace(/'/g,"\\'")} (${d.cliente.email}) per riallacciare i rapporti commerciali.')"><i class="ti ti-mail"></i>Prepara email</button>`:''}
+        ${d.cliente.tel?`<a class="btn btn-sm" href="tel:${d.cliente.tel}"><i class="ti ti-phone"></i>Chiama</a>`:''}
+      </div>`;
+  }catch(e){
+    body.innerHTML = `<div style="color:var(--red);padding:16px">Errore: ${e.message}</div>`;
+  }
+}
+
+let _aiEmailBozza = null;
+
+async function aiInviaEmailBozza(){
+  const to = document.getElementById('ai-mail-to').value.trim();
+  const ogg = document.getElementById('ai-mail-ogg').value.trim();
+  const corpo = document.getElementById('ai-mail-corpo').value.trim();
+  const btn = document.getElementById('ai-mail-btn');
+  if(!to || !ogg || !corpo){ mostraToast('Compila destinatario, oggetto e testo', 'error'); return; }
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Invio...'; }
+  try{
+    const r = await api.post('/api/gmail/send', { to, subject: ogg, body: corpo });
+    if(r.error){ mostraToast('Errore: '+r.error, 'error'); if(btn){btn.disabled=false;btn.innerHTML='<i class="ti ti-send"></i>Riprova';} return; }
+    mostraToast(`✅ Email inviata a ${to}`);
+    if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-check"></i>Inviata'; }
   }catch(e){
     mostraToast('Errore di rete: '+e.message, 'error');
     if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-send"></i>Riprova'; }
@@ -6066,14 +6241,43 @@ function sendChat(){
       document.getElementById('ai-load').remove();
       const reply=data.reply||data.error||'Errore.';
       const aDiv=document.createElement('div'); aDiv.className='msg-ai';
-      aDiv.innerHTML=`<div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">${reply}</div>`;
+      aDiv.innerHTML=`<div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
       msgs.appendChild(aDiv);
-      // Mostra toast se è stato creato un task
-      if(data.taskCreato){
-        mostraToast(`📋 Task creato: "${data.taskCreato.titolo}"${data.taskCreato.scadenza ? ' · scadenza ' + data.taskCreato.scadenza : ''}`);
-        // Aggiorna la lista task se visibile
-        try{ if(typeof renderTasks === 'function') api.get('/api/tasks').then(t=>{ if(!t.error){ state.tasks=t; renderTasks(); }}); }catch(e){}
+
+      const az = data.azioni || {};
+
+      // Task creato
+      if(az.task){
+        mostraToast(`📋 Task creato: "${az.task.titolo}"${az.task.scadenza?' · scadenza '+az.task.scadenza:''}`);
       }
+
+      // Pulsante per aprire la scheda cliente
+      if(az.cliente){
+        const bDiv=document.createElement('div'); bDiv.className='msg-ai';
+        bDiv.innerHTML=`<div class="msg-avatar ai" style="opacity:0"></div>
+          <button class="btn btn-sm" onclick="apriSchedaCliente(${az.cliente.id})" style="margin-left:2px">
+            <i class="ti ti-user-circle"></i>Apri scheda ${az.cliente.nome}</button>`;
+        msgs.appendChild(bDiv);
+      }
+
+      // Bozza email pronta da rivedere e inviare
+      if(az.email){
+        _aiEmailBozza = az.email;
+        const eDiv=document.createElement('div'); eDiv.className='msg-ai';
+        eDiv.innerHTML=`<div class="msg-avatar ai" style="opacity:0"></div>
+          <div style="flex:1;border:1.5px solid var(--brand);border-radius:var(--r);padding:12px;background:var(--surface-2);max-width:520px">
+            <div style="font-size:11px;font-weight:700;color:var(--brand);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Bozza email pronta</div>
+            <input type="text" id="ai-mail-to" value="${(az.email.destinatario||'').replace(/"/g,'&quot;')}" placeholder="destinatario@email.it"
+              style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:6px">
+            <input type="text" id="ai-mail-ogg" value="${(az.email.oggetto||'').replace(/"/g,'&quot;')}" placeholder="Oggetto"
+              style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;margin-bottom:6px">
+            <textarea id="ai-mail-corpo" style="width:100%;min-height:130px;padding:8px 9px;border:1px solid var(--border);border-radius:6px;font-size:12px;line-height:1.5;font-family:inherit;resize:vertical">${az.email.corpo||''}</textarea>
+            <button class="btn btn-primary btn-sm" id="ai-mail-btn" onclick="aiInviaEmailBozza()" style="margin-top:8px"><i class="ti ti-send"></i>Invia email</button>
+          </div>`;
+        msgs.appendChild(eDiv);
+      }
+
+      msgs.scrollTop = msgs.scrollHeight;
     }).catch(()=>{
       document.getElementById('ai-load').remove();
       const eDiv=document.createElement('div'); eDiv.className='msg-ai';
