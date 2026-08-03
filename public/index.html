@@ -5124,7 +5124,7 @@ function renderDash(){
   if(!document.getElementById('m-clienti')) return;
   const today=new Date();
   const elDate=document.getElementById('dash-date'); if(elDate) elDate.textContent=today.toLocaleDateString('it-IT',{weekday:'long',day:'numeric',month:'long',year:'numeric'});
-  document.getElementById('m-clienti').textContent=state.clienti.length;
+  document.getElementById('m-clienti').textContent=state.clienti.filter(c=>c.tipo==='cliente').length;
   const elOrdini=document.getElementById('m-ordini'); if(elOrdini) elOrdini.textContent=state.ordini.filter(o=>o.stato==='aperto').length;
   const totE=state.movimenti.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   const elEntrate=document.getElementById('m-entrate'); if(elEntrate) elEntrate.textContent=fmt(totE);
