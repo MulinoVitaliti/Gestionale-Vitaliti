@@ -1988,6 +1988,129 @@ app.post('/api/backoffice/alert/letti-tutti', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── SOLLECITI PAGAMENTO: prepara, rivedi, invia ──────────────────────────
+
+// Trova il cliente più probabile per un movimento, in base alla descrizione
+async function boTrovaClientePerMovimento(descrizione) {
+  if (!descrizione) return null;
+  const desc = descrizione.toLowerCase().trim();
+  const clienti = await pool.query(`SELECT id, nome, email, tel FROM clienti WHERE tipo='cliente' AND email IS NOT NULL AND email != ''`);
+  let migliore = null, punteggioMigliore = 0;
+  for (const c of clienti.rows) {
+    const nome = c.nome.toLowerCase().trim();
+    let punteggio = 0;
+    if (desc.includes(nome)) punteggio = nome.length;              // nome intero nella descrizione
+    else {
+      // Confronto sulle parole significative (>3 caratteri)
+      const parole = nome.split(/\s+/).filter(p => p.length > 3);
+      const trovate = parole.filter(p => desc.includes(p));
+      if (parole.length && trovate.length === parole.length) punteggio = trovate.join('').length;
+    }
+    if (punteggio > punteggioMigliore) { punteggioMigliore = punteggio; migliore = c; }
+  }
+  return migliore;
+}
+
+// Prepara le bozze dei solleciti per tutti gli insoluti oltre N giorni
+app.post('/api/backoffice/solleciti/prepara', async (req, res) => {
+  const giorniMin = parseInt(req.body.giorniMin) || 30;
+  try {
+    const mov = await pool.query(
+      `SELECT id, data, importo, descrizione, (CURRENT_DATE - data) AS giorni_attesa
+       FROM movimenti WHERE tipo='entrata' AND pagato=false AND (CURRENT_DATE - data) >= $1
+       ORDER BY data ASC`, [giorniMin]
+    );
+
+    const pronti = [], senzaEmail = [];
+
+    for (const m of mov.rows) {
+      const cliente = await boTrovaClientePerMovimento(m.descrizione);
+      if (!cliente) {
+        senzaEmail.push({ movimentoId: m.id, descrizione: m.descrizione, importo: m.importo, giorni: m.giorni_attesa, motivo: 'Cliente non riconosciuto' });
+        continue;
+      }
+
+      const gg = Number(m.giorni_attesa);
+      const importo = Number(m.importo).toFixed(2);
+      const dataFmt = new Date(m.data).toLocaleDateString('it-IT');
+
+      // Il tono si adatta ai giorni di ritardo
+      let oggetto, corpo;
+      if (gg <= 45) {
+        oggetto = `Promemoria pagamento - Mulino Vitaliti`;
+        corpo = `Gentile ${cliente.nome},
+
+le scriviamo per un cortese promemoria relativo alla fornitura del ${dataFmt}, per un importo di € ${importo}, che risulta ancora da saldare.
+
+Se il pagamento è già stato effettuato, la preghiamo di ignorare questa comunicazione e di segnalarcelo, così aggiorniamo i nostri registri.
+
+Restiamo a disposizione per qualsiasi chiarimento.
+
+Cordiali saluti,
+Mulino Vitaliti
+Via I Retta Levante 134 - 95032 Belpasso (CT)
+Tel. 095 913523 - Cell. 389 6066832`;
+      } else {
+        oggetto = `Sollecito pagamento fornitura del ${dataFmt} - Mulino Vitaliti`;
+        corpo = `Gentile ${cliente.nome},
+
+risulta ancora insoluto il pagamento relativo alla fornitura del ${dataFmt}, per un importo di € ${importo}, in attesa da ${gg} giorni.
+
+La invitiamo a provvedere al saldo nei prossimi giorni oppure a contattarci per concordare insieme una soluzione.
+
+Se il pagamento è già stato effettuato, la preghiamo di segnalarcelo così aggiorniamo i nostri registri.
+
+Cordiali saluti,
+Mulino Vitaliti
+Via I Retta Levante 134 - 95032 Belpasso (CT)
+Tel. 095 913523 - Cell. 389 6066832`;
+      }
+
+      pronti.push({
+        movimentoId: m.id,
+        clienteId: cliente.id,
+        clienteNome: cliente.nome,
+        email: cliente.email,
+        importo: m.importo,
+        giorni: gg,
+        data: m.data,
+        oggetto,
+        corpo
+      });
+    }
+
+    res.json({ pronti, senzaEmail });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Invia un singolo sollecito (dopo approvazione dell'utente)
+app.post('/api/backoffice/solleciti/invia', async (req, res) => {
+  const { email, oggetto, corpo, movimentoId, clienteNome } = req.body;
+  if (!gmailTokens) return res.json({ error: 'Gmail non connesso. Vai su Impostazioni per collegare l\'account.' });
+  if (!email || !oggetto || !corpo) return res.json({ error: 'Dati email incompleti' });
+  try {
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const messageParts = [`To: ${email}`, `Subject: ${oggetto}`, `Content-Type: text/plain; charset=utf-8`, '', corpo];
+    const encoded = Buffer.from(messageParts.join('\n')).toString('base64').replace(/\+/g,'-').replace(/\//g,'_');
+    await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
+
+    // Registra l'invio come nota sul cliente, se collegato
+    if (movimentoId) {
+      await pool.query(
+        `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento, letto)
+         VALUES ('sollecito_inviato','bassa',$1,$2,$3,true)`,
+        [`Sollecito inviato a ${clienteNome || email}`, `Email inviata il ${new Date().toLocaleDateString('it-IT')}`, `mov:${movimentoId}`]
+      );
+    }
+    console.log(`[Sollecito] Inviato a ${email} (mov ${movimentoId})`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Sollecito] Errore invio:', err.message);
+    res.json({ error: err.message });
+  }
+});
+
 // ── Costruisce il contesto live del gestionale per il system prompt AI ────
 async function costruisciContestoGestionale() {
   try {
