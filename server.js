@@ -2111,6 +2111,78 @@ app.post('/api/backoffice/solleciti/invia', async (req, res) => {
   }
 });
 
+// Scheda completa di monitoraggio cliente
+app.get('/api/clienti/:id/scheda', async (req, res) => {
+  try {
+    const id = req.params.id;
+    const [cli, ordini, movimenti, note, tasks] = await Promise.all([
+      pool.query(`SELECT * FROM clienti WHERE id=$1`, [id]),
+      pool.query(`SELECT * FROM ordini WHERE cliente_id=$1 ORDER BY data DESC LIMIT 30`, [id]),
+      pool.query(`SELECT m.*, (CURRENT_DATE - m.data) AS giorni_attesa FROM movimenti m
+                  WHERE m.tipo='entrata' ORDER BY m.data DESC LIMIT 200`),
+      pool.query(`SELECT * FROM note_clienti WHERE cliente_id=$1 ORDER BY created_at DESC LIMIT 10`, [id]).catch(()=>({rows:[]})),
+      pool.query(`SELECT * FROM tasks WHERE stato IN ('da_fare','in_corso') ORDER BY scadenza ASC NULLS LAST LIMIT 30`),
+    ]);
+
+    const cliente = cli.rows[0];
+    if (!cliente) return res.json({ error: 'Cliente non trovato' });
+
+    const nomeLower = cliente.nome.toLowerCase().trim();
+    // Movimenti che sembrano appartenere a questo cliente
+    const suoiMovimenti = movimenti.rows.filter(m =>
+      (m.descrizione || '').toLowerCase().includes(nomeLower.split(' ')[0])
+    );
+    const insoluti = suoiMovimenti.filter(m => !m.pagato);
+    const pagati = suoiMovimenti.filter(m => m.pagato);
+
+    const ordiniRows = ordini.rows;
+    const fatturatoTotale = ordiniRows.reduce((s, o) => s + Number(o.importo || 0), 0);
+    const ultimoOrdine = ordiniRows[0]?.data || null;
+    const giorniInattivo = ultimoOrdine
+      ? Math.floor((new Date() - new Date(ultimoOrdine)) / 86400000) : null;
+
+    // Frequenza media di ordine (giorni tra un ordine e l'altro)
+    let frequenzaMedia = null;
+    if (ordiniRows.length > 1) {
+      const date = ordiniRows.map(o => new Date(o.data)).filter(d => !isNaN(d)).sort((a,b)=>a-b);
+      if (date.length > 1) {
+        const gap = [];
+        for (let i = 1; i < date.length; i++) gap.push((date[i] - date[i-1]) / 86400000);
+        frequenzaMedia = Math.round(gap.reduce((a,b)=>a+b,0) / gap.length);
+      }
+    }
+
+    // Valutazione dello stato di salute della relazione
+    let salute = 'buono', motivoSalute = '';
+    if (insoluti.length > 0) {
+      const peggiore = Math.max(...insoluti.map(m => Number(m.giorni_attesa || 0)));
+      if (peggiore > 60) { salute = 'critico'; motivoSalute = `Insoluto da ${peggiore} giorni`; }
+      else if (peggiore > 30) { salute = 'attenzione'; motivoSalute = `Pagamento in ritardo (${peggiore}gg)`; }
+    }
+    if (giorniInattivo !== null && frequenzaMedia && giorniInattivo > frequenzaMedia * 2) {
+      salute = salute === 'critico' ? 'critico' : 'attenzione';
+      motivoSalute = motivoSalute || `Ordina di solito ogni ${frequenzaMedia}gg, fermo da ${giorniInattivo}`;
+    }
+    if (giorniInattivo === null) { salute = 'attenzione'; motivoSalute = 'Nessun ordine registrato'; }
+
+    res.json({
+      cliente,
+      ordini: ordiniRows,
+      insoluti,
+      totaleInsoluto: insoluti.reduce((s,m)=>s+Number(m.importo||0),0),
+      numPagati: pagati.length,
+      fatturatoTotale,
+      numOrdini: ordiniRows.length,
+      ultimoOrdine,
+      giorniInattivo,
+      frequenzaMedia,
+      salute,
+      motivoSalute,
+      note: note.rows || []
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 // ── Costruisce il contesto live del gestionale per il system prompt AI ────
 async function costruisciContestoGestionale() {
   try {
@@ -2151,12 +2223,31 @@ ${inattivi.length === 0 ? 'Tutti i clienti sono attivi.' : inattivi.slice(0, 10)
 ${taskAperti.length === 0 ? 'Nessun task in sospeso.' : taskAperti.map(t => `- [${t.priorita || 'normale'}] ${t.titolo}${t.scadenza ? ' | Scadenza: ' + t.scadenza : ''}`).join('\n')}
 
 ## ISTRUZIONI
-Rispondi sempre in italiano. Sei diretto, pratico e conciso.
-Se ti viene chiesto di creare un task o ricordare qualcosa, aggiungi in fondo alla risposta ESATTAMENTE questo blocco (non modificarlo):
-[TASK:titolo="...",priorita="alta|normale|bassa",scadenza="YYYY-MM-DD opzionale"]
+Rispondi sempre in italiano. Sei diretto, pratico, concreto. Niente premesse inutili né elenchi generici.
 
-Esempio: se dico "ricordati di chiamare Rossi domani", rispondi normalmente e aggiungi:
-[TASK:titolo="Chiamare Rossi",priorita="normale",scadenza="${new Date(Date.now() + 86400000).toISOString().slice(0,10)}"]`;
+Il tuo valore è nel proporre SOLUZIONI, non nel descrivere problemi. Se vedi un insoluto, non dire "ci sono insoluti": dì chi, quanto, da quanto, e cosa fare adesso. Se un cliente è fermo, ipotizza il perché e proponi la mossa concreta.
+
+Quando ti chiedono cosa fare, dai una lista breve e ordinata per urgenza reale, non per categoria.
+
+### Azioni che puoi compiere
+Puoi attivare azioni aggiungendo un blocco alla fine della risposta. Usa la sintassi ESATTA.
+
+1. **Creare un task** — quando dico "ricordati di...", "segna che...", "crea un task":
+[TASK:titolo="...",priorita="alta|media|bassa",scadenza="YYYY-MM-DD"]
+
+2. **Aprire la scheda di un cliente** — quando parli di un cliente specifico e sarebbe utile vederne i dettagli:
+[CLIENTE:nome="Nome esatto del cliente"]
+
+3. **Preparare un'email** — quando propongo di scrivere a qualcuno o mi chiedi di farlo:
+[EMAIL:destinatario="email@esempio.it",oggetto="...",corpo="testo completo dell'email"]
+Nel corpo usa \\n per andare a capo. Firma sempre come Mulino Vitaliti con i recapiti:
+Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 6066832
+
+Puoi usare più blocchi nella stessa risposta. Scrivi sempre prima la risposta normale, poi i blocchi in fondo.
+
+Esempio: se dico "il Panificio Russo non ordina da due mesi, che faccio?" rispondi con l'analisi e la proposta, e chiudi con:
+[CLIENTE:nome="Panificio Russo"]
+[EMAIL:destinatario="...",oggetto="Come va?",corpo="Gentile..."]`;
 
     return ctx;
   } catch (e) {
@@ -2208,16 +2299,40 @@ app.post('/api/chat', async (req, res) => {
     const data = await response.json();
     const testo = data.content?.[0]?.text || 'Errore risposta AI';
 
-    // Salva task se l'AI ne ha generato uno
+    const azioni = { task: null, cliente: null, email: null };
+
+    // Task
     const taskCreato = await estraiESalvaTask(testo);
+    if (taskCreato) azioni.task = { titolo: taskCreato.titolo, scadenza: taskCreato.scadenza };
 
-    // Rimuovi il blocco [TASK:...] dalla risposta visibile
-    const testoVisibile = testo.replace(/\[TASK:[^\]]+\]/g, '').trim();
+    // Riferimento cliente → risolvi l'id per aprire la scheda
+    const mCli = testo.match(/\[CLIENTE:nome="([^"]+)"\]/);
+    if (mCli) {
+      const nome = mCli[1].toLowerCase().trim();
+      const c = await pool.query(
+        `SELECT id, nome FROM clienti WHERE LOWER(nome) LIKE $1 LIMIT 1`, [`%${nome}%`]
+      );
+      if (c.rows[0]) azioni.cliente = { id: c.rows[0].id, nome: c.rows[0].nome };
+    }
 
-    res.json({
-      reply: testoVisibile,
-      taskCreato: taskCreato ? { titolo: taskCreato.titolo, scadenza: taskCreato.scadenza } : null
-    });
+    // Bozza email
+    const mMail = testo.match(/\[EMAIL:destinatario="([^"]*)",oggetto="([^"]*)",corpo="([\s\S]*?)"\]/);
+    if (mMail) {
+      azioni.email = {
+        destinatario: mMail[1],
+        oggetto: mMail[2],
+        corpo: mMail[3].replace(/\\n/g, '\n')
+      };
+    }
+
+    // Rimuovi tutti i blocchi azione dalla risposta visibile
+    const testoVisibile = testo
+      .replace(/\[TASK:[^\]]+\]/g, '')
+      .replace(/\[CLIENTE:[^\]]+\]/g, '')
+      .replace(/\[EMAIL:destinatario="[^"]*",oggetto="[^"]*",corpo="[\s\S]*?"\]/g, '')
+      .trim();
+
+    res.json({ reply: testoVisibile, azioni, taskCreato: azioni.task });
   } catch (err) { res.json({ error: err.message }); }
 });
 
