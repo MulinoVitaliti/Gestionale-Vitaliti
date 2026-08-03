@@ -267,6 +267,8 @@ async function initDB() {
       );
       -- Migrazione: aggiunge fic_fattura_id se non esiste già
       ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER DEFAULT NULL;
+      -- Migrazione: aggiunge fic_received_id per deduplicare fatture ricevute da FIC
+      ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_received_id INTEGER DEFAULT NULL;
 
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
@@ -2928,6 +2930,90 @@ app.post('/api/fatture/products/refresh', async (req, res) => {
   ficProductsCache = null;
   const map = await getFicProducts();
   res.json({ prodotti: Object.keys(map).length });
+});
+
+// ── SINCRONIZZAZIONE FATTURE RICEVUTE DA FIC → CONTABILITÀ USCITE ─────────
+app.post('/api/fatture/sincronizza-ricevute', async (req, res) => {
+  if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso' });
+  try {
+    // Legge le fatture ricevute da FIC (pagina per pagina, max 500)
+    let tuttiDocs = [], page = 1;
+    while (true) {
+      const r = await ficFetch(`/c/${ficCompanyId}/received_documents?type=expense&per_page=100&page=${page}&sort=-date`);
+      const data = await r.json();
+      if (!r.ok || !data.data || data.data.length === 0) break;
+      tuttiDocs = tuttiDocs.concat(data.data);
+      if (data.data.length < 100) break;
+      page++;
+    }
+
+    // Legge anche le note spese (altro tipo di received_document)
+    let noteSpesePage = 1;
+    while (true) {
+      const r = await ficFetch(`/c/${ficCompanyId}/received_documents?type=amortization&per_page=100&page=${noteSpesePage}&sort=-date`);
+      const data = await r.json();
+      if (!r.ok || !data.data || data.data.length === 0) break;
+      tuttiDocs = tuttiDocs.concat(data.data);
+      if (data.data.length < 100) break;
+      noteSpesePage++;
+    }
+
+    // Recupera tutti i fic_received_id già presenti (per deduplicare)
+    const esistenti = await pool.query(`SELECT fic_received_id FROM movimenti WHERE fic_received_id IS NOT NULL`);
+    const idEsistenti = new Set(esistenti.rows.map(r => r.fic_received_id));
+
+    let importati = 0, saltati = 0, errori = 0;
+
+    for (const doc of tuttiDocs) {
+      if (idEsistenti.has(doc.id)) { saltati++; continue; }
+
+      // Calcola l'importo netto (imponibile) o lordo se non disponibile
+      const importo = parseFloat(doc.amount_net || doc.gross_amount || doc.amount_gross || 0);
+      if (!importo) { saltati++; continue; }
+
+      // Pagamento: se tutti i payment_list sono 'paid' → pagato
+      const pagamenti = doc.payments_list || [];
+      const pagato = pagamenti.length > 0 && pagamenti.every(p => p.status === 'paid');
+
+      // Categoria automatica in base al tipo fornitore/descrizione
+      const descrizioneFornitore = doc.entity?.name || '';
+      const oggetto = doc.description || doc.numeration || '';
+      let cat = 'Spese generali';
+      const dLow = (descrizioneFornitore + ' ' + oggetto).toLowerCase();
+      if (dLow.includes('grano') || dLow.includes('semola') || dLow.includes('fornitura')) cat = 'Acquisto materie prime';
+      else if (dLow.includes('corriere') || dLow.includes('spediz') || dLow.includes('trasport')) cat = 'Spese spedizione';
+      else if (dLow.includes('luce') || dLow.includes('gas') || dLow.includes('energia') || dLow.includes('elettric')) cat = 'Utenze';
+      else if (dLow.includes('telefon') || dLow.includes('internet') || dLow.includes('tim') || dLow.includes('vodafone')) cat = 'Telefonia';
+      else if (dLow.includes('commercialista') || dLow.includes('consulen') || dLow.includes('notaio') || dLow.includes('avvocato')) cat = 'Consulenze professionali';
+      else if (dLow.includes('assicuraz')) cat = 'Assicurazioni';
+      else if (dLow.includes('manutenzione') || dLow.includes('riparazi')) cat = 'Manutenzione';
+
+      try {
+        await pool.query(
+          `INSERT INTO movimenti (data, tipo, importo, cat, descrizione, fatturazione, pagato, fic_received_id)
+           VALUES ($1, 'uscita', $2, $3, $4, 'non_applicabile', $5, $6)`,
+          [
+            doc.date || new Date().toISOString().slice(0,10),
+            importo,
+            cat,
+            `${descrizioneFornitore}${oggetto ? ' — ' + oggetto : ''}`.trim() || 'Fattura ricevuta',
+            pagato,
+            doc.id
+          ]
+        );
+        importati++;
+      } catch (e) {
+        console.error('[FIC Ricevute] Errore inserimento:', e.message, doc.id);
+        errori++;
+      }
+    }
+
+    console.log(`[FIC Ricevute] Sync completata: ${importati} importate, ${saltati} già presenti, ${errori} errori`);
+    res.json({ totale: tuttiDocs.length, importati, saltati, errori });
+  } catch (err) {
+    console.error('[FIC Ricevute] Errore sync:', err.message);
+    res.json({ error: err.message });
+  }
 });
 
 // Leggi DDT specifico da FIC (debug/ispezione struttura)
