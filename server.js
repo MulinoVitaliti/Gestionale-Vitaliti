@@ -2933,32 +2933,35 @@ app.post('/api/fatture/products/refresh', async (req, res) => {
 });
 
 // ── SINCRONIZZAZIONE FATTURE RICEVUTE DA FIC → CONTABILITÀ USCITE ─────────
-app.post('/api/fatture/sincronizza-ricevute', async (req, res) => {
-  if (!ficCompanyId) return res.json({ error: 'Fatture in Cloud non connesso' });
+async function eseguiSincronizzazioneFattureRicevute() {
+  if (!ficCompanyId || !ficTokens) return { importati: 0, saltati: 0, errori: 0, totale: 0 };
   try {
-    // Legge le fatture ricevute da FIC (pagina per pagina, max 500)
-    let tuttiDocs = [], page = 1;
-    while (true) {
-      const r = await ficFetch(`/c/${ficCompanyId}/received_documents?type=expense&per_page=100&page=${page}&sort=-date`);
-      const data = await r.json();
-      if (!r.ok || !data.data || data.data.length === 0) break;
-      tuttiDocs = tuttiDocs.concat(data.data);
-      if (data.data.length < 100) break;
-      page++;
+    // Tipi validi FIC: expense (fatture fornitori), passive_delivery_note (DDT ricevuti)
+    const tipi = ['expense', 'passive_delivery_note'];
+    let tuttiDocs = [];
+
+    for (const tipo of tipi) {
+      let page = 1;
+      while (true) {
+        const r = await ficFetch(`/c/${ficCompanyId}/received_documents?type=${tipo}&per_page=100&page=${page}&sort=-date`);
+        const data = await r.json();
+        if (!r.ok) {
+          console.error(`[FIC Ricevute] Errore tipo=${tipo} page=${page}:`, JSON.stringify(data));
+          break;
+        }
+        if (!data.data || data.data.length === 0) break;
+        // Aggiungi il tipo a ogni documento per tracciarlo
+        data.data.forEach(d => d._tipo = tipo);
+        tuttiDocs = tuttiDocs.concat(data.data);
+        console.log(`[FIC Ricevute] tipo=${tipo} page=${page}: ${data.data.length} documenti`);
+        if (data.data.length < 100) break;
+        page++;
+      }
     }
 
-    // Legge anche le note spese (altro tipo di received_document)
-    let noteSpesePage = 1;
-    while (true) {
-      const r = await ficFetch(`/c/${ficCompanyId}/received_documents?type=amortization&per_page=100&page=${noteSpesePage}&sort=-date`);
-      const data = await r.json();
-      if (!r.ok || !data.data || data.data.length === 0) break;
-      tuttiDocs = tuttiDocs.concat(data.data);
-      if (data.data.length < 100) break;
-      noteSpesePage++;
-    }
+    console.log(`[FIC Ricevute] Totale documenti trovati: ${tuttiDocs.length}`);
 
-    // Recupera tutti i fic_received_id già presenti (per deduplicare)
+    // Recupera tutti i fic_received_id già presenti
     const esistenti = await pool.query(`SELECT fic_received_id FROM movimenti WHERE fic_received_id IS NOT NULL`);
     const idEsistenti = new Set(esistenti.rows.map(r => r.fic_received_id));
 
@@ -2967,54 +2970,79 @@ app.post('/api/fatture/sincronizza-ricevute', async (req, res) => {
     for (const doc of tuttiDocs) {
       if (idEsistenti.has(doc.id)) { saltati++; continue; }
 
-      // Calcola l'importo netto (imponibile) o lordo se non disponibile
+      // Importo: netto se disponibile, altrimenti lordo
       const importo = parseFloat(doc.amount_net || doc.gross_amount || doc.amount_gross || 0);
-      if (!importo) { saltati++; continue; }
+      if (!importo || importo <= 0) { saltati++; continue; }
 
-      // Pagamento: se tutti i payment_list sono 'paid' → pagato
+      // Stato pagamento
       const pagamenti = doc.payments_list || [];
       const pagato = pagamenti.length > 0 && pagamenti.every(p => p.status === 'paid');
 
-      // Categoria automatica in base al tipo fornitore/descrizione
-      const descrizioneFornitore = doc.entity?.name || '';
-      const oggetto = doc.description || doc.numeration || '';
+      // Categoria automatica
+      const nomeFornitore = (doc.entity?.name || '').toLowerCase();
+      const descrizioneDoc = (doc.description || doc.subject || doc.numeration || '').toLowerCase();
+      const testo = nomeFornitore + ' ' + descrizioneDoc;
       let cat = 'Spese generali';
-      const dLow = (descrizioneFornitore + ' ' + oggetto).toLowerCase();
-      if (dLow.includes('grano') || dLow.includes('semola') || dLow.includes('fornitura')) cat = 'Acquisto materie prime';
-      else if (dLow.includes('corriere') || dLow.includes('spediz') || dLow.includes('trasport')) cat = 'Spese spedizione';
-      else if (dLow.includes('luce') || dLow.includes('gas') || dLow.includes('energia') || dLow.includes('elettric')) cat = 'Utenze';
-      else if (dLow.includes('telefon') || dLow.includes('internet') || dLow.includes('tim') || dLow.includes('vodafone')) cat = 'Telefonia';
-      else if (dLow.includes('commercialista') || dLow.includes('consulen') || dLow.includes('notaio') || dLow.includes('avvocato')) cat = 'Consulenze professionali';
-      else if (dLow.includes('assicuraz')) cat = 'Assicurazioni';
-      else if (dLow.includes('manutenzione') || dLow.includes('riparazi')) cat = 'Manutenzione';
+      if (testo.includes('grano') || testo.includes('semola') || testo.includes('fornitura') || testo.includes('materie prime')) cat = 'Acquisto materie prime';
+      else if (testo.includes('corriere') || testo.includes('spediz') || testo.includes('trasport') || testo.includes('bartolotta') || testo.includes('gls') || testo.includes('brt')) cat = 'Spese spedizione';
+      else if (testo.includes('luce') || testo.includes('gas') || testo.includes('energia') || testo.includes('elettric') || testo.includes('enel') || testo.includes('eni')) cat = 'Utenze';
+      else if (testo.includes('telefon') || testo.includes('internet') || testo.includes('tim') || testo.includes('vodafone') || testo.includes('wind') || testo.includes('iliad')) cat = 'Telefonia';
+      else if (testo.includes('commercialista') || testo.includes('consulen') || testo.includes('notaio') || testo.includes('avvocato') || testo.includes('studio')) cat = 'Consulenze professionali';
+      else if (testo.includes('assicuraz') || testo.includes('allianz') || testo.includes('generali')) cat = 'Assicurazioni';
+      else if (testo.includes('manutenzione') || testo.includes('riparazi') || testo.includes('ricambi')) cat = 'Manutenzione';
+      else if (testo.includes('imballo') || testo.includes('sacchi') || testo.includes('imballaggi') || testo.includes('packaging')) cat = 'Imballaggi';
+      else if (doc._tipo === 'passive_delivery_note') cat = 'Acquisto materie prime';
+
+      const descrizioneCompleta = [
+        doc.entity?.name,
+        doc.description || doc.subject,
+        doc.numeration ? `(${doc.numeration})` : null
+      ].filter(Boolean).join(' — ') || 'Fattura ricevuta';
 
       try {
         await pool.query(
           `INSERT INTO movimenti (data, tipo, importo, cat, descrizione, fatturazione, pagato, fic_received_id)
            VALUES ($1, 'uscita', $2, $3, $4, 'non_applicabile', $5, $6)`,
-          [
-            doc.date || new Date().toISOString().slice(0,10),
-            importo,
-            cat,
-            `${descrizioneFornitore}${oggetto ? ' — ' + oggetto : ''}`.trim() || 'Fattura ricevuta',
-            pagato,
-            doc.id
-          ]
+          [doc.date || new Date().toISOString().slice(0,10), importo, cat, descrizioneCompleta, pagato, doc.id]
         );
         importati++;
       } catch (e) {
-        console.error('[FIC Ricevute] Errore inserimento:', e.message, doc.id);
+        console.error('[FIC Ricevute] Errore inserimento doc', doc.id, ':', e.message);
         errori++;
       }
     }
 
-    console.log(`[FIC Ricevute] Sync completata: ${importati} importate, ${saltati} già presenti, ${errori} errori`);
-    res.json({ totale: tuttiDocs.length, importati, saltati, errori });
+    console.log(`[FIC Ricevute] Completata: ${importati} importate, ${saltati} saltate, ${errori} errori`);
+    return { totale: tuttiDocs.length, importati, saltati, errori };
   } catch (err) {
-    console.error('[FIC Ricevute] Errore sync:', err.message);
-    res.json({ error: err.message });
+    console.error('[FIC Ricevute] Errore generale:', err.message);
+    throw err;
   }
+}
+
+app.post('/api/fatture/sincronizza-ricevute', async (req, res) => {
+  try {
+    const risultato = await eseguiSincronizzazioneFattureRicevute();
+    res.json(risultato);
+  } catch (err) { res.json({ error: err.message }); }
 });
+
+// ── Scheduler: sincronizza ogni 6 ore automaticamente ─────────────────────
+let ultimaSyncFattureRicevute = null;
+setInterval(async () => {
+  try {
+    if (!ficCompanyId || !ficTokens) return;
+    const ora = new Date();
+    // Ogni 6 ore esatte (0, 6, 12, 18)
+    if (ora.getMinutes() !== 0) return;
+    if (![0, 6, 12, 18].includes(ora.getHours())) return;
+    const chiave = `${ora.toISOString().slice(0,13)}`; // YYYY-MM-DDTHH
+    if (ultimaSyncFattureRicevute === chiave) return;
+    ultimaSyncFattureRicevute = chiave;
+    console.log(`[Scheduler] Avvio sync fatture ricevute FIC (${chiave})`);
+    await eseguiSincronizzazioneFattureRicevute();
+  } catch (e) { /* già loggato */ }
+}, 60 * 1000); // controlla ogni minuto
 
 // Leggi DDT specifico da FIC (debug/ispezione struttura)
 app.get('/api/fatture/ddt/:id', async (req, res) => {
