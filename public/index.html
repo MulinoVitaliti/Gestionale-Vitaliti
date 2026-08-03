@@ -3197,6 +3197,7 @@ async function sincronizzaIndirizziFic(){
 let _excelImportRighe = []; // righe normalizzate pronte da inviare al server
 let _excelImportCerti = []; // match certi calcolati dal server
 let _excelSenzaMatch = []; // nomi senza nessuna corrispondenza
+let _excelSenzaMatchRighe = []; // righe complete senza corrispondenza (per creare nuovi clienti)
 
 // Mappa alias colonna (minuscolo, senza spazi/punti) -> campo interno
 const EXCEL_COLONNE_ALIAS = {
@@ -3353,6 +3354,7 @@ async function analizzaImportExcel(){
   _excelImportCerti = r.certi || [];
   _excelDubbiCorrenti = (r.dubbi||[]).map(d=>({...d, sceltaClienteId: d.clienteId}));
   _excelSenzaMatch = r.senzaMatch || [];
+  _excelSenzaMatchRighe = r.senzaMatchRighe || [];
 
   renderAnteprimaExcel();
 }
@@ -3374,9 +3376,14 @@ function renderAnteprimaExcel(){
       <div style="padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);margin-top:8px">
         <div style="font-size:13px;font-weight:600;margin-bottom:6px">Risultato analisi</div>
         <div style="font-size:13px;color:var(--text-2)">Nessuna corrispondenza trovata — nessun cliente del file è presente in anagrafica, oppure i dati sono già tutti aggiornati.</div>
-        ${senzaMatch.length?`<div style="font-size:12px;color:var(--orange);margin-top:8px">
-          <strong>${senzaMatch.length} nomi non trovati</strong> in anagrafica:<br>
-          ${senzaMatch.slice(0,20).join(', ')}${senzaMatch.length>20?` ...e altri ${senzaMatch.length-20}`:''}
+        ${senzaMatch.length?`<div style="border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-top:10px">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-wrap:wrap;gap:8px">
+            <div style="font-size:13px;font-weight:700">${senzaMatch.length} non trovati in anagrafica</div>
+            <button class="btn btn-primary btn-sm" onclick="creaNuoviClientiExcel()"><i class="ti ti-user-plus"></i>Aggiungi tutti come nuovi clienti</button>
+          </div>
+          <div style="font-size:12px;color:var(--text-2)">
+            ${senzaMatch.slice(0,20).join(', ')}${senzaMatch.length>20?` ...e altri ${senzaMatch.length-20}`:''}
+          </div>
         </div>`:''}
       </div>`;
     return;
@@ -3438,9 +3445,20 @@ function renderAnteprimaExcel(){
 
   // ── Non trovati ──
   if(senzaMatch.length){
-    html += `<div style="font-size:12px;padding:10px 12px;background:var(--surface-2);border-radius:var(--r);margin-bottom:14px;color:var(--text-3)">
-      <strong style="color:var(--text-2)">${senzaMatch.length} nomi non trovati in anagrafica</strong> — non verrà creato nulla per loro:<br>
-      <span style="font-size:11.5px">${senzaMatch.slice(0,20).join(' · ')}${senzaMatch.length>20?` ...e altri ${senzaMatch.length-20}`:''}</span>
+    html += `<div style="border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;background:var(--surface-2)">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;flex-wrap:wrap;gap:8px">
+        <div>
+          <div style="font-size:13px;font-weight:700;color:var(--text)">${senzaMatch.length} non trovati in anagrafica</div>
+          <div style="font-size:12px;color:var(--text-3);margin-top:2px">Questi nomi non corrispondono a nessun cliente esistente.</div>
+        </div>
+        <button class="btn btn-primary btn-sm" id="btn-crea-nuovi-excel" onclick="creaNuoviClientiExcel()">
+          <i class="ti ti-user-plus"></i>Aggiungi tutti come nuovi clienti
+        </button>
+      </div>
+      <div style="font-size:12px;color:var(--text-2);max-height:120px;overflow-y:auto">
+        ${senzaMatch.slice(0,50).map(n=>`<span style="display:inline-block;background:#fff;border:1px solid var(--border);border-radius:20px;padding:2px 10px;margin:2px;font-size:11.5px">${n}</span>`).join('')}
+        ${senzaMatch.length>50?`<span style="font-size:11px;color:var(--text-3)"> ...e altri ${senzaMatch.length-50}</span>`:''}
+      </div>
     </div>`;
   }
 
@@ -3457,6 +3475,25 @@ function aggiornaSceltaDubbio(index, valore){
     const alt = d.alternative.find(a=>a.clienteId===d.sceltaClienteId);
     if(alt) d.clienteNome = alt.clienteNome;
   }
+}
+
+async function creaNuoviClientiExcel(){
+  const btn = document.getElementById('btn-crea-nuovi-excel');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Creo...'; }
+  try{
+    const r = await api.post('/api/clienti/importa-excel/crea-nuovi', { righe: _excelSenzaMatchRighe });
+    if(r.error){ mostraToast('Errore: '+r.error, 'error'); return; }
+    const clientiAggiornati = await api.get('/api/clienti');
+    if(!clientiAggiornati.error) state.clienti = clientiAggiornati;
+    try{ renderClienti(); }catch(e){}
+    mostraToast(`✅ ${r.creati} nuovi clienti aggiunti in anagrafica`);
+    showSave();
+    // Rimuovi la sezione non trovati dalla UI
+    _excelSenzaMatch = [];
+    _excelSenzaMatchRighe = [];
+    renderAnteprimaExcel();
+  }catch(e){ mostraToast('Errore di rete: '+e.message, 'error'); }
+  finally{ if(btn){ btn.disabled=false; } }
 }
 
 async function confermaImportExcel(){
@@ -3481,7 +3518,7 @@ async function confermaImportExcel(){
     showSave();
 
     // Reset
-    _excelImportRighe = []; _excelImportCerti = []; _excelDubbiCorrenti = []; _excelSenzaMatch = [];
+    _excelImportRighe = []; _excelImportCerti = []; _excelDubbiCorrenti = []; _excelSenzaMatch = []; _excelSenzaMatchRighe = [];
     document.getElementById('excel-import-preview').style.display='none';
     document.getElementById('excel-import-filename').textContent='';
     document.getElementById('excel-import-file').value='';
@@ -4774,42 +4811,38 @@ function rimuoviRiga(i, mode){
 }
 
 function apriNuovoOrdinePerLead(lead){
-  // Apri il modal ordine normale
   apriNuovoOrdine();
 
-  // Precompila il cliente cercando per nome del lead o dell'azienda
-  const nomeCerca = lead.azienda || lead.nome || '';
-  if(!nomeCerca) return;
+  // Cerca per nome azienda (contatto) prima, poi per nome lead
+  const termini = [lead.azienda, lead.contatto, lead.nome].filter(Boolean);
+  if(!termini.length) return;
 
-  // Cerca il cliente in anagrafica per nome (esatto o parziale)
-  const clienteTrovato = (state.clienti||[]).find(c =>
-    c.tipo !== 'fornitore' && (
-      c.nome.toLowerCase().includes(nomeCerca.toLowerCase()) ||
-      nomeCerca.toLowerCase().includes(c.nome.toLowerCase())
-    )
-  );
+  const clienteTrovato = (state.clienti||[]).find(c => {
+    if(c.tipo === 'fornitore') return false;
+    return termini.some(t =>
+      c.nome.toLowerCase().includes(t.toLowerCase()) ||
+      t.toLowerCase().includes(c.nome.toLowerCase())
+    );
+  });
 
-  // Precompila la barra di ricerca cliente nel modal
   setTimeout(()=>{
     const searchInput = document.getElementById('ord-cliente-search');
     const hiddenInput = document.getElementById('ord-cliente');
     if(!searchInput) return;
 
     if(clienteTrovato){
-      // Cliente trovato → seleziona direttamente
       searchInput.value = clienteTrovato.nome;
       hiddenInput.value = clienteTrovato.id;
       onOrdClienteChange();
     } else {
-      // Non trovato → pre-scrivi il nome per aiutare la ricerca
-      searchInput.value = nomeCerca;
+      // Pre-scrivi il termine più probabile per facilitare la ricerca
+      searchInput.value = lead.azienda || lead.nome || '';
       filtraClientiOrdine();
     }
   }, 100);
 
-  // Salva riferimento al lead per aggiungere l'attività dopo il salvataggio
-  window._ordineFromLeadId = lead.id;
-  window._ordineFromLeadNome = lead.nome;
+  window._ordineFromLeadId = lead.id || null;
+  window._ordineFromLeadNome = lead.nome || lead.azienda || '';
 }
 
 function apriNuovoOrdine(){
@@ -5365,6 +5398,15 @@ function toggleLeadAttivita(show){
 }
 
 function setLeadAttTipo(tipo){
+  if(tipo === 'ordine'){
+    // Prendi il lead dal campo nascosto nel modal-lead se disponibile
+    const leadNome = document.getElementById('lead-nome')?.value || document.getElementById('edit-lead-nome')?.value || '';
+    const leadAzienda = document.getElementById('lead-contatto')?.value || '';
+    const fakeLeadObj = { nome: leadNome, azienda: leadAzienda };
+    closeModal('modal-lead');
+    apriNuovoOrdinePerLead(fakeLeadObj);
+    return;
+  }
   document.getElementById('lead-att-tipo').value=tipo;
   ['chiamata','email','ordine','nota'].forEach(t=>{
     const btn=document.getElementById('lead-att-btn-'+t);
@@ -7456,6 +7498,19 @@ function openModalAttivita(leadId='', pipelineId=''){
 }
 
 function setTipoAtt(tipo){
+  if(tipo === 'ordine'){
+    // Leggi il lead già selezionato nel modal-attivita
+    const leadId = parseInt(document.getElementById('att-lead')?.value) || null;
+    const lead = leadId ? (state.leads||[]).find(l=>l.id===leadId) : null;
+    closeModal('modal-attivita');
+    if(lead){
+      apriNuovoOrdinePerLead(lead);
+    } else {
+      // Nessun lead selezionato — apri il modal ordine vuoto
+      apriNuovoOrdine();
+    }
+    return;
+  }
   document.getElementById('att-tipo').value=tipo;
   ['chiamata','email','nota','ordine'].forEach(t=>{
     const btn=document.getElementById('att-btn-'+t);
