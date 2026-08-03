@@ -1,10 +1,24 @@
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
-const fs = require('fs');
+const https = require('https');
 const { google } = require('googleapis');
 const { Pool } = require('pg');
 const crypto = require('crypto');
+
+// ── Fix "Premature close" su Railway: forza HTTP/1.1 per le chiamate Google ──
+// Railway/Node a volte ha problemi con HTTP/2 verso oauth2.googleapis.com
+process.env.HTTPS_PROXY = process.env.HTTPS_PROXY || '';
+const httpsAgent = new https.Agent({ keepAlive: false });
+// Patch gaxios (usato internamente da googleapis) per usare l'agente HTTP/1.1
+try {
+  const { Gaxios } = require('gaxios');
+  const origRequest = Gaxios.prototype.request;
+  Gaxios.prototype.request = function(opts) {
+    if (opts && !opts.agent) opts.agent = httpsAgent;
+    return origRequest.call(this, opts);
+  };
+} catch(e) { console.log('[gaxios patch] non applicata:', e.message); }
 
 // ── Retry helper per chiamate API soggette a "Premature close" ────────────
 async function withRetry(fn, maxTentativi = 3, delayMs = 800) {
@@ -106,26 +120,6 @@ const pool = new Pool({
   ssl: process.env.DATABASE_URL ? { rejectUnauthorized: false } : false
 });
 
-// ── DEDUZIONE REGIONE DA CITTÀ (per contatti storici senza regione) ────────
-let comuniRegioni = {};
-try {
-  comuniRegioni = JSON.parse(fs.readFileSync(path.join(__dirname, 'data', 'comuni-regioni.json'), 'utf-8'));
-  console.log(`comuni-regioni.json caricato: ${Object.keys(comuniRegioni).length} comuni`);
-} catch (err) {
-  console.warn('ATTENZIONE: data/comuni-regioni.json non trovato — "Compila regioni mancanti" non funzionerà finché non viene caricato. Errore:', err.message);
-}
-const PAROLE_ESTERO = ['germania','francia','svizzera','austria','spagna','belgio','olanda','paesi bassi','regno unito','inghilterra','usa','stati uniti','malta','grecia','portogallo'];
-function normalizzaCitta(str) {
-  return (str || '').trim().toLowerCase().replace(/\s*\([a-z]{2}\)\s*$/i, '').trim();
-}
-function deduciRegione(citta) {
-  const norm = normalizzaCitta(citta);
-  if (!norm) return null;
-  if (PAROLE_ESTERO.some(p => norm.includes(p))) return 'Estero';
-  if (comuniRegioni[norm]) return comuniRegioni[norm];
-  return null;
-}
-
 async function initDB() {
   const client = await pool.connect();
   try {
@@ -179,7 +173,6 @@ async function initDB() {
         tel TEXT,
         email TEXT,
         citta TEXT,
-        regione TEXT,
         ind TEXT,
         ind_legale TEXT,
         ind_consegna TEXT,
@@ -251,7 +244,6 @@ async function initDB() {
         fic_ddt_id INTEGER,
         fic_ddt_numero TEXT,
         peso_trasporto NUMERIC,
-        destinazione TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
 
@@ -275,36 +267,6 @@ async function initDB() {
       );
       -- Migrazione: aggiunge fic_fattura_id se non esiste già
       ALTER TABLE movimenti ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER DEFAULT NULL;
-      -- Migrazione: aggiunge regione se non esiste già
-      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS regione TEXT;
-      -- Migrazione: aggiunge destinazione ordine se non esiste già
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS destinazione TEXT;
-      -- Migrazione: campi DDT che prima non venivano salvati nell'ordine (si perdevano dopo la creazione)
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS lotto TEXT;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS scadenza_merce TEXT;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS causale_trasporto TEXT;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS trasporto_tipo TEXT;
-      -- Migrazione: fatturazione automatica da DDT dopo 10 giorni
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_ddt_creato_at TIMESTAMP;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fic_fattura_creata_at TIMESTAMP;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fattura_email_inviata BOOLEAN DEFAULT false;
-      ALTER TABLE ordini ADD COLUMN IF NOT EXISTS fattura_email_inviata_at TIMESTAMP;
-      -- Migrazione: override manuale stato attivo/non attivo cliente (NULL = decide automaticamente dagli ordini)
-      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS attivo_manuale BOOLEAN DEFAULT NULL;
-
-      -- Catalogo prodotti gestito internamente (nome, codice e descrizione da riportare sul DDT)
-      CREATE TABLE IF NOT EXISTS prodotti_catalogo (
-        id SERIAL PRIMARY KEY,
-        nome TEXT NOT NULL,
-        codice TEXT NOT NULL UNIQUE,
-        descrizione TEXT,
-        peso_kg NUMERIC,
-        prezzo_default NUMERIC,
-        attivo BOOLEAN DEFAULT true,
-        created_at TIMESTAMP DEFAULT NOW()
-      );
 
       CREATE TABLE IF NOT EXISTS attivita (
         id SERIAL PRIMARY KEY,
@@ -363,6 +325,28 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Rapporti giornalieri generati dall'agente back office
+      CREATE TABLE IF NOT EXISTS backoffice_rapporti (
+        id SERIAL PRIMARY KEY,
+        data DATE NOT NULL,
+        testo TEXT NOT NULL,
+        dati JSONB,
+        generato_da TEXT DEFAULT 'automatico',
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Alert rilevati dall'agente (anomalie, scadenze critiche)
+      CREATE TABLE IF NOT EXISTS backoffice_alert (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL,
+        gravita TEXT DEFAULT 'media',
+        titolo TEXT NOT NULL,
+        dettaglio TEXT,
+        riferimento TEXT,
+        letto BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS fic_clienti_storico (
         id SERIAL PRIMARY KEY,
         nome TEXT NOT NULL,
@@ -409,24 +393,6 @@ async function initDB() {
         pending BOOLEAN DEFAULT FALSE,
         created_at TIMESTAMP DEFAULT NOW()
       );
-    `);
-
-    // Catalogo prodotti: inserisce i prodotti reali (da export FIC) se non già presenti,
-    // riconoscendoli per codice — così è sicuro rieseguirlo ad ogni avvio senza duplicare nulla
-    await client.query(`
-      INSERT INTO prodotti_catalogo (nome, codice, descrizione, peso_kg, prezzo_default) VALUES
-      ('Crusca di Grano Duro', 'CRUSCA-GD-30KG', 'Crusca di Grano Duro', 30, 0.3),
-      ('Farina Integrale di Grano Duro', 'FARINA-INT-5KG', 'Farina integrale di Grano Duro sacco kg.5', 5, 1.5),
-      ('Farina Integrale di Grano Duro', 'FARINA-INT-10KG', 'Farina integrale di Grano Duro sacco kg.10', 10, 1.5),
-      ('Farina Integrale di Grano Duro', 'FARINA-INT-30KG', 'Farina integrale di Grano Duro sacco kg.30', 30, 1.5),
-      ('Perciasacchi Grano Duro', 'PERCIASACCHI-GD-25KG', 'Semola Rimacinata di Grano Duro Perciasacchi', 25, 3.0),
-      ('Russello Grano Duro', 'RUSSELLO-GD-25KG', 'Semola Integrale di Grano Duro Russello', 25, 2.5),
-      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-5KG', 'Semola Rimacinata di Grano Duro sacco kg. 5', 5, 1.2),
-      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-10KG', 'Semola Rimacinata di Grano Duro sacco kg. 10', 10, 1.0),
-      ('Semola Rimacinata di Grano Duro', 'SEMOLA-RIM-30KG', 'Semola Rimacinata di Grano Duro sacco kg. 30', 30, 1.0),
-      ('Senatore Cappelli Grano Duro', 'SENATORE CAPPELLI-GD-25KG', 'Semola Rimacinata di Grano Duro Senatore Cappelli', 25, 3.0),
-      ('Tumminia', 'TUMMINIA-GD-25KG', 'Semola Integrale Tumminia', 25, 2.5)
-      ON CONFLICT (codice) DO NOTHING;
     `);
 
     // Dati iniziali fasi
@@ -935,31 +901,10 @@ app.delete('/api/leads/:id', async (req, res) => {
 app.get('/api/clienti', async (req, res) => {
   try {
     const tipo = req.query.tipo;
-    const query = `
-      SELECT c.*,
-        o.ultimo_ordine,
-        CASE
-          WHEN c.attivo_manuale IS NOT NULL THEN c.attivo_manuale
-          ELSE COALESCE(o.ultimo_ordine >= (CURRENT_DATE - INTERVAL '6 months'), false)
-        END AS attivo
-      FROM clienti c
-      LEFT JOIN (
-        SELECT cliente_id, MAX(data) AS ultimo_ordine FROM ordini WHERE cliente_id IS NOT NULL GROUP BY cliente_id
-      ) o ON o.cliente_id = c.id
-      ${tipo ? 'WHERE c.tipo=$1' : ''}
-      ORDER BY c.tipo, c.nome
-    `;
-    const r = tipo ? await pool.query(query, [tipo]) : await pool.query(query);
+    const r = tipo
+      ? await pool.query('SELECT * FROM clienti WHERE tipo=$1 ORDER BY nome', [tipo])
+      : await pool.query('SELECT * FROM clienti ORDER BY tipo, nome');
     res.json(r.rows);
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-// Imposta manualmente attivo/non attivo per un cliente, oppure torna alla modalità automatica (valore null)
-app.put('/api/clienti/:id/attivo', async (req, res) => {
-  try {
-    const { attivo_manuale } = req.body; // true, false, o null per tornare automatico
-    await pool.query('UPDATE clienti SET attivo_manuale=$1 WHERE id=$2', [attivo_manuale, req.params.id]);
-    res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1011,15 +956,18 @@ async function sincronizzaConFIC(dati, ficId = null) {
 }
 
 app.post('/api/clienti', async (req, res) => {
-  const { nome, ref, tel, email, citta, regione, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, fic_id, tipo } = req.body;
   try {
     const tipoRecord = tipo || 'cliente';
-    const codice = await generaProssimoCodiceCliente(tipoRecord);
+    const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
+    const countR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipoRecord]);
+    const n = parseInt(countR.rows[0].count) + 1;
+    const codice = prefisso + String(n).padStart(3, '0');
 
     // Crea prima nel gestionale
     const r = await pool.query(
-      'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,regione,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17) RETURNING *',
-      [codice, tipoRecord, nome, ref, tel, email, citta, regione||null, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
+      'INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind,ind_legale,ind_consegna,sdi,pec,piva,prod,note,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [codice, tipoRecord, nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, fic_id||null]
     );
     const cliente = r.rows[0];
 
@@ -1036,11 +984,11 @@ app.post('/api/clienti', async (req, res) => {
 });
 
 app.put('/api/clienti/:id', async (req, res) => {
-  const { nome, ref, tel, email, citta, regione, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, tipo } = req.body;
+  const { nome, ref, tel, email, citta, ind, ind_legale, ind_consegna, sdi, pec, piva, prod, note, tipo } = req.body;
   try {
     await pool.query(
-      'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,regione=$7,ind=$8,ind_legale=$9,ind_consegna=$10,sdi=$11,pec=$12,piva=$13,prod=$14,note=$15 WHERE id=$16',
-      [tipo||'cliente', nome, ref, tel, email, citta, regione||null, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
+      'UPDATE clienti SET tipo=$1,nome=$2,ref=$3,tel=$4,email=$5,citta=$6,ind=$7,ind_legale=$8,ind_consegna=$9,sdi=$10,pec=$11,piva=$12,prod=$13,note=$14 WHERE id=$15',
+      [tipo||'cliente', nome, ref, tel, email, citta, ind, ind_legale||null, ind_consegna||null, sdi||null, pec||null, piva||null, prod, note, req.params.id]
     );
 
     // Sincronizza aggiornamento su FIC se il contatto ha già un fic_id
@@ -1065,41 +1013,6 @@ app.delete('/api/clienti/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM clienti WHERE id=$1', [req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-// ── DEDUZIONE REGIONE DA CITTÀ (contatti storici) ───────────────────────────
-// Non scrive nulla: restituisce solo le proposte da far controllare all'utente
-app.get('/api/clienti/regioni-proposte', async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      `SELECT id, codice, nome, tipo, citta FROM clienti
-       WHERE (regione IS NULL OR regione = '') AND citta IS NOT NULL AND citta <> ''
-       ORDER BY tipo, nome`
-    );
-    const proposte = [];
-    const nonRiconosciuti = [];
-    for (const r of rows) {
-      const regione = deduciRegione(r.citta);
-      if (regione) proposte.push({ ...r, regioneProposta: regione });
-      else nonRiconosciuti.push(r);
-    }
-    res.json({ proposte, nonRiconosciuti });
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-// Applica SOLO le proposte confermate dall'utente (elenco di {id, regione})
-app.post('/api/clienti/regioni-applica', async (req, res) => {
-  try {
-    const { conferme } = req.body; // [{id, regione}, ...]
-    if (!Array.isArray(conferme) || !conferme.length) return res.json({ error: 'Nessuna conferma ricevuta' });
-    let aggiornati = 0;
-    for (const c of conferme) {
-      if (!c.id || !c.regione) continue;
-      await pool.query("UPDATE clienti SET regione=$1 WHERE id=$2 AND (regione IS NULL OR regione='')", [c.regione, c.id]);
-      aggiornati++;
-    }
-    res.json({ success: true, aggiornati });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1288,19 +1201,19 @@ app.post('/api/clienti/importa-excel/anteprima', async (req, res) => {
       if (certo) certi.push(entry); else dubbi.push(entry);
     }
 
-    res.json({ certi, dubbi, senzaMatch });
+    res.json({ certi, dubbi, senzaMatch: senzaMatch.map(r => r.nome || '(riga senza nome)') });
   } catch (err) { res.json({ error: err.message }); }
 });
 
 // FASE 2: applica gli aggiornamenti confermati (lista di {clienteId, campiDaCompletare})
 app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
-  const { conferme, nuovi } = req.body; // conferme: aggiornamenti a clienti esistenti. nuovi: righe da creare come nuovi contatti
-  if ((!Array.isArray(conferme) || conferme.length === 0) && (!Array.isArray(nuovi) || nuovi.length === 0)) {
+  const { conferme } = req.body; // [{ clienteId, campiDaCompletare: {tel:'...', email:'...'} }, ...]
+  if (!Array.isArray(conferme) || conferme.length === 0) {
     return res.json({ error: 'Nessuna conferma da applicare' });
   }
   try {
     let aggiornati = 0;
-    for (const c of (conferme || [])) {
+    for (const c of conferme) {
       const campi = c.campiDaCompletare || {};
       const setClauses = [];
       const values = [];
@@ -1317,20 +1230,7 @@ app.post('/api/clienti/importa-excel/conferma', async (req, res) => {
       await pool.query(`UPDATE clienti SET ${setClauses.join(', ')} WHERE id=$${i}`, values);
       aggiornati++;
     }
-
-    let creati = 0;
-    for (const riga of (nuovi || [])) {
-      if (!riga.nome) continue;
-      const codice = await generaProssimoCodiceCliente('cliente');
-      await pool.query(
-        `INSERT INTO clienti (codice,tipo,nome,ref,tel,email,citta,ind_legale,ind_consegna,sdi,pec,piva)
-         VALUES ($1,'cliente',$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
-        [codice, riga.nome, riga.ref||'', riga.tel||'', riga.email||'', riga.citta||'', riga.ind_legale||'', riga.ind_consegna||'', riga.sdi||'', riga.pec||'', riga.piva||'']
-      );
-      creati++;
-    }
-
-    res.json({ aggiornati, creati });
+    res.json({ aggiornati });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1388,7 +1288,9 @@ app.post('/api/clienti/importa-fic', async (req, res) => {
       }
 
       // Nuovo — importa con codice progressivo per tipo
-      const codice = await generaProssimoCodiceCliente(tipo);
+      const cntR = await pool.query('SELECT COUNT(*) FROM clienti WHERE tipo=$1', [tipo]);
+      const cN = parseInt(cntR.rows[0].count) + 1;
+      const codice = prefisso + String(cN).padStart(3, '0');
       await pool.query(
         'INSERT INTO clienti (codice,tipo,nome,email,tel,piva,sdi,pec,ind_legale,ind_consegna,citta,fic_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) ON CONFLICT DO NOTHING',
         [codice, tipo, c.name, c.email||null, c.phone||null, piva, c.ei_code||null, c.certified_email||null, indirizzo, null, c.address_city||null, c.id]
@@ -1474,135 +1376,128 @@ app.get('/api/ordini', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// Crea un DDT su Fatture in Cloud per un ordine (usata sia da creazione che da modifica ordine).
-// Ritorna { fic_ddt_id, fic_ddt_numero } se creato, oppure { ddt_errore } se qualcosa impedisce la creazione.
-async function creaDdtPerOrdine(ordineId, dati) {
-  const { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto } = dati;
-
-  if (!ficTokens || !ficCompanyId) {
-    return { ddt_errore: 'Fatture in Cloud non è collegato: il DDT non è stato creato.' };
-  }
-
-  try {
-    let noteArr = [];
-    if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
-    if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
-    if (lotto) noteArr.push(`Lotto:${lotto}`);
-    if (scadenza_merce) noteArr.push(`Scadenza:${scadenza_merce}`);
-    if (note_spedizione) noteArr.push(note_spedizione);
-    if (note) noteArr.push(note);
-
-    const cli = await pool.query('SELECT * FROM clienti WHERE id=$1', [cliente_id||0]);
-    const clienteRow = cli.rows[0] || null;
-    const ficClienteId = clienteRow?.fic_id || null;
-
-    const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
-    const catR = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true');
-    const catalogoByCode = {}, catalogoByNome = {};
-    catR.rows.forEach(p => {
-      catalogoByCode[p.codice.toLowerCase().trim()] = p;
-      catalogoByNome[p.nome.toLowerCase().trim()] = p;
-    });
-    function trovaProdottoCatalogo(p) {
-      if (p.codice && catalogoByCode[p.codice.toLowerCase().trim()]) return catalogoByCode[p.codice.toLowerCase().trim()];
-      return catalogoByNome[(p.nome||'').toLowerCase().trim()];
-    }
-
-    const prodottiMancanti = prodList.filter(p => !trovaProdottoCatalogo(p)).map(p => p.nome);
-    if (prodottiMancanti.length > 0) {
-      return { ddt_errore: `Prodotto/i non ancora presenti nel catalogo del gestionale: ${[...new Set(prodottiMancanti)].join(', ')}. Aggiungili da Impostazioni → Catalogo prodotti e poi riprova a generare il DDT.` };
-    }
-
-    const righe = prodList.map(p => {
-      const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
-      const catProd = trovaProdottoCatalogo(p);
-      return {
-        name: catProd.nome,
-        description: catProd.descrizione || '',
-        qty: kgTot,
-        measure: 'Kg',
-        net_price: p.prezzoKg || 0,
-        vat: { id: 0 },
-        gross_price: p.prezzoKg || 0,
-        not_taxable: false,
-        code: catProd.codice,
-      };
-    });
-    if (righe.length === 0) {
-      righe.push({ name: prodotto || 'Semola rimacinata di grano duro', qty: qty || 1, measure: 'Nr', net_price: 0, vat: { id: 0 } });
-    }
-
-    const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
-    const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
-
-    const destinazioneOrdine = (destinazione || '').trim();
-    const luogoDestinazione = destinazioneOrdine || (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
-    const entityObj = ficClienteId ? { id: ficClienteId, name: cliente } : { name: cliente };
-
-    const ddtPayload = {
-      type: 'delivery_note',
-      entity: entityObj,
-      date: data || new Date().toISOString().slice(0,10),
-      items_list: righe,
-      delivery_note: true,
-      use_gross_price: false,
-      e_invoice: false,
-      dn_ai_causal: causale_trasporto || 'Vendita',
-      dn_ai_packages_number: String(totSacchi),
-      dn_ai_weight: String(totPeso),
-      dn_ai_transporter: trasporto_tipo || 'Corriere',
-      dn_ai_destination: luogoDestinazione,
-      dn_ai_notes: noteArr.join('\n'),
-    };
-    console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
-
-    const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, { method: 'POST', body: JSON.stringify({ data: ddtPayload }) });
-
-    if (ddt.ok) {
-      const ddtData = await ddt.json();
-      const ddtId = ddtData.data?.id;
-      const ddtNum = ddtData.data?.number;
-      console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
-      if (ddtId) {
-        await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2, fic_ddt_creato_at=NOW() WHERE id=$3', [ddtId, ddtNum, ordineId]);
-        return { fic_ddt_id: ddtId, fic_ddt_numero: ddtNum };
-      }
-      return {};
-    } else {
-      const errTxt = await ddt.text();
-      console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
-      return { ddt_errore: 'Errore nella creazione del DDT su Fatture in Cloud: ' + errTxt };
-    }
-  } catch (e) {
-    console.error('Errore creazione DDT FIC:', e.message);
-    return { ddt_errore: 'Errore nella creazione del DDT su Fatture in Cloud: ' + e.message };
-  }
-}
-
-// Elimina il DDT collegato a un ordine su Fatture in Cloud, se presente
-async function eliminaDdtOrdine(ficDdtId) {
-  if (!ficDdtId || !ficTokens || !ficCompanyId) return;
-  try {
-    const del = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficDdtId}`, { method: 'DELETE' });
-    if (del.ok) console.log(`[DDT] Eliminato su FIC: id=${ficDdtId}`);
-    else console.error(`[DDT] Errore eliminazione FIC: ${del.status} ${await del.text()}`);
-  } catch (e) { console.error('[DDT] Errore chiamata eliminazione FIC:', e.message); }
-}
-
 app.post('/api/ordini', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, crea_ddt, destinazione, trasporto_tipo } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto } = req.body;
   try {
     const r = await pool.query(
-      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel,peso_trasporto,destinazione,lotto,scadenza_merce,causale_trasporto,trasporto_tipo)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21) RETURNING *`,
-      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'', lotto||'', scadenza_merce||'', causale_trasporto||'', trasporto_tipo||'']
+      `INSERT INTO ordini (cliente,cliente_id,prodotti,prodotto,qty,peso_totale,importo,data,data_consegna,stato,canale,note,note_spedizione,facchinaggio,chiamata_tel)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'']
     );
     const ordine = r.rows[0];
 
-    console.log(`[DDT] crea_ddt=${!!crea_ddt} ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
-    if (crea_ddt) {
-      const risultato = await creaDdtPerOrdine(ordine.id, { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto });
-      Object.assign(ordine, risultato);
+    // Crea bozza DDT su Fatture in Cloud automaticamente
+    console.log(`[DDT] ficTokens=${!!ficTokens} ficCompanyId=${ficCompanyId}`);
+    if (ficTokens && ficCompanyId) {
+      try {
+        // Costruisci note DDT (facchinaggio + tel + lotto + scadenza + note libere)
+        let noteArr = [];
+        if (facchinaggio) noteArr.push('FACCHINAGGIO RICHIESTO');
+        if (chiamata_tel) noteArr.push(`CHIAMARE PRIMA DELLA CONSEGNA: ${chiamata_tel}`);
+        if (lotto || scadenza_merce) noteArr.push(`Lotto:${lotto||''} Scadenza:${scadenza_merce||''}`);
+        if (note_spedizione) noteArr.push(note_spedizione);
+        if (note) noteArr.push(note);
+
+        // Trova il cliente completo (per fic_id e indirizzo di spedizione)
+        const cli = await pool.query('SELECT * FROM clienti WHERE id=$1', [cliente_id||0]);
+        const clienteRow = cli.rows[0] || null;
+        const ficClienteId = clienteRow?.fic_id || null;
+
+        // Righe DDT dai prodotti con sacchi e kg
+        const prodList = typeof prodotti === 'string' ? JSON.parse(prodotti||'[]') : (prodotti||[]);
+        // Carica mappa prodotti FIC per trovare product_id
+        const ficProdMap = await getFicProducts();
+
+        const righe = prodList.map(p => {
+          const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
+          const sacchi = p.sacchi || p.bancali || 1;
+          // Cerca il prodotto in FIC per nome (case-insensitive)
+          const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
+          const misuraFic = (ficProd?.measure || '').toLowerCase().trim();
+          const isKg = misuraFic === 'kg' || misuraFic === 'kg.' || misuraFic === 'chilogrammi';
+
+          // Se il prodotto FIC è impostato in KG: quantità = kg totali, prezzo = €/kg
+          // Altrimenti: quantità = numero sacchi, prezzo = €/sacco
+          const qty = isKg ? kgTot : sacchi;
+          const net_price = isKg ? (p.prezzoKg||0) : (kgTot * (p.prezzoKg||0)) / (sacchi||1);
+
+          const item = {
+            name: ficProd?.name || p.nome,
+            description: `${sacchi} sacchi da ${p.kgSacco||0}kg (tot. ${kgTot}kg)`,
+            qty: qty,
+            measure: ficProd?.measure || 'Sacchi',
+            net_price: net_price,
+            vat: ficProd?.default_vat ? { id: ficProd.default_vat.id } : { id: 0 },
+            gross_price: net_price,
+            not_taxable: false,
+          };
+          if (ficProd?.id) item.product_id = ficProd.id;
+          if (ficProd?.code) item.code = ficProd.code;
+          return item;
+        });
+
+        if (righe.length === 0) {
+          righe.push({
+            name: prodotto || 'Semola rimacinata di grano duro',
+            qty: qty || 1,
+            measure: 'Nr',
+            net_price: 0,
+            vat: { id: 0 },
+          });
+        }
+
+        // Calcola totali sacchi e peso per il DDT
+        const totSacchi = prodList.reduce((s,p)=>s+(p.sacchi||p.qty||1),0);
+        const totPeso = peso_trasporto || peso_totale || prodList.reduce((s,p)=>s+((p.sacchi||1)*(p.kgSacco||0)),0);
+
+        // Costruisci entity con indirizzo di spedizione (priorità: ind_consegna > ind_legale > ind)
+        const indirizzoSpedizione = (clienteRow?.ind_consegna || clienteRow?.ind_legale || clienteRow?.ind || '').trim();
+        const entityObj = ficClienteId
+          ? { id: ficClienteId, name: cliente }
+          : { name: cliente };
+        if (indirizzoSpedizione) entityObj.address_street = indirizzoSpedizione;
+        if (clienteRow?.citta) entityObj.address_city = clienteRow.citta;
+        // Se l'indirizzo di consegna è diverso da quello legale, lo segnaliamo nelle note
+        if (clienteRow?.ind_consegna && clienteRow?.ind_legale && clienteRow.ind_consegna.trim() !== clienteRow.ind_legale.trim()) {
+          noteArr.push(`Consegna presso: ${clienteRow.ind_consegna}${clienteRow.citta ? ', '+clienteRow.citta : ''}`);
+        }
+
+        const ddtPayload = {
+          type: 'delivery_note',
+          entity: entityObj,
+          date: data || new Date().toISOString().slice(0,10),
+          items_list: righe,
+          notes: noteArr.join('\n'),
+          delivery_note: true,
+          use_gross_price: false,
+          e_invoice: false,
+          dn_ai_causal: causale_trasporto || 'Vendita',
+          dn_ai_packages_number: String(totSacchi),
+          dn_ai_weight: String(totPeso),
+          dn_ai_transporter: req.body.trasporto_tipo || 'Corriere',
+        };
+        console.log('[DDT] Payload inviato a FIC:', JSON.stringify(ddtPayload, null, 2));
+
+        const ddt = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+          method: 'POST',
+          body: JSON.stringify({ data: ddtPayload })
+        });
+
+        if (ddt.ok) {
+          const ddtData = await ddt.json();
+          const ddtId = ddtData.data?.id;
+          const ddtNum = ddtData.data?.number;
+          console.log(`[DDT] Creato su FIC: id=${ddtId} numero=${ddtNum}`);
+          if (ddtId) {
+            await pool.query('UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3', [ddtId, ddtNum, ordine.id]);
+            ordine.fic_ddt_id = ddtId;
+            ordine.fic_ddt_numero = ddtNum;
+          }
+        } else {
+          const errTxt = await ddt.text();
+          console.error(`[DDT] Errore FIC: ${ddt.status} ${errTxt}`);
+        }
+      } catch(e) { console.error('Errore creazione DDT FIC:', e.message); }
     }
 
     res.json(ordine);
@@ -1610,27 +1505,13 @@ app.post('/api/ordini', async (req, res) => {
 });
 
 app.put('/api/ordini/:id', async (req, res) => {
-  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, peso_trasporto, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel, lotto, scadenza_merce, causale_trasporto, destinazione, trasporto_tipo, crea_ddt } = req.body;
+  const { cliente, cliente_id, prodotti, prodotto, qty, peso_totale, importo, data, data_consegna, stato, canale, note, note_spedizione, facchinaggio, chiamata_tel } = req.body;
   try {
-    const r = await pool.query(
-      `UPDATE ordini SET cliente=$1,cliente_id=$2,prodotti=$3,prodotto=$4,qty=$5,peso_totale=$6,importo=$7,data=$8,data_consegna=$9,stato=$10,canale=$11,note=$12,note_spedizione=$13,facchinaggio=$14,chiamata_tel=$15,peso_trasporto=$16,destinazione=$17,lotto=$18,scadenza_merce=$19,causale_trasporto=$20,trasporto_tipo=$21 WHERE id=$22 RETURNING *`,
-      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', peso_trasporto||0, destinazione||'', lotto||'', scadenza_merce||'', causale_trasporto||'', trasporto_tipo||'', req.params.id]
+    await pool.query(
+      `UPDATE ordini SET cliente=$1,cliente_id=$2,prodotti=$3,prodotto=$4,qty=$5,peso_totale=$6,importo=$7,data=$8,data_consegna=$9,stato=$10,canale=$11,note=$12,note_spedizione=$13,facchinaggio=$14,chiamata_tel=$15 WHERE id=$16`,
+      [cliente, cliente_id||null, JSON.stringify(prodotti||[]), prodotto||'', qty||0, peso_totale||0, importo||0, data||null, data_consegna||null, stato||'bozza', canale||'telefono', note||'', note_spedizione||'', !!facchinaggio, chiamata_tel||'', req.params.id]
     );
-    const ordine = r.rows[0];
-    if (!ordine) return res.json({ error: 'Ordine non trovato' });
-
-    console.log(`[DDT] modifica ordine ${ordine.id}: crea_ddt=${!!crea_ddt} ddt_esistente=${ordine.fic_ddt_id||'nessuno'}`);
-    if (crea_ddt) {
-      // Se l'ordine aveva già un DDT, lo elimina prima su FIC: non deve restare un documento con i dati vecchi
-      if (ordine.fic_ddt_id) {
-        await eliminaDdtOrdine(ordine.fic_ddt_id);
-        await pool.query('UPDATE ordini SET fic_ddt_id=NULL, fic_ddt_numero=NULL WHERE id=$1', [ordine.id]);
-      }
-      const risultato = await creaDdtPerOrdine(ordine.id, { cliente, cliente_id, prodotti, data, peso_trasporto, peso_totale, facchinaggio, chiamata_tel, lotto, scadenza_merce, note_spedizione, note, causale_trasporto, destinazione, trasporto_tipo, qty, prodotto });
-      Object.assign(ordine, risultato);
-    }
-
-    res.json(ordine);
+    res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1638,51 +1519,25 @@ app.delete('/api/ordini/:id', async (req, res) => {
   try {
     // Recupera l'ordine per sapere se ha un DDT collegato su FIC
     const o = await pool.query('SELECT fic_ddt_id FROM ordini WHERE id=$1', [req.params.id]);
-    await eliminaDdtOrdine(o.rows[0]?.fic_ddt_id || null);
+    const ficDdtId = o.rows[0]?.fic_ddt_id || null;
+
+    // Elimina il DDT su Fatture in Cloud, se presente
+    if (ficDdtId && ficTokens && ficCompanyId) {
+      try {
+        const del = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ficDdtId}`, { method: 'DELETE' });
+        if (del.ok) {
+          console.log(`[DDT] Eliminato su FIC: id=${ficDdtId}`);
+        } else {
+          const errTxt = await del.text();
+          console.error(`[DDT] Errore eliminazione FIC: ${del.status} ${errTxt}`);
+        }
+      } catch (e) {
+        console.error('[DDT] Errore chiamata eliminazione FIC:', e.message);
+      }
+    }
 
     await pool.query('DELETE FROM ordini WHERE id=$1', [req.params.id]);
     res.json({ success: true });
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-// ── FATTURAZIONE AUTOMATICA: stato e trigger manuale ────────────────────────
-app.get('/api/fatturazione-automatica/stato', async (req, res) => {
-  try {
-    const r = await pool.query(`
-      SELECT id, cliente, fic_ddt_id, fic_ddt_numero, fic_ddt_creato_at,
-             fic_fattura_id, fic_fattura_numero, fic_fattura_creata_at,
-             fattura_email_inviata, fattura_email_inviata_at,
-             EXTRACT(DAY FROM (NOW() - fic_ddt_creato_at))::int AS giorni_da_ddt
-      FROM ordini
-      WHERE fic_ddt_id IS NOT NULL
-      ORDER BY fic_ddt_creato_at DESC NULLS LAST
-      LIMIT 200
-    `);
-    res.json(r.rows);
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-app.post('/api/fatturazione-automatica/esegui-ora', async (req, res) => {
-  try {
-    await elaboraFatturazioneAutomaticaDaDDT();
-    await elaboraEmailFattureDopoSDI();
-    res.json({ success: true });
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-// Forza la fatturazione di UN ordine specifico, senza aspettare i 10 giorni — utile per testare
-app.post('/api/ordini/:id/forza-fatturazione', async (req, res) => {
-  if (!ficTokens || !ficCompanyId) return res.json({ error: 'Fatture in Cloud non è collegato' });
-  try {
-    const o = await pool.query('SELECT id, fic_ddt_id, fic_fattura_id, cliente FROM ordini WHERE id=$1', [req.params.id]);
-    const ordine = o.rows[0];
-    if (!ordine) return res.json({ error: 'Ordine non trovato' });
-    if (!ordine.fic_ddt_id) return res.json({ error: 'Questo ordine non ha ancora un DDT creato su Fatture in Cloud' });
-    if (ordine.fic_fattura_id) return res.json({ error: 'Questo ordine ha già una fattura collegata' });
-
-    const risultato = await fatturaOrdineDaDDT(ordine);
-    if (!risultato.ok) return res.json({ error: risultato.errore });
-    res.json({ success: true, fic_fattura_id: risultato.fatturaId, fic_fattura_numero: risultato.fatturaNum });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1890,9 +1745,329 @@ app.delete('/api/tasks/:id', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-// ── AI CHAT ───────────────────────────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// AGENTE BACK OFFICE — analisi automatica, rapporti e alert
+// ══════════════════════════════════════════════════════════════════════════
+
+// Raccoglie i dati grezzi su cui l'agente ragiona
+async function boRaccogliDati() {
+  const oggi = new Date();
+  const soglia60 = new Date(); soglia60.setDate(soglia60.getDate() - 60);
+
+  const [nonPagati, ordiniAperti, clientiInattivi, tasksScaduti] = await Promise.all([
+    pool.query(`SELECT id, data, importo, descrizione,
+                (CURRENT_DATE - data) AS giorni_attesa
+                FROM movimenti WHERE tipo='entrata' AND pagato=false
+                ORDER BY data ASC`),
+    pool.query(`SELECT o.id, o.cliente, o.prodotto, o.stato, o.data, o.importo,
+                (CURRENT_DATE - o.data) AS giorni_aperto
+                FROM ordini o WHERE o.stato NOT IN ('consegnato','annullato')
+                ORDER BY o.data ASC`),
+    pool.query(`SELECT c.id, c.nome, c.email, c.tel, c.citta, MAX(o.data) AS ultimo_ordine
+                FROM clienti c LEFT JOIN ordini o ON o.cliente_id = c.id
+                WHERE c.tipo='cliente'
+                GROUP BY c.id, c.nome, c.email, c.tel, c.citta
+                HAVING MAX(o.data) IS NULL OR MAX(o.data) < $1
+                ORDER BY MAX(o.data) ASC NULLS FIRST`, [soglia60.toISOString().slice(0,10)]),
+    pool.query(`SELECT id, titolo, scadenza, priorita FROM tasks
+                WHERE stato IN ('da_fare','in_corso') AND scadenza IS NOT NULL AND scadenza < CURRENT_DATE
+                ORDER BY scadenza ASC`),
+  ]);
+
+  return {
+    nonPagati: nonPagati.rows,
+    ordiniAperti: ordiniAperti.rows,
+    inattivi: clientiInattivi.rows,
+    tasksScaduti: tasksScaduti.rows,
+    totaleDaIncassare: nonPagati.rows.reduce((s, m) => s + Number(m.importo || 0), 0),
+  };
+}
+
+// Rileva anomalie e genera alert. Ogni alert è deduplicato per riferimento+tipo.
+async function boGeneraAlert(dati) {
+  const nuoviAlert = [];
+
+  const aggiungi = async (tipo, gravita, titolo, dettaglio, riferimento) => {
+    // Evita duplicati: stesso tipo+riferimento non ancora letto
+    const esiste = await pool.query(
+      `SELECT id FROM backoffice_alert WHERE tipo=$1 AND riferimento=$2 AND letto=false`,
+      [tipo, riferimento]
+    );
+    if (esiste.rows.length) return;
+    await pool.query(
+      `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento) VALUES ($1,$2,$3,$4,$5)`,
+      [tipo, gravita, titolo, dettaglio, riferimento]
+    );
+    nuoviAlert.push({ tipo, gravita, titolo });
+  };
+
+  // 1. Fatture scadute da oltre 60 giorni → grave
+  for (const m of dati.nonPagati) {
+    const gg = Number(m.giorni_attesa || 0);
+    if (gg > 60) {
+      await aggiungi('pagamento_critico', 'alta',
+        `Insoluto da ${gg} giorni: €${Number(m.importo).toFixed(2)}`,
+        `${m.descrizione || 'Senza descrizione'} — in attesa dal ${m.data}`,
+        `mov:${m.id}`);
+    } else if (gg > 30) {
+      await aggiungi('pagamento_ritardo', 'media',
+        `Pagamento in ritardo (${gg}gg): €${Number(m.importo).toFixed(2)}`,
+        `${m.descrizione || 'Senza descrizione'}`,
+        `mov:${m.id}`);
+    }
+  }
+
+  // 2. Ordini fermi da più di 7 giorni senza avanzare
+  for (const o of dati.ordiniAperti) {
+    const gg = Number(o.giorni_aperto || 0);
+    if (gg > 7) {
+      await aggiungi('ordine_fermo', gg > 15 ? 'alta' : 'media',
+        `Ordine fermo da ${gg} giorni: ${o.cliente}`,
+        `${o.prodotto || ''} — stato attuale: ${o.stato}`,
+        `ord:${o.id}`);
+    }
+  }
+
+  // 3. Task scaduti
+  for (const t of dati.tasksScaduti) {
+    await aggiungi('task_scaduto', 'media',
+      `Task scaduto: ${t.titolo}`,
+      `Scadenza era il ${t.scadenza}`,
+      `task:${t.id}`);
+  }
+
+  // 4. Esposizione totale elevata
+  if (dati.totaleDaIncassare > 5000) {
+    await aggiungi('esposizione_alta', 'alta',
+      `Esposizione totale: €${dati.totaleDaIncassare.toFixed(2)}`,
+      `${dati.nonPagati.length} fatture non incassate`,
+      `esposizione:${new Date().toISOString().slice(0,7)}`); // dedup mensile
+  }
+
+  return nuoviAlert;
+}
+
+// Genera il testo del rapporto tramite AI (fallback: testo strutturato senza AI)
+async function boGeneraTesto(dati, alertNuovi) {
+  const riassunto = `Fatture non pagate: ${dati.nonPagati.length} per un totale di €${dati.totaleDaIncassare.toFixed(2)}.
+Ordini aperti: ${dati.ordiniAperti.length}.
+Clienti senza ordini da oltre 60 giorni: ${dati.inattivi.length}.
+Task scaduti: ${dati.tasksScaduti.length}.
+Nuovi alert rilevati oggi: ${alertNuovi.length}.
+
+Dettaglio insoluti più vecchi:
+${dati.nonPagati.slice(0, 5).map(m => `- ${m.descrizione || 'n/d'}: €${Number(m.importo).toFixed(2)} (${m.giorni_attesa} giorni)`).join('\n') || 'nessuno'}
+
+Ordini fermi:
+${dati.ordiniAperti.filter(o => Number(o.giorni_aperto) > 7).slice(0, 5).map(o => `- ${o.cliente}: ${o.stato} da ${o.giorni_aperto} giorni`).join('\n') || 'nessuno'}`;
+
+  if (!process.env.ANTHROPIC_API_KEY) return riassunto;
+
+  try {
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-api-key': process.env.ANTHROPIC_API_KEY,
+        'anthropic-version': '2023-06-01'
+      },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 700,
+        system: `Sei il responsabile back office di Mulino Vitaliti, mulino di semola a Belpasso (CT).
+Scrivi un briefing giornaliero per il titolare: massimo 8 righe, italiano, tono diretto e concreto.
+Apri con la cosa più urgente. Indica azioni precise, non generiche. Niente saluti né chiusure di cortesia.
+Se la situazione è tranquilla, dillo in una riga sola senza inventare problemi.`,
+        messages: [{ role: 'user', content: `Ecco la situazione di oggi:\n\n${riassunto}` }]
+      })
+    });
+    const data = await r.json();
+    return data.content?.[0]?.text || riassunto;
+  } catch (e) {
+    console.error('[BackOffice] Errore AI, uso fallback:', e.message);
+    return riassunto;
+  }
+}
+
+// Esegue l'intero ciclo dell'agente
+async function boEseguiCiclo(origine = 'automatico') {
+  try {
+    const dati = await boRaccogliDati();
+    const alertNuovi = await boGeneraAlert(dati);
+    const testo = await boGeneraTesto(dati, alertNuovi);
+    const oggi = new Date().toISOString().slice(0, 10);
+
+    // Un solo rapporto per giorno: sovrascrive se già esiste
+    await pool.query(`DELETE FROM backoffice_rapporti WHERE data=$1`, [oggi]);
+    const r = await pool.query(
+      `INSERT INTO backoffice_rapporti (data, testo, dati, generato_da) VALUES ($1,$2,$3,$4) RETURNING *`,
+      [oggi, testo, JSON.stringify({
+        nonPagati: dati.nonPagati.length,
+        totaleDaIncassare: dati.totaleDaIncassare,
+        ordiniAperti: dati.ordiniAperti.length,
+        inattivi: dati.inattivi.length,
+        alertNuovi: alertNuovi.length
+      }), origine]
+    );
+    console.log(`[BackOffice] Rapporto ${oggi} generato (${origine}) — ${alertNuovi.length} nuovi alert`);
+    return { rapporto: r.rows[0], alertNuovi, dati };
+  } catch (e) {
+    console.error('[BackOffice] Errore ciclo:', e.message);
+    throw e;
+  }
+}
+
+// ── Scheduler: controlla ogni 30 minuti se è ora di generare il rapporto ──
+// Genera automaticamente una volta al giorno, la prima volta dopo le 7:00
+let boUltimaEsecuzione = null;
+setInterval(async () => {
+  try {
+    const ora = new Date();
+    const oggi = ora.toISOString().slice(0, 10);
+    if (boUltimaEsecuzione === oggi) return;      // già fatto oggi
+    if (ora.getHours() < 7) return;                // troppo presto
+
+    const esiste = await pool.query(`SELECT id FROM backoffice_rapporti WHERE data=$1`, [oggi]);
+    if (esiste.rows.length) { boUltimaEsecuzione = oggi; return; }
+
+    await boEseguiCiclo('automatico');
+    boUltimaEsecuzione = oggi;
+  } catch (e) { /* già loggato */ }
+}, 30 * 60 * 1000);
+
+// ── ENDPOINT AGENTE BACK OFFICE ───────────────────────────────────────────
+
+app.get('/api/backoffice/ultimo-rapporto', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM backoffice_rapporti ORDER BY data DESC, created_at DESC LIMIT 1`);
+    res.json(r.rows[0] || {});
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/backoffice/genera-rapporto', async (req, res) => {
+  try {
+    const { rapporto, alertNuovi } = await boEseguiCiclo('manuale');
+    res.json({ testo: rapporto.testo, generatoIl: rapporto.created_at, alertNuovi: alertNuovi.length });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.get('/api/backoffice/riepilogo', async (req, res) => {
+  try {
+    const dati = await boRaccogliDati();
+    res.json({
+      nonPagati: dati.nonPagati,
+      inattivi: dati.inattivi,
+      ordiniAperti: dati.ordiniAperti,
+      totaleDaIncassare: dati.totaleDaIncassare
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.get('/api/backoffice/alert', async (req, res) => {
+  try {
+    const soloNonLetti = req.query.tutti !== '1';
+    const r = await pool.query(
+      `SELECT * FROM backoffice_alert ${soloNonLetti ? 'WHERE letto=false' : ''}
+       ORDER BY CASE gravita WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at DESC LIMIT 50`
+    );
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/backoffice/alert/:id/letto', async (req, res) => {
+  try {
+    await pool.query(`UPDATE backoffice_alert SET letto=true WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/backoffice/alert/letti-tutti', async (req, res) => {
+  try {
+    const r = await pool.query(`UPDATE backoffice_alert SET letto=true WHERE letto=false`);
+    res.json({ aggiornati: r.rowCount });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── Costruisce il contesto live del gestionale per il system prompt AI ────
+async function costruisciContestoGestionale() {
+  try {
+    const oggi = new Date().toISOString().slice(0, 10);
+    const [ordini, movimenti, clienti, tasks] = await Promise.all([
+      pool.query(`SELECT o.*, c.nome as cliente_nome FROM ordini o LEFT JOIN clienti c ON o.cliente_id=c.id WHERE o.stato != 'consegnato' ORDER BY o.data DESC LIMIT 20`),
+      pool.query(`SELECT * FROM movimenti WHERE pagato=false AND tipo='entrata' ORDER BY data ASC LIMIT 20`),
+      pool.query(`SELECT c.nome, c.tel, c.email, c.citta, MAX(o.data) as ultimo_ordine
+                  FROM clienti c LEFT JOIN ordini o ON o.cliente_id = c.id
+                  WHERE c.tipo='cliente' GROUP BY c.id, c.nome, c.tel, c.email, c.citta
+                  ORDER BY c.nome LIMIT 100`),
+      pool.query(`SELECT * FROM tasks WHERE stato IN ('da_fare','in_corso') ORDER BY scadenza ASC NULLS LAST LIMIT 20`),
+    ]);
+
+    const ordiniAperti = ordini.rows;
+    const nonPagati = movimenti.rows;
+    const taskAperti = tasks.rows;
+
+    // Clienti inattivi (nessun ordine negli ultimi 60 giorni)
+    const soglia = new Date(); soglia.setDate(soglia.getDate() - 60);
+    const inattivi = clienti.rows.filter(c => !c.ultimo_ordine || new Date(c.ultimo_ordine) < soglia);
+
+    let ctx = `Sei l'assistente AI del gestionale di Mulino Vitaliti, un mulino di semola a Belpasso (CT), Sicilia. Hai accesso in tempo reale ai dati dell'azienda. Oggi è ${oggi}.
+
+## ORDINI APERTI (${ordiniAperti.length})
+${ordiniAperti.length === 0 ? 'Nessun ordine aperto.' : ordiniAperti.map(o => `- ${o.cliente_nome || o.cliente} | ${o.prodotto || ''} | Stato: ${o.stato} | Data: ${o.data}`).join('\n')}
+
+## FATTURE NON PAGATE (${nonPagati.length}) — da più vecchia a più recente
+${nonPagati.length === 0 ? 'Tutto regolare, nessuna fattura in sospeso.' : nonPagati.map(m => {
+  const giorni = Math.floor((new Date() - new Date(m.data)) / 86400000);
+  return `- ${m.descrizione || 'Senza descrizione'} | €${m.importo} | ${giorni} giorni fa`;
+}).join('\n')}
+
+## CLIENTI INATTIVI (${inattivi.length} — ultimi 60gg)
+${inattivi.length === 0 ? 'Tutti i clienti sono attivi.' : inattivi.slice(0, 10).map(c => `- ${c.nome}${c.citta ? ' (' + c.citta + ')' : ''} | Tel: ${c.tel || 'n/d'} | Email: ${c.email || 'n/d'}`).join('\n')}
+
+## TASK APERTI (${taskAperti.length})
+${taskAperti.length === 0 ? 'Nessun task in sospeso.' : taskAperti.map(t => `- [${t.priorita || 'normale'}] ${t.titolo}${t.scadenza ? ' | Scadenza: ' + t.scadenza : ''}`).join('\n')}
+
+## ISTRUZIONI
+Rispondi sempre in italiano. Sei diretto, pratico e conciso.
+Se ti viene chiesto di creare un task o ricordare qualcosa, aggiungi in fondo alla risposta ESATTAMENTE questo blocco (non modificarlo):
+[TASK:titolo="...",priorita="alta|normale|bassa",scadenza="YYYY-MM-DD opzionale"]
+
+Esempio: se dico "ricordati di chiamare Rossi domani", rispondi normalmente e aggiungi:
+[TASK:titolo="Chiamare Rossi",priorita="normale",scadenza="${new Date(Date.now() + 86400000).toISOString().slice(0,10)}"]`;
+
+    return ctx;
+  } catch (e) {
+    console.error('[AI Context] Errore:', e.message);
+    return 'Sei l\'assistente AI di Mulino Vitaliti. Rispondi sempre in italiano.';
+  }
+}
+
+// ── Estrai e salva task dalla risposta AI ──────────────────────────────────
+async function estraiESalvaTask(testo) {
+  const match = testo.match(/\[TASK:([^\]]+)\]/);
+  if (!match) return null;
+  try {
+    const params = match[1];
+    const titolo = (params.match(/titolo="([^"]*)"/) || [])[1] || '';
+    const priorita = (params.match(/priorita="([^"]*)"/) || [])[1] || 'normale';
+    const scadenza = (params.match(/scadenza="([^"]*)"/) || [])[1] || null;
+    if (!titolo) return null;
+    const r = await pool.query(
+      `INSERT INTO tasks (titolo, priorita, scadenza, stato, assegnata_a, assegnata_da) VALUES ($1,$2,$3,'da_fare',$4,$5) RETURNING *`,
+      [titolo, priorita === 'normale' ? 'media' : priorita, scadenza || null, 'Giovanni', 'Assistente AI']
+    );
+    console.log(`[AI Task] Creato: "${titolo}" priorità=${priorita} scadenza=${scadenza}`);
+    return r.rows[0];
+  } catch (e) {
+    console.error('[AI Task] Errore salvataggio:', e.message);
+    return null;
+  }
+}
+
+// ── AI CHAT con contesto gestionale ───────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   try {
+    const systemPrompt = await costruisciContestoGestionale();
     const response = await fetch('https://api.anthropic.com/v1/messages', {
       method: 'POST',
       headers: {
@@ -1903,11 +2078,23 @@ app.post('/api/chat', async (req, res) => {
       body: JSON.stringify({
         model: 'claude-haiku-4-5-20251001',
         max_tokens: 1024,
+        system: systemPrompt,
         messages: req.body.messages
       })
     });
     const data = await response.json();
-    res.json({ reply: data.content?.[0]?.text || 'Errore risposta AI' });
+    const testo = data.content?.[0]?.text || 'Errore risposta AI';
+
+    // Salva task se l'AI ne ha generato uno
+    const taskCreato = await estraiESalvaTask(testo);
+
+    // Rimuovi il blocco [TASK:...] dalla risposta visibile
+    const testoVisibile = testo.replace(/\[TASK:[^\]]+\]/g, '').trim();
+
+    res.json({
+      reply: testoVisibile,
+      taskCreato: taskCreato ? { titolo: taskCreato.titolo, scadenza: taskCreato.scadenza } : null
+    });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -2020,24 +2207,14 @@ app.get('/auth/spedizioni/login', (req, res) => {
 
 app.get('/auth/spedizioni/callback', async (req, res) => {
   try {
-    const { tokens } = await withRetry(() => oauth2ClientSpedizioni.getToken(req.query.code), 4, 1500);
+    const { tokens } = await oauth2ClientSpedizioni.getToken(req.query.code);
     gmailSpedizioniTokens = tokens;
     oauth2ClientSpedizioni.setCredentials(tokens);
     await saveGmailSpedizioniTokens(tokens);
     res.redirect('/?spedizioni=connected');
   } catch (err) {
     console.error('[OAuth Spedizioni Callback] Errore:', err.message);
-    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Errore connessione Gmail</title>
-      <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f8f8}
-      .box{background:#fff;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1)}
-      h2{color:#e53e3e;margin-bottom:12px}p{color:#555;margin-bottom:24px;font-size:14px}
-      a{display:inline-block;background:#4F46E5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600}</style></head>
-      <body><div class="box">
-        <h2>⚠️ Connessione interrotta</h2>
-        <p>Google ha chiuso la connessione a metà. Riprova — di solito funziona al secondo tentativo.</p>
-        <p style="font-size:12px;color:#999">Dettaglio: ${err.message}</p>
-        <a href="/auth/spedizioni/login">🔄 Riprova la connessione</a>
-      </div></body></html>`);
+    res.redirect('/auth/spedizioni/login?retry=1');
   }
 });
 
@@ -2081,25 +2258,16 @@ app.get('/auth/login', (req, res) => {
 
 app.get('/auth/callback', async (req, res) => {
   try {
-    const { tokens } = await withRetry(() => oauth2Client.getToken(req.query.code), 4, 1500);
+    const { tokens } = await oauth2Client.getToken(req.query.code);
     gmailTokens = tokens;
     oauth2Client.setCredentials(tokens);
     await saveGmailTokens(tokens);
     res.redirect('/?gmail=connected');
   } catch (err) {
     console.error('[OAuth Callback] Errore:', err.message);
-    // Mostra pagina di errore con pulsante per riprovare invece di stringa grezza
-    res.send(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Errore connessione Gmail</title>
-      <style>body{font-family:sans-serif;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0;background:#f8f8f8}
-      .box{background:#fff;border-radius:12px;padding:40px;max-width:420px;text-align:center;box-shadow:0 4px 24px rgba(0,0,0,0.1)}
-      h2{color:#e53e3e;margin-bottom:12px}p{color:#555;margin-bottom:24px;font-size:14px}
-      a{display:inline-block;background:#4F46E5;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600}</style></head>
-      <body><div class="box">
-        <h2>⚠️ Connessione interrotta</h2>
-        <p>Google ha chiuso la connessione a metà durante l'autenticazione. Succede raramente — riprova e dovrebbe funzionare.</p>
-        <p style="font-size:12px;color:#999">Dettaglio: ${err.message}</p>
-        <a href="/auth/login">🔄 Riprova la connessione</a>
-      </div></body></html>`);
+    // Il codice OAuth è monouso — non si può riprovare con lo stesso codice
+    // Reindirizza direttamente a un nuovo login Google
+    res.redirect('/auth/login?retry=1');
   }
 });
 
@@ -2208,7 +2376,6 @@ app.get('/auth/fattureincloud/login', (req, res) => {
   if (!FIC_CLIENT_ID || !FIC_REDIRECT_URI) return res.status(500).send('Fatture in Cloud non configurato (manca FIC_CLIENT_ID o redirect URI)');
   const scopes = [
     'entity.clients:r', 'entity.clients:a',
-    'products:r',
     'issued_documents.invoices:r', 'issued_documents.invoices:a',
     'issued_documents.delivery_notes:r', 'issued_documents.delivery_notes:a',
     'issued_documents.receipts:r'
@@ -2487,106 +2654,42 @@ app.get('/api/fatture/clients', async (req, res) => {
 // ── PRODOTTI FIC: cache in memoria + endpoint ─────────────────────────────
 let ficProductsCache = null;
 
-// Genera il prossimo codice cliente/fornitore libero, basandosi sul numero più alto già usato
-// (non sul conteggio dei record: quello si rompe se in passato è stato cancellato un contatto,
-// perché rigenera un codice già esistente e va in conflitto con il vincolo UNIQUE).
-async function generaProssimoCodiceCliente(tipoRecord) {
-  const prefisso = tipoRecord === 'fornitore' ? 'F' : 'C';
-  const r = await pool.query(
-    `SELECT COALESCE(MAX(CAST(SUBSTRING(codice FROM 2) AS INTEGER)), 0) AS max_num
-     FROM clienti WHERE tipo=$1 AND codice ~ '^[A-Z][0-9]+$'`,
-    [tipoRecord]
-  );
-  const prossimo = (parseInt(r.rows[0].max_num) || 0) + 1;
-  return prefisso + String(prossimo).padStart(3, '0');
-}
-
 async function getFicProducts() {
   if (ficProductsCache && Date.now() - ficProductsCache.timestamp < 10 * 60 * 1000) {
-    return ficProductsCache;
+    return ficProductsCache.map;
   }
-  if (!ficTokens || !ficCompanyId) return { byName: {}, byCode: {}, list: [] };
+  if (!ficTokens || !ficCompanyId) return {};
   try {
     let allProducts = [], page = 1;
     while (true) {
       const r = await ficFetch(`/c/${ficCompanyId}/products?per_page=100&page=${page}`);
       const data = await r.json();
-      if (!r.ok) {
-        console.error(`[FIC Products] Errore HTTP ${r.status} alla pagina ${page}:`, JSON.stringify(data));
-        break;
-      }
-      if (!data.data || data.data.length === 0) break;
+      if (!r.ok || !data.data || data.data.length === 0) break;
       allProducts = allProducts.concat(data.data);
       if (data.data.length < 100) break;
       page++;
     }
-    const byName = {}, byCode = {};
+    const map = {};
     for (const p of allProducts) {
-      if (p.name) byName[p.name.toLowerCase().trim()] = p;
-      if (p.code) byCode[p.code.toLowerCase().trim()] = p;
+      if (p.name) map[p.name.toLowerCase().trim()] = p;
     }
-    ficProductsCache = { timestamp: Date.now(), byName, byCode, list: allProducts };
+    ficProductsCache = { timestamp: Date.now(), map };
     console.log('[FIC Products] Cache: ' + allProducts.length + ' prodotti');
-    return ficProductsCache;
-  } catch (e) { console.error('[FIC Products] Errore:', e.message); return { byName: {}, byCode: {}, list: [] }; }
+    return map;
+  } catch (e) { console.error('[FIC Products] Errore:', e.message); return {}; }
 }
-
-// ── CATALOGO PRODOTTI (gestito internamente, indipendente da FIC) ──────────
-app.get('/api/prodotti-catalogo', async (req, res) => {
-  try {
-    const r = await pool.query('SELECT * FROM prodotti_catalogo WHERE attivo=true ORDER BY nome, peso_kg');
-    res.json(r.rows);
-  } catch (err) { res.json({ error: err.message }); }
-});
-
-app.post('/api/prodotti-catalogo', async (req, res) => {
-  const { nome, codice, descrizione, peso_kg, prezzo_default } = req.body;
-  if (!nome || !codice) return res.json({ error: 'Nome e codice sono obbligatori' });
-  try {
-    const r = await pool.query(
-      'INSERT INTO prodotti_catalogo (nome,codice,descrizione,peso_kg,prezzo_default) VALUES ($1,$2,$3,$4,$5) RETURNING *',
-      [nome, codice, descrizione||'', peso_kg||null, prezzo_default||null]
-    );
-    res.json(r.rows[0]);
-  } catch (err) {
-    if (err.code === '23505') return res.json({ error: 'Esiste già un prodotto con questo codice' });
-    res.json({ error: err.message });
-  }
-});
-
-app.put('/api/prodotti-catalogo/:id', async (req, res) => {
-  const { nome, codice, descrizione, peso_kg, prezzo_default } = req.body;
-  try {
-    await pool.query(
-      'UPDATE prodotti_catalogo SET nome=$1,codice=$2,descrizione=$3,peso_kg=$4,prezzo_default=$5 WHERE id=$6',
-      [nome, codice, descrizione||'', peso_kg||null, prezzo_default||null, req.params.id]
-    );
-    res.json({ success: true });
-  } catch (err) {
-    if (err.code === '23505') return res.json({ error: 'Esiste già un prodotto con questo codice' });
-    res.json({ error: err.message });
-  }
-});
-
-app.delete('/api/prodotti-catalogo/:id', async (req, res) => {
-  try {
-    // Disattiva invece di cancellare, così gli ordini passati che lo referenziano restano leggibili
-    await pool.query('UPDATE prodotti_catalogo SET attivo=false WHERE id=$1', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) { res.json({ error: err.message }); }
-});
 
 app.get('/api/fatture/products', async (req, res) => {
   if (!ficCompanyId) return res.json({ error: 'FIC non connesso' });
   ficProductsCache = null;
-  const { list } = await getFicProducts();
-  res.json(list);
+  const map = await getFicProducts();
+  res.json(Object.values(map));
 });
 
 app.post('/api/fatture/products/refresh', async (req, res) => {
   ficProductsCache = null;
-  const { list } = await getFicProducts();
-  res.json({ prodotti: list.length });
+  const map = await getFicProducts();
+  res.json({ prodotti: Object.keys(map).length });
 });
 
 // Leggi DDT specifico da FIC (debug/ispezione struttura)
@@ -3158,134 +3261,6 @@ async function eseguiAutomazioni() {
 
 // Job ogni ora
 setInterval(eseguiAutomazioni, 60 * 60 * 1000);
-
-// Trasforma il DDT di UN ordine in fattura su FIC (senza controllare i 10 giorni: la soglia
-// la applica solo il chiamante). Ritorna { ok, fatturaId, fatturaNum } oppure { ok:false, errore }.
-async function fatturaOrdineDaDDT(ordine) {
-  try {
-    const trasformaUrl = `/c/${ficCompanyId}/issued_documents/transform?original_document_id=${ordine.fic_ddt_id}&type=delivery_note&new_type=invoice&e_invoice=1&transform_keep_copy=1`;
-    const trasformaRes = await ficFetch(trasformaUrl);
-    if (!trasformaRes.ok) {
-      const errTxt = await trasformaRes.text();
-      console.error(`[Fatturazione] Errore transform ordine ${ordine.id}: ${trasformaRes.status} ${errTxt}`);
-      return { ok: false, errore: `Errore trasformazione DDT→fattura: ${errTxt}` };
-    }
-    const trasformaBody = await trasformaRes.json();
-    // Il DDT non ha un elenco pagamenti (non ha prezzi), quindi la fattura trasformata nasce
-    // senza pagamenti che coprano il totale. fix_payments dice a FIC di sistemarlo da solo.
-    trasformaBody.options = { ...(trasformaBody.options||{}), fix_payments: true };
-    // Le fatture elettroniche richiedono sempre un metodo di pagamento (obbligatorio per lo SDI).
-    // MP05 = bonifico bancario, il più comune nei pagamenti tra aziende. Modificabile a mano su FIC prima dell'invio.
-    if (trasformaBody.data) {
-      trasformaBody.data.ei_data = { ...(trasformaBody.data.ei_data||{}), payment_method: trasformaBody.data.ei_data?.payment_method || 'MP05' };
-    }
-
-    const creaRes = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
-      method: 'POST',
-      body: JSON.stringify(trasformaBody)
-    });
-    if (!creaRes.ok) {
-      const errTxt = await creaRes.text();
-      console.error(`[Fatturazione] Errore creazione fattura ordine ${ordine.id}: ${creaRes.status} ${errTxt}`);
-      return { ok: false, errore: `Errore creazione fattura: ${errTxt}` };
-    }
-    const creaData = await creaRes.json();
-    const fatturaId = creaData.data?.id;
-    const fatturaNum = creaData.data?.number;
-    await pool.query(
-      'UPDATE ordini SET fic_fattura_id=$1, fic_fattura_numero=$2, fic_fattura_creata_at=NOW() WHERE id=$3',
-      [fatturaId, fatturaNum, ordine.id]
-    );
-    console.log(`[Fatturazione] Ordine ${ordine.id} (${ordine.cliente}): fattura ${fatturaNum} creata da DDT ${ordine.fic_ddt_id}.`);
-    return { ok: true, fatturaId, fatturaNum };
-  } catch (e) {
-    console.error(`[Fatturazione] Errore ordine ${ordine.id}:`, e.message);
-    return { ok: false, errore: e.message };
-  }
-}
-
-// ── FATTURAZIONE AUTOMATICA DA DDT (dopo 10 giorni) ─────────────────────────
-// Ogni DDT, 10 giorni dopo la sua creazione, viene trasformato in fattura su FIC.
-// La fattura NON viene inviata allo SDI in automatico: resta lì finché Giovanni non la
-// controlla e la invia lui stesso da Fatture in Cloud (scelta esplicita, per prudenza fiscale).
-async function elaboraFatturazioneAutomaticaDaDDT() {
-  if (!ficTokens || !ficCompanyId) return;
-  try {
-    const r = await pool.query(`
-      SELECT id, fic_ddt_id, cliente FROM ordini
-      WHERE fic_ddt_id IS NOT NULL AND fic_fattura_id IS NULL
-        AND fic_ddt_creato_at IS NOT NULL AND fic_ddt_creato_at <= NOW() - INTERVAL '10 days'
-    `);
-    for (const ordine of r.rows) {
-      await fatturaOrdineDaDDT(ordine);
-    }
-  } catch (e) { console.error('[Fatturazione auto] Errore job:', e.message); }
-}
-
-// ── EMAIL AUTOMATICA DOPO INVIO SDI ─────────────────────────────────────────
-// Controlla le fatture create automaticamente ma non ancora mandate via email: se Giovanni
-// le ha nel frattempo inviate allo SDI da Fatture in Cloud, manda l'email al cliente usando
-// i dati che FIC ha già configurato per quel cliente (mittente/destinatario/testo). Se FIC
-// non ha un'email di destinazione configurata, non manda nulla — è così che Giovanni "autorizza"
-// l'invio: configurandolo o no direttamente su Fatture in Cloud.
-async function elaboraEmailFattureDopoSDI() {
-  if (!ficTokens || !ficCompanyId) return;
-  try {
-    const r = await pool.query(`
-      SELECT id, fic_fattura_id, cliente FROM ordini
-      WHERE fic_fattura_id IS NOT NULL AND (fattura_email_inviata IS NULL OR fattura_email_inviata = false)
-    `);
-    for (const ordine of r.rows) {
-      try {
-        const docRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}?fieldset=detailed`);
-        if (!docRes.ok) { console.error(`[Email fattura] Errore lettura fattura ordine ${ordine.id}: ${docRes.status}`); continue; }
-        const docData = await docRes.json();
-        const eiStatus = docData.data?.ei_status;
-
-        // Considera "inviata allo SDI" qualsiasi stato diverso da "non ancora inviata"
-        const inviataSDI = eiStatus && eiStatus !== 'not_sent';
-        if (!inviataSDI) continue; // aspetta ancora il controllo/invio manuale di Giovanni
-
-        const emailDataRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}/email`);
-        if (!emailDataRes.ok) { console.error(`[Email fattura] Errore lettura dati email ordine ${ordine.id}: ${emailDataRes.status}`); continue; }
-        const emailData = (await emailDataRes.json()).data || {};
-
-        if (!emailData.recipient_email) {
-          console.log(`[Email fattura] Ordine ${ordine.id} (${ordine.cliente}): nessuna email destinatario configurata su FIC, salto l'invio.`);
-          await pool.query('UPDATE ordini SET fattura_email_inviata=true, fattura_email_inviata_at=NOW() WHERE id=$1', [ordine.id]); // non ritentare ogni ora
-          continue;
-        }
-
-        const sendRes = await ficFetch(`/c/${ficCompanyId}/issued_documents/${ordine.fic_fattura_id}/email`, {
-          method: 'POST',
-          body: JSON.stringify({ data: {
-            sender_email: emailData.sender_email,
-            recipient_email: emailData.recipient_email,
-            subject: emailData.subject,
-            body: emailData.body,
-            include: { document: true, delivery_note: false, attachment: false, accompanying_invoice: false },
-            attach_pdf: true,
-            send_copy: false,
-          }})
-        });
-        if (sendRes.ok) {
-          await pool.query('UPDATE ordini SET fattura_email_inviata=true, fattura_email_inviata_at=NOW() WHERE id=$1', [ordine.id]);
-          console.log(`[Email fattura] Ordine ${ordine.id} (${ordine.cliente}): email inviata a ${emailData.recipient_email}.`);
-        } else {
-          console.error(`[Email fattura] Errore invio email ordine ${ordine.id}: ${sendRes.status} ${await sendRes.text()}`);
-        }
-      } catch (e) {
-        console.error(`[Email fattura] Errore ordine ${ordine.id}:`, e.message);
-      }
-    }
-  } catch (e) { console.error('[Email fattura] Errore job:', e.message); }
-}
-
-// Controllo ogni 6 ore: sufficiente per un processo che si basa su soglie di giorni, non serve più frequente
-setInterval(elaboraFatturazioneAutomaticaDaDDT, 6 * 60 * 60 * 1000);
-setInterval(elaboraEmailFattureDopoSDI, 6 * 60 * 60 * 1000);
-// Primo controllo poco dopo l'avvio (non subito, per dare tempo alla connessione FIC di caricarsi)
-setTimeout(() => { elaboraFatturazioneAutomaticaDaDDT(); elaboraEmailFattureDopoSDI(); }, 2 * 60 * 1000);
 
 
 // ── ASSICURAZIONI ─────────────────────────────────────────────────────────
