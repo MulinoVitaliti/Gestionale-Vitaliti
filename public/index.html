@@ -4537,16 +4537,15 @@ function apriAttivitaInLeadDetail(tipo){
   if(!_currentLeadDetailId) return;
   const l=state.leads.find(x=>x.id===_currentLeadDetailId); if(!l) return;
   if(tipo==='email'){
-    // Apri composer Gmail precompilato con email del lead
     const emailTo = l.email||'';
-    apriComposer({
-      to: emailTo,
-      subject: '',
-      title: 'Email a '+l.nome,
-    });
-    // Intercetta inviaEmail per salvare nella cronologia del lead dopo invio
+    apriComposer({ to: emailTo, subject: '', title: 'Email a '+l.nome });
     window._emailLeadPendingId = _currentLeadDetailId;
     window._emailLeadPendingNome = l.nome;
+    return;
+  }
+  if(tipo==='ordine'){
+    // Apre il vero modal ordine precompilato con il cliente del lead
+    apriNuovoOrdinePerLead(l);
     return;
   }
   apriAttivitaInLead(_currentLeadDetailId, l.nome, tipo);
@@ -4774,6 +4773,45 @@ function rimuoviRiga(i, mode){
   renderRigheOrdine(mode);
 }
 
+function apriNuovoOrdinePerLead(lead){
+  // Apri il modal ordine normale
+  apriNuovoOrdine();
+
+  // Precompila il cliente cercando per nome del lead o dell'azienda
+  const nomeCerca = lead.azienda || lead.nome || '';
+  if(!nomeCerca) return;
+
+  // Cerca il cliente in anagrafica per nome (esatto o parziale)
+  const clienteTrovato = (state.clienti||[]).find(c =>
+    c.tipo !== 'fornitore' && (
+      c.nome.toLowerCase().includes(nomeCerca.toLowerCase()) ||
+      nomeCerca.toLowerCase().includes(c.nome.toLowerCase())
+    )
+  );
+
+  // Precompila la barra di ricerca cliente nel modal
+  setTimeout(()=>{
+    const searchInput = document.getElementById('ord-cliente-search');
+    const hiddenInput = document.getElementById('ord-cliente');
+    if(!searchInput) return;
+
+    if(clienteTrovato){
+      // Cliente trovato → seleziona direttamente
+      searchInput.value = clienteTrovato.nome;
+      hiddenInput.value = clienteTrovato.id;
+      onOrdClienteChange();
+    } else {
+      // Non trovato → pre-scrivi il nome per aiutare la ricerca
+      searchInput.value = nomeCerca;
+      filtraClientiOrdine();
+    }
+  }, 100);
+
+  // Salva riferimento al lead per aggiungere l'attività dopo il salvataggio
+  window._ordineFromLeadId = lead.id;
+  window._ordineFromLeadNome = lead.nome;
+}
+
 function apriNuovoOrdine(){
   _ordineRighe = [{nome:'Semola rimacinata di grano duro', sacchi:1, kgSacco:30, prezzoKg:0}];
   try{ document.getElementById('ord-cliente-search').value = ''; }catch(e){}
@@ -4895,6 +4933,29 @@ async function salvaOrdine(){
     state.ordini.unshift(data);
     if(data.fic_ddt_numero) mostraToast(`✅ Ordine salvato · DDT ${data.fic_ddt_numero} creato su FIC`);
     else mostraToast('✅ Ordine salvato');
+
+    // Se l'ordine è stato creato dalla pipeline, registra un'attività nel lead
+    if(window._ordineFromLeadId){
+      try{
+        const attData = {
+          tipo: 'ordine',
+          titolo: `Ordine: ${body.prodotto || prodotti.map(p=>p.nome).join(', ')} — ${body.qty} sacchi`,
+          note: `Ordine creato dal gestionale. ${body.lotto ? 'Lotto: '+body.lotto : ''}`.trim(),
+          data: body.data || new Date().toISOString().slice(0,10),
+          lead_id: window._ordineFromLeadId,
+          collegata_id: window._ordineFromLeadId,
+          completata: true,
+        };
+        const att = await api.post('/api/attivita', attData);
+        if(!att.error){
+          state.attivita = state.attivita || [];
+          state.attivita.unshift(att);
+          mostraToast(`📋 Attività registrata nel lead ${window._ordineFromLeadNome}`);
+        }
+      }catch(e){ console.error('Errore attività lead:', e); }
+      window._ordineFromLeadId = null;
+      window._ordineFromLeadNome = null;
+    }
   } else {
     mostraToast('Errore: '+data.error, 'error');
   }
