@@ -3204,16 +3204,48 @@ let _excelSenzaMatch = []; // nomi senza nessuna corrispondenza
 
 // Mappa alias colonna (minuscolo, senza spazi/punti) -> campo interno
 const EXCEL_COLONNE_ALIAS = {
-  'nome': 'nome', 'ragionesociale': 'nome', 'ragsociale': 'nome', 'cliente': 'nome', 'denominazione': 'nome',
+  // Nome cliente / azienda
+  'nome': 'nome', 'ragionesociale': 'nome', 'ragsoc': 'nome', 'ragsociale': 'nome',
+  'cliente': 'nome', 'denominazione': 'nome', 'intestatario': 'nome', 'azienda': 'nome',
+  'nominativo': 'nome', 'ditta': 'nome',
+  // Pipedrive: nome contatto e organizzazione
+  'personanome': 'ref',               // "Persona - Nome" → referente
+  'personaorganizzazione': 'nome',    // "Persona - Organizzazione" → nome azienda in anagrafica
+  // P.IVA
   'piva': 'piva', 'partitaiva': 'piva', 'pi': 'piva', 'vatnumber': 'piva',
+  'codicefiscale': 'piva', 'cf': 'piva', 'fiscalcode': 'piva',
+  // Telefono
   'telefono': 'tel', 'tel': 'tel', 'cellulare': 'tel', 'cell': 'tel', 'phone': 'tel',
-  'email': 'email', 'mail': 'email', 'e-mail': 'email',
-  'citta': 'citta', 'città': 'citta', 'comune': 'citta', 'city': 'citta',
-  'indirizzo': 'ind_legale', 'indirizzolegale': 'ind_legale', 'indirizzosedelegale': 'ind_legale', 'sedelegale': 'ind_legale', 'address': 'ind_legale',
-  'indirizzoconsegna': 'ind_consegna', 'indirizzospedizione': 'ind_consegna', 'indirizzodiconsegna': 'ind_consegna', 'destinazione': 'ind_consegna',
-  'sdi': 'sdi', 'codicesdi': 'sdi', 'codicedestinatario': 'sdi',
+  'mobile': 'tel', 'numero': 'tel', 'numeroditelefono': 'tel', 'tel1': 'tel',
+  // Pipedrive: telefoni multipli (usa lavoro come tel principale, cellulare come fallback)
+  'personatelefonolavoro': 'tel',
+  'personatelefonocellulare': 'tel2',  // secondo numero, da aggiungere a tel se tel è vuoto
+  'personatelefonocasa': 'tel',
+  'personatelefononumero': 'tel',
+  // Email
+  'email': 'email', 'mail': 'email', 'emailaddress': 'email', 'indirizzomail': 'email',
+  // Pipedrive: email multipli
+  'personaemaillavoro': 'email',
+  'personaemailcasa': 'email',
+  'personaemailaltro': 'email',
+  // Città
+  'citta': 'citta', 'localita': 'citta', 'comune': 'citta', 'city': 'citta', 'paese': 'citta',
+  // Indirizzo
+  'indirizzo': 'ind_legale', 'via': 'ind_legale', 'indirizzolegale': 'ind_legale',
+  'indirizzosedelegale': 'ind_legale', 'sedelegale': 'ind_legale', 'address': 'ind_legale',
+  'indirizzofatturazione': 'ind_legale', 'stradale': 'ind_legale',
+  // Indirizzo consegna
+  'indirizzoconsegna': 'ind_consegna', 'indirizzospedizione': 'ind_consegna',
+  'indirizzodiconsegna': 'ind_consegna', 'destinazione': 'ind_consegna', 'consegna': 'ind_consegna',
+  // SDI / PEC
+  'sdi': 'sdi', 'codicesdi': 'sdi', 'codicedestinatario': 'sdi', 'codiceunivocodestinatario': 'sdi',
   'pec': 'pec', 'emailpec': 'pec',
-  'referente': 'ref', 'contatto': 'ref', 'refente': 'ref',
+  // Referente
+  'referente': 'ref', 'contatto': 'ref', 'responsabile': 'ref', 'nomecontatto': 'ref',
+  // Provincia / CAP
+  'provincia': 'provincia', 'prov': 'provincia', 'cap': 'cap', 'codiceavviamento': 'cap',
+  // Note
+  'note': 'note', 'annotazioni': 'note', 'commenti': 'note',
 };
 
 function normalizzaIntestazioneColonna(s){
@@ -3232,34 +3264,83 @@ function onExcelFileSelected(input){
     try{
       const wb = XLSX.read(e.target.result, {type:'array'});
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const rows = XLSX.utils.sheet_to_json(sheet, {defval:''});
+      const rows = XLSX.utils.sheet_to_json(sheet, {defval:'', raw:false});
       if(!rows.length){ alert('Il file Excel sembra vuoto.'); return; }
 
       // Mappa le colonne del file sui campi interni
       const colonneOriginali = Object.keys(rows[0]);
       const mappaColonne = {};
+      const colonneNonRiconosciute = [];
       colonneOriginali.forEach(col=>{
         const norm = normalizzaIntestazioneColonna(col);
         if(EXCEL_COLONNE_ALIAS[norm]) mappaColonne[col] = EXCEL_COLONNE_ALIAS[norm];
+        else colonneNonRiconosciute.push(col);
       });
 
-      if(!Object.values(mappaColonne).includes('nome')){
-        alert('Non ho trovato una colonna "Nome" / "Ragione Sociale" nel file. Controlla le intestazioni delle colonne.');
+      const box = document.getElementById('excel-import-preview');
+      box.style.display='block';
+
+      // Mostra mapping colonne trovate
+      const campiTrovati = [...new Set(Object.values(mappaColonne))];
+      const haColNome = campiTrovati.includes('nome');
+
+      let html = `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:var(--r);padding:12px 14px;margin-bottom:14px;font-size:12.5px">
+        <div style="font-weight:700;margin-bottom:8px">📊 Colonne riconosciute nel file (${colonneOriginali.length} totali):</div>
+        <div style="display:flex;flex-wrap:wrap;gap:6px;margin-bottom:${colonneNonRiconosciute.length?'8px':'0'}">
+          ${Object.entries(mappaColonne).map(([orig,campo])=>`
+            <span style="background:#fff;border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11.5px">
+              <strong>${orig}</strong> → <em style="color:var(--brand)">${campo}</em>
+            </span>`).join('')}
+          ${!campiTrovati.length?'<span style="color:var(--red)">⚠️ Nessuna colonna riconosciuta</span>':''}
+        </div>
+        ${colonneNonRiconosciute.length?`<div style="color:var(--text-3);font-size:11.5px">Non riconosciute (ignorate): ${colonneNonRiconosciute.join(', ')}</div>`:''}
+      </div>`;
+
+      if(!haColNome){
+        html += `<div style="color:var(--red);font-size:13px;padding:8px 0">
+          ⚠️ Non trovo la colonna col nome del cliente (cercavo: Nome, Ragione Sociale, Cliente, Denominazione, Azienda).<br>
+          Le intestazioni nel tuo file sono: <strong>${colonneOriginali.join(', ')}</strong>
+        </div>`;
+        box.innerHTML = html;
         return;
       }
 
+      // Costruisci le righe normalizzate
       _excelImportRighe = rows.map(row=>{
         const obj = {};
-        Object.keys(row).forEach(col=>{
+        colonneOriginali.forEach(col=>{
           const campo = mappaColonne[col];
-          if(campo && row[col]!==''){ obj[campo] = String(row[col]).trim(); }
+          let val = String(row[col]||'').trim();
+          if(val === 'NaN' || val === 'nan') val = '';
+          if(!campo || !val) return;
+          // Se il campo tel è già popolato e arriva tel2 (cellulare), usalo solo se tel è vuoto
+          if(campo === 'tel2'){
+            if(!obj['tel']) obj['tel'] = val.split(',')[0].trim();
+            return;
+          }
+          // Per tel: se ci sono più numeri separati da virgola, prendi solo il primo
+          if(campo === 'tel' && val.includes(',')){
+            val = val.split(',')[0].trim();
+          }
+          // Per nome: ignora valori come "?" o un singolo carattere
+          if(campo === 'nome' && val.length < 2) return;
+          // Non sovrascrivere campi già impostati (es. email lavoro già trovata)
+          if(!obj[campo]) obj[campo] = val;
         });
         return obj;
-      }).filter(r=>r.nome);
+      }).filter(r=>r.nome && r.nome.trim().length > 1);
+
+      html += `<div style="font-size:13px;color:var(--text-2);margin-bottom:10px">
+        <strong>${_excelImportRighe.length}</strong> righe con nome trovate nel file.
+        <em style="font-size:12px">I clienti non presenti in anagrafica verranno ignorati.</em>
+      </div>`;
+      box.innerHTML = html;
+      box.innerHTML += '<div style="font-size:13px;color:var(--text-2)"><i class="ti ti-loader"></i> Ricerca corrispondenze...</div>';
 
       await analizzaImportExcel();
     }catch(err){
       alert('Errore nella lettura del file Excel: '+err.message);
+      console.error(err);
     }
   };
   reader.readAsArrayBuffer(file);
@@ -3269,14 +3350,12 @@ let _excelDubbiCorrenti = []; // dubbi in attesa di scelta utente, con clienteId
 
 async function analizzaImportExcel(){
   const box = document.getElementById('excel-import-preview');
-  box.style.display='block';
-  box.innerHTML = '<div style="font-size:13px;color:var(--text-2)"><i class="ti ti-loader"></i> Analisi del file in corso...</div>';
 
   const r = await api.post('/api/clienti/importa-excel/anteprima', { righe: _excelImportRighe });
-  if(r.error){ alert('Errore: '+r.error); box.style.display='none'; return; }
+  if(r.error){ box.innerHTML += '<div style="color:var(--red);font-size:13px;margin-top:8px">Errore: '+r.error+'</div>'; return; }
 
   _excelImportCerti = r.certi || [];
-  _excelDubbiCorrenti = (r.dubbi||[]).map(d=>({...d, sceltaClienteId: d.clienteId})); // default: il match migliore
+  _excelDubbiCorrenti = (r.dubbi||[]).map(d=>({...d, sceltaClienteId: d.clienteId}));
   _excelSenzaMatch = r.senzaMatch || [];
 
   renderAnteprimaExcel();
@@ -3289,43 +3368,71 @@ function campoLabel(c){
 function renderAnteprimaExcel(){
   const box = document.getElementById('excel-import-preview');
   const certi = _excelImportCerti||[], dubbi = _excelDubbiCorrenti||[], senzaMatch = _excelSenzaMatch||[];
+  const totaleFile = _excelImportRighe.length;
 
-  if(certi.length===0 && dubbi.length===0 && senzaMatch.length===0){
-    box.innerHTML = '<div style="font-size:13px;color:var(--text-2)">Nessun dato da completare: i clienti del file sono già tutti aggiornati o non riconosciuti.</div>';
+  // Preserva la sezione di mapping colonne (già mostrata sopra)
+  const mappingHtml = box.innerHTML;
+
+  if(certi.length===0 && dubbi.length===0){
+    box.innerHTML = mappingHtml + `
+      <div style="padding:14px;border:1px solid var(--border);border-radius:var(--r);background:var(--surface-2);margin-top:8px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px">Risultato analisi</div>
+        <div style="font-size:13px;color:var(--text-2)">Nessuna corrispondenza trovata — nessun cliente del file è presente in anagrafica, oppure i dati sono già tutti aggiornati.</div>
+        ${senzaMatch.length?`<div style="font-size:12px;color:var(--orange);margin-top:8px">
+          <strong>${senzaMatch.length} nomi non trovati</strong> in anagrafica:<br>
+          ${senzaMatch.slice(0,20).join(', ')}${senzaMatch.length>20?` ...e altri ${senzaMatch.length-20}`:''}
+        </div>`:''}
+      </div>`;
     return;
   }
 
-  let html = '';
+  let html = mappingHtml;
+
+  // ── Riepilogo numerico ──
+  html += `<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">
+    <div style="padding:8px 14px;background:var(--surface-2);border-radius:var(--r);font-size:12px;text-align:center">
+      <div style="font-size:18px;font-weight:800">${totaleFile}</div><div style="color:var(--text-3)">Righe nel file</div>
+    </div>
+    <div style="padding:8px 14px;background:#f0fdf4;border:1px solid var(--green);border-radius:var(--r);font-size:12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:var(--green)">${certi.length}</div><div style="color:var(--text-3)">Match certi</div>
+    </div>
+    ${dubbi.length?`<div style="padding:8px 14px;background:#fff7ed;border:1px solid var(--orange);border-radius:var(--r);font-size:12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:var(--orange)">${dubbi.length}</div><div style="color:var(--text-3)">Da confermare</div>
+    </div>`:''}
+    <div style="padding:8px 14px;background:var(--surface-2);border-radius:var(--r);font-size:12px;text-align:center">
+      <div style="font-size:18px;font-weight:800;color:var(--text-3)">${senzaMatch.length}</div><div style="color:var(--text-3)">Non trovati (ignorati)</div>
+    </div>
+  </div>`;
 
   // ── Match certi ──
   if(certi.length){
-    html += `<div style="font-size:13px;font-weight:600;color:var(--green);margin-bottom:8px"><i class="ti ti-circle-check"></i> ${certi.length} corrispondenze sicure</div>`;
+    html += `<div style="font-size:12px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px"><i class="ti ti-circle-check"></i> Corrispondenze sicure — verranno aggiornate automaticamente</div>`;
     html += `<div style="border:1px solid var(--border);border-radius:var(--r);margin-bottom:16px;overflow:hidden">`;
     certi.forEach((c,i)=>{
-      const campiTesto = Object.entries(c.campiDaCompletare).map(([k,v])=>`<strong>${campoLabel(k)}:</strong> ${v}`).join(' · ');
-      html += `<div style="padding:9px 12px;font-size:12px;border-bottom:${i<certi.length-1?'1px solid var(--border)':'none'}">
-        <strong>${c.clienteNome}</strong> <span style="color:var(--text-3)">(file: "${c.rigaExcel.nome}")</span><br>
-        <span style="color:var(--text-2)">${campiTesto}</span>
+      const campiTesto = Object.entries(c.campiDaCompletare).map(([k,v])=>`<span style="background:var(--surface-2);padding:2px 7px;border-radius:10px;font-size:11px"><strong>${campoLabel(k)}:</strong> ${v}</span>`).join(' ');
+      html += `<div style="padding:9px 12px;font-size:12.5px;border-bottom:${i<certi.length-1?'1px solid var(--border)':'none'}">
+        <strong>${c.clienteNome}</strong>${c.rigaExcel.nome!==c.clienteNome?` <span style="color:var(--text-3);font-size:11px">(file: "${c.rigaExcel.nome}")</span>`:''}
+        <div style="margin-top:4px;display:flex;flex-wrap:wrap;gap:4px">${campiTesto}</div>
       </div>`;
     });
     html += `</div>`;
   }
 
-  // ── Dubbi: richiedono conferma ──
+  // ── Dubbi ──
   if(dubbi.length){
-    html += `<div style="font-size:13px;font-weight:600;color:var(--orange);margin-bottom:8px"><i class="ti ti-alert-triangle"></i> ${dubbi.length} corrispondenze da confermare</div>`;
+    html += `<div style="font-size:12px;font-weight:700;color:var(--orange);text-transform:uppercase;letter-spacing:0.5px;margin-bottom:8px">Corrispondenze incerte — scegli tu a chi abbinarle</div>`;
     html += `<div style="border:1px solid var(--orange);border-radius:var(--r);margin-bottom:16px;overflow:hidden">`;
     dubbi.forEach((d,i)=>{
-      const campiTesto = Object.entries(d.campiDaCompletare).map(([k,v])=>`<strong>${campoLabel(k)}:</strong> ${v}`).join(' · ');
+      const campiTesto = Object.entries(d.campiDaCompletare).map(([k,v])=>`<span style="background:var(--surface-2);padding:2px 7px;border-radius:10px;font-size:11px"><strong>${campoLabel(k)}:</strong> ${v}</span>`).join(' ');
       const opzioni = [{clienteId:d.clienteId, clienteNome:d.clienteNome, score:d.score}, ...d.alternative];
       html += `<div style="padding:10px 12px;font-size:12px;border-bottom:${i<dubbi.length-1?'1px solid var(--border)':'none'};background:#fff8f0">
-        <div style="margin-bottom:6px"><strong>Riga file:</strong> "${d.rigaExcel.nome}"</div>
-        <div style="margin-bottom:6px;color:var(--text-2)">${campiTesto}</div>
+        <div style="margin-bottom:5px"><strong>File:</strong> "${d.rigaExcel.nome}"</div>
+        <div style="margin-bottom:8px;display:flex;flex-wrap:wrap;gap:4px">${campiTesto}</div>
         <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
           <span style="color:var(--text-3)">Abbina a:</span>
           <select onchange="aggiornaSceltaDubbio(${i}, this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
-            ${opzioni.map(o=>`<option value="${o.clienteId}" ${o.clienteId===d.sceltaClienteId?'selected':''}>${o.clienteNome} (${o.score}% simile)</option>`).join('')}
-            <option value="" ${d.sceltaClienteId===null?'selected':''}>— Nessuno, salta questa riga —</option>
+            ${opzioni.map(o=>`<option value="${o.clienteId}" ${o.clienteId===d.sceltaClienteId?'selected':''}>${o.clienteNome} (${o.score}%)</option>`).join('')}
+            <option value="" ${d.sceltaClienteId===null?'selected':''}>— Ignora questa riga —</option>
           </select>
         </div>
       </div>`;
@@ -3333,14 +3440,15 @@ function renderAnteprimaExcel(){
     html += `</div>`;
   }
 
-  // ── Senza match ──
+  // ── Non trovati ──
   if(senzaMatch.length){
-    html += `<div style="font-size:12px;color:var(--text-3);margin-bottom:14px">
-      <strong>${senzaMatch.length} righe senza nessuna corrispondenza</strong> nel gestionale: ${senzaMatch.slice(0,15).join(', ')}${senzaMatch.length>15?` e altri ${senzaMatch.length-15}...`:''}
+    html += `<div style="font-size:12px;padding:10px 12px;background:var(--surface-2);border-radius:var(--r);margin-bottom:14px;color:var(--text-3)">
+      <strong style="color:var(--text-2)">${senzaMatch.length} nomi non trovati in anagrafica</strong> — non verrà creato nulla per loro:<br>
+      <span style="font-size:11.5px">${senzaMatch.slice(0,20).join(' · ')}${senzaMatch.length>20?` ...e altri ${senzaMatch.length-20}`:''}</span>
     </div>`;
   }
 
-  html += `<button class="btn btn-primary" id="btn-conferma-import-excel" onclick="confermaImportExcel()"><i class="ti ti-check"></i>Conferma e completa contatti</button>`;
+  html += `<button class="btn btn-primary" id="btn-conferma-import-excel" onclick="confermaImportExcel()"><i class="ti ti-check"></i>Conferma e aggiorna ${certi.length + dubbi.filter(d=>d.sceltaClienteId).length} clienti</button>`;
 
   box.innerHTML = html;
 }
@@ -8034,6 +8142,13 @@ function toggleDailyTask(id, el) {
     if(titleEl) titleEl.classList.add('struck');
     if(itemEl){ itemEl.classList.add('completed'); itemEl.style.animation='taskComplete .3s ease'; }
     lanceConfetti(el);
+    // Rimuovi dalla lista dopo 1.2s (tempo per vedere animazione + confetti)
+    setTimeout(() => {
+      _dailyTaskIds = _dailyTaskIds.filter(tid => tid !== id);
+      delete _dailyTaskChecked[id];
+      saveDailyTasks();
+      renderDashTask();
+    }, 1200);
   } else {
     check.classList.remove('checked');
     check.innerHTML = '';
@@ -8041,10 +8156,9 @@ function toggleDailyTask(id, el) {
     if(itemEl){ itemEl.classList.remove('completed'); itemEl.style.animation=''; }
     delete _dailyTaskChecked[id];
     saveDailyTasks();
+    // Aggiorna progress bar subito per il caso "de-check"
+    renderDashTask();
   }
-
-  // Aggiorna progress bar
-  setTimeout(()=>renderDashTask(), 350);
 }
 
 function aggiuntaDailyTask(idStr) {
