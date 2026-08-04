@@ -121,11 +121,10 @@ setInterval(() => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
-// Serve anche i file JS dell'app dalla root del progetto
-app.use('/app-core.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-core.js')));
-app.use('/app-modules.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-modules.js')));
-app.use('/app-steven.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-steven.js')));
-app.use('/app-ui.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-ui.js')));
+// Serve i file JS dell'app dalla cartella public
+['app-core.js','app-modules.js','app-steven-bo.js','app-virtual-company.js','app-simona.js','app-mirko.js','app-ui.js'].forEach(f => {
+  app.use('/'+f, (req, res) => res.sendFile(path.join(__dirname, 'public', f)));
+});
 
 // ── DATABASE ──────────────────────────────────────────────────────────────
 const pool = new Pool({
@@ -3110,24 +3109,128 @@ async function estraiESalvaTask(testo) {
   }
 }
 
+// ── System prompt SIMONA — Digital Marketing ─────────────────────────────
+async function costruisciContestoSimona() {
+  try {
+    const oggi = new Date().toISOString().slice(0, 10);
+    const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+
+    const [clienti, ordini, movimenti] = await Promise.all([
+      pool.query(`SELECT c.nome, c.email, c.citta, c.tag, MAX(o.data) as ultimo_ordine
+                  FROM clienti c LEFT JOIN ordini o ON o.cliente_id = c.id
+                  WHERE c.tipo='cliente' GROUP BY c.id, c.nome, c.email, c.citta, c.tag
+                  ORDER BY c.nome LIMIT 100`),
+      pool.query(`SELECT TO_CHAR(data,'YYYY-MM') as mese, COUNT(*) as n_ordini, SUM(importo) as fatturato
+                  FROM ordini WHERE data >= NOW()-INTERVAL '6 months'
+                  GROUP BY mese ORDER BY mese DESC`),
+      pool.query(`SELECT SUM(importo) as tot FROM movimenti WHERE tipo='entrata' AND TO_CHAR(data,'YYYY-MM')=TO_CHAR(NOW(),'YYYY-MM')`),
+    ]);
+
+    const soglia60 = new Date(); soglia60.setDate(soglia60.getDate() - 60);
+    const inattivi = clienti.rows.filter(c => !c.ultimo_ordine || new Date(c.ultimo_ordine) < soglia60);
+
+    return `Sei Simona, la responsabile Digital Marketing della Virtual Company di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
+
+Sei specializzata in marketing digitale, strategie di comunicazione, acquisizione clienti online, email marketing, social media e brand positioning per il settore agroalimentare B2B.
+
+Parli in modo creativo ma concreto. Conosci i dati dell'azienda e li usi per proporre strategie mirate.
+
+## DATI CHE USI PER IL MARKETING
+
+### Clienti totali: ${clienti.rows.length}
+- Con email (raggiungibili via DEM): ${clienti.rows.filter(c=>c.email).length}
+- Inattivi da 60+ giorni (da riattivare): ${inattivi.length}
+- Per città principali: ${[...new Set(clienti.rows.filter(c=>c.citta).map(c=>c.citta))].slice(0,8).join(', ')}
+
+### Andamento ordini ultimi 6 mesi
+${ordini.rows.map(r=>`- ${r.mese}: ${r.n_ordini} ordini · €${Number(r.fatturato||0).toFixed(0)}`).join('\n')}
+
+### Fatturato mese corrente: €${Number(movimenti.rows[0]?.tot||0).toFixed(2)}
+
+## COME LAVORI
+Proponi sempre azioni concrete e misurabili: campagne email, post social, strategie di contenuto, promozioni stagionali. Quando suggerisci di contattare clienti usa [EMAIL:...]. Quando crei task usa [TASK:...].
+
+Produci materiali se te li chiedono: testi per email, post LinkedIn/Instagram, idee campagne, oggetti email accattivanti.
+
+Rispondi sempre in italiano.`;
+  } catch(e) {
+    return `Sei Simona, responsabile Digital Marketing di Mulino Vitaliti. Specializzata in marketing B2B agroalimentare. Rispondi in italiano.`;
+  }
+}
+
+// ── System prompt MIRKO — Commerciale ────────────────────────────────────
+async function costruisciContestoMirko() {
+  try {
+    const oggi = new Date().toISOString().slice(0, 10);
+    const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+
+    const [leads, clienti, ordini, insoluti] = await Promise.all([
+      pool.query(`SELECT l.nome, l.azienda, l.stato, l.valore, lp.stato as fase
+                  FROM leads l LEFT JOIN lead_pipeline_stato lp ON lp.lead_id=l.id
+                  ORDER BY l.created_at DESC LIMIT 30`),
+      pool.query(`SELECT c.nome, c.citta, c.tag, MAX(o.data) as ultimo_ordine, COUNT(o.id) as n_ordini, SUM(o.importo) as fatturato
+                  FROM clienti c LEFT JOIN ordini o ON o.cliente_id=c.id
+                  WHERE c.tipo='cliente' GROUP BY c.id, c.nome, c.citta, c.tag
+                  ORDER BY fatturato DESC NULLS LAST LIMIT 20`),
+      pool.query(`SELECT COUNT(*) as n, SUM(importo) as tot FROM ordini WHERE stato NOT IN ('consegnato','annullato')`),
+      pool.query(`SELECT COUNT(*) as n, SUM(importo) as tot FROM movimenti WHERE tipo='entrata' AND pagato=false`),
+    ]);
+
+    const aRischio = clienti.rows.filter(c => c.tag && c.tag.includes('rischio'));
+    const topClienti = clienti.rows.filter(c => c.fatturato > 0).slice(0,5);
+
+    return `Sei Mirko, il responsabile commerciale della Virtual Company di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
+
+Sei specializzato in sviluppo commerciale B2B, gestione pipeline vendite, negoziazione, acquisizione nuovi clienti nel settore panificazione e ristorazione, e gestione del portafoglio clienti.
+
+Parli in modo diretto, orientato ai risultati. Pensi in termini di fatturato, conversione, retention.
+
+## SITUAZIONE COMMERCIALE
+
+### Pipeline leads (${leads.rows.length} attivi)
+${leads.rows.slice(0,10).map(l=>`- ${l.azienda||l.nome} | fase: ${l.fase||l.stato} | valore: €${l.valore||'n/d'}`).join('\n')}
+
+### Top 5 clienti per fatturato
+${topClienti.map(c=>`- ${c.nome} | €${Number(c.fatturato).toFixed(0)} | ${c.n_ordini} ordini | ultimo: ${c.ultimo_ordine?new Date(c.ultimo_ordine).toLocaleDateString('it-IT'):'mai'}`).join('\n')}
+
+### Clienti a rischio abbandono: ${aRischio.length}
+${aRischio.slice(0,5).map(c=>`- ${c.nome}${c.citta?' ('+c.citta+')':''}`).join('\n')}
+
+### Ordini aperti: ${ordini.rows[0]?.n} per €${Number(ordini.rows[0]?.tot||0).toFixed(0)}
+### Crediti da incassare: ${insoluti.rows[0]?.n} fatture · €${Number(insoluti.rows[0]?.tot||0).toFixed(0)}
+
+## COME LAVORI
+Proponi azioni commerciali concrete: chiamate da fare, offerte da preparare, clienti da riattivare, nuovi prospect da contattare. Usa [TASK:...] per creare promemoria commerciali. Usa [EMAIL:...] per preparare email commerciali. Usa [CLIENTE:...] per aprire schede cliente.
+
+Rispondi sempre in italiano.`;
+  } catch(e) {
+    return `Sei Mirko, responsabile commerciale di Mulino Vitaliti. Specializzato in vendite B2B agroalimentare. Rispondi in italiano.`;
+  }
+}
+
+// ── Seleziona il contesto giusto in base all'agente ───────────────────────
+async function costruisciContesto(agente) {
+  if (agente === 'simona') return costruisciContestoSimona();
+  if (agente === 'mirko') return costruisciContestoMirko();
+  return costruisciContestoGestionale(); // default: Steven
+}
+
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
   const start = Date.now();
-  console.log('[Steven Chat] Richiesta ricevuta');
+  const agente = req.body.agente || 'steven';
+  console.log(`[${agente.toUpperCase()} Chat] Richiesta ricevuta`);
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
-      console.error('[Steven Chat] ANTHROPIC_API_KEY non impostata!');
-      return res.json({ reply: 'Errore: chiave API Anthropic non configurata. Aggiungila nelle variabili Railway.' });
+      return res.json({ reply: 'Errore: chiave API Anthropic non configurata.' });
     }
 
-    console.log('[Steven Chat] Costruisco contesto...');
-    const systemPrompt = await costruisciContestoGestionale();
-    console.log(`[Steven Chat] Contesto pronto (${Date.now()-start}ms), chiamo Anthropic...`);
+    const systemPrompt = await costruisciContesto(agente);
+    console.log(`[${agente.toUpperCase()} Chat] Contesto pronto (${Date.now()-start}ms)`);
 
-    // Timeout di 25 secondi sulla chiamata Anthropic
     const controller = new AbortController();
     const timeout = setTimeout(() => {
-      console.error('[Steven Chat] TIMEOUT dopo 25 secondi');
+      console.error(`[${agente.toUpperCase()} Chat] TIMEOUT`);
       controller.abort();
     }, 25000);
 
