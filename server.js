@@ -2779,6 +2779,63 @@ const STEVEN_DB_OPERAZIONI = {
     return r.rows;
   },
 
+  // Trova e rimuovi task duplicati — tiene il più recente per ogni titolo
+  'deduplica_tasks': async (params) => {
+    // Trova gruppi di task con titolo simile
+    const tutti = await pool.query(
+      `SELECT id, titolo, stato, created_at FROM tasks ORDER BY created_at DESC`
+    );
+    const visti = new Map();
+    const daEliminare = [];
+
+    for (const t of tutti.rows) {
+      // Normalizza il titolo per il confronto (minuscolo, senza spazi doppi)
+      const chiave = t.titolo.toLowerCase().trim().replace(/\s+/g, ' ');
+      if (visti.has(chiave)) {
+        // Questo è un duplicato — elimina il più vecchio (che viene dopo in DESC)
+        daEliminare.push(t.id);
+      } else {
+        visti.set(chiave, t.id);
+      }
+    }
+
+    if (daEliminare.length === 0) return { eliminati: 0, messaggio: 'Nessun duplicato trovato' };
+
+    await pool.query(`DELETE FROM tasks WHERE id = ANY($1)`, [daEliminare]);
+    return { eliminati: daEliminare.length, messaggio: `Rimossi ${daEliminare.length} task duplicati` };
+  },
+
+  // Elenca tutti i task con eventuale conteggio duplicati
+  'analizza_tasks': async (params) => {
+    const r = await pool.query(
+      `SELECT titolo, COUNT(*) as n, array_agg(id ORDER BY created_at DESC) as ids,
+              array_agg(stato ORDER BY created_at DESC) as stati
+       FROM tasks
+       GROUP BY LOWER(TRIM(titolo))
+       HAVING COUNT(*) > 1
+       ORDER BY n DESC`
+    );
+    const totale = await pool.query(`SELECT COUNT(*) as n FROM tasks`);
+    return {
+      totale: parseInt(totale.rows[0].n),
+      gruppi_duplicati: r.rows.length,
+      duplicati: r.rows.map(row => ({
+        titolo: row.titolo,
+        copie: parseInt(row.n),
+        ids: row.ids,
+        stati: row.stati
+      }))
+    };
+  },
+
+  // Cancella task specifici per ID
+  'elimina_tasks': async (params) => {
+    const { ids } = params;
+    if (!Array.isArray(ids) || !ids.length) throw new Error('Array ids obbligatorio');
+    const r = await pool.query(`DELETE FROM tasks WHERE id = ANY($1) RETURNING id, titolo`, [ids]);
+    return { eliminati: r.rowCount, task: r.rows };
+  },
+
   // Leggi movimenti (fatture) non pagati
   'insoluti': async (params) => {
     const r = await pool.query(
@@ -2918,6 +2975,9 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
   - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
   - ordini_cliente: {id:123} — storico ordini di un cliente
   - insoluti: {} — tutte le fatture non pagate
+  - analizza_tasks: {} — trova task duplicati e conta quante copie ci sono
+  - deduplica_tasks: {} — elimina automaticamente tutti i task duplicati tenendo il più recente
+  - elimina_tasks: {ids:[1,2,3]} — elimina task specifici per ID
 
 Quando usi [DB:...], il sistema esegue l'operazione e ti risponde con i dati. Puoi poi usarli nella risposta.
 Esempio: "Giovanni mi chiede chi non ha email" → uso lista_contatti, vedo i risultati, rispondo.
