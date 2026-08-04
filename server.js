@@ -185,8 +185,23 @@ async function initDB() {
         chiamata_tel TEXT,
         note_spedizione TEXT,
         fic_id INTEGER,
+        tag TEXT,
         created_at TIMESTAMP DEFAULT NOW()
       );
+      -- Migrazione: aggiunge tag se non esiste
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tag TEXT;
+
+      -- Memoria persistente di Steven
+      CREATE TABLE IF NOT EXISTS steven_memoria (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL,
+        chiave TEXT,
+        contenuto TEXT NOT NULL,
+        importanza INTEGER DEFAULT 5,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS steven_memoria_chiave_idx ON steven_memoria(chiave) WHERE chiave IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS fic_conflitti (
         id SERIAL PRIMARY KEY,
@@ -1992,6 +2007,8 @@ async function eseguiLoopAgente(origine = 'automatico') {
     }
 
     console.log(`[Agente] Ciclo completato: ${JSON.stringify(risultati)}`);
+    // Aggiorna memoria di Steven con le osservazioni del ciclo
+    await stevenAggiornaMemoriaDaCiclo(risultati);
   } catch (e) {
     console.error('[Agente] Errore ciclo principale:', e.message);
     risultati.errori.push(e.message);
@@ -2536,6 +2553,101 @@ app.get('/api/clienti/:id/scheda', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ══════════════════════════════════════════════════════════════════════════
+// MEMORIA DI STEVEN — apprende dalle esperienze e accumula conoscenza
+// ══════════════════════════════════════════════════════════════════════════
+
+async function stevenSalvaMemoria(tipo, chiave, contenuto, importanza = 5) {
+  try {
+    if (chiave) {
+      await pool.query(
+        `INSERT INTO steven_memoria (tipo, chiave, contenuto, importanza, updated_at)
+         VALUES ($1,$2,$3,$4,NOW())
+         ON CONFLICT (chiave) DO UPDATE SET contenuto=$3, importanza=$4, updated_at=NOW()`,
+        [tipo, chiave, contenuto, importanza]
+      );
+    } else {
+      await pool.query(
+        `INSERT INTO steven_memoria (tipo, contenuto, importanza) VALUES ($1,$2,$3)`,
+        [tipo, contenuto, importanza]
+      );
+    }
+  } catch (e) { console.error('[Steven Memoria] Errore salvataggio:', e.message); }
+}
+
+async function stevenLeggiMemoria() {
+  try {
+    const r = await pool.query(
+      `SELECT tipo, chiave, contenuto, importanza, updated_at
+       FROM steven_memoria
+       ORDER BY importanza DESC, updated_at DESC
+       LIMIT 30`
+    );
+    return r.rows;
+  } catch (e) { return []; }
+}
+
+// Aggiorna la memoria dopo ogni ciclo agente
+async function stevenAggiornaMemoriaDaCiclo(risultati) {
+  try {
+    const oggi = new Date().toISOString().slice(0, 10);
+
+    // Memorizza tendenza crescita
+    if (risultati.datiCrescita) {
+      const d = risultati.datiCrescita;
+      await stevenSalvaMemoria(
+        'crescita',
+        `crescita:${d.meseCorrente}`,
+        `${d.meseCorrente}: ${d.tendenza} ${d.varPct !== null ? (d.varPct > 0 ? '+' : '') + d.varPct + '%' : 'n/d'} | Fatturato: €${Number(d.totMese).toFixed(2)} | Ultimi 3 mesi: €${Number(d.tot3m).toFixed(2)}`,
+        d.tendenza.includes('calo') ? 8 : 5
+      );
+    }
+
+    // Memorizza pattern clienti a rischio
+    if (risultati.clientiARischio > 0) {
+      await stevenSalvaMemoria(
+        'osservazione',
+        null,
+        `${oggi}: ho segnato ${risultati.clientiARischio} nuovi clienti a rischio inattività`,
+        6
+      );
+    }
+
+    // Memorizza disallineamenti FIC ricorrenti
+    if (risultati.alertCreati > 0 && risultati.ficVerificato) {
+      await stevenSalvaMemoria(
+        'fic',
+        'fic:ultimo_disallineamento',
+        `Ultimo disallineamento FIC: ${oggi}. Task creati automaticamente: ${risultati.taskCreati}`,
+        7
+      );
+    }
+  } catch (e) { console.error('[Steven Memoria] Errore aggiornamento:', e.message); }
+}
+
+// Endpoint per vedere/gestire la memoria di Steven
+app.get('/api/steven/memoria', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM steven_memoria ORDER BY importanza DESC, updated_at DESC`);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/steven/memoria/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM steven_memoria WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.post('/api/steven/memoria', async (req, res) => {
+  const { tipo, chiave, contenuto, importanza } = req.body;
+  try {
+    await stevenSalvaMemoria(tipo || 'manuale', chiave || null, contenuto, importanza || 5);
+    res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
 // ── Cache contesto Steven (aggiornata ogni 5 minuti) ─────────────────────
 let _contestoCache = null;
 let _contestoCacheTs = 0;
@@ -2550,7 +2662,7 @@ async function costruisciContestoGestionale() {
     const oggi = new Date().toISOString().slice(0, 10);
     const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
 
-    const [ordini, movimenti, clienti, tasks, alertAttivi, crescitaAnalisi] = await Promise.all([
+    const [ordini, movimenti, clienti, tasks, alertAttivi, crescitaAnalisi, memoria] = await Promise.all([
       pool.query(`SELECT o.*, c.nome as cliente_nome FROM ordini o LEFT JOIN clienti c ON o.cliente_id=c.id WHERE o.stato != 'consegnato' ORDER BY o.data DESC LIMIT 20`),
       pool.query(`SELECT * FROM movimenti WHERE pagato=false AND tipo='entrata' ORDER BY data ASC LIMIT 20`),
       pool.query(`SELECT c.nome, c.tel, c.email, c.citta, c.tag, MAX(o.data) as ultimo_ordine
@@ -2559,7 +2671,8 @@ async function costruisciContestoGestionale() {
                   ORDER BY c.nome LIMIT 100`),
       pool.query(`SELECT * FROM tasks WHERE stato IN ('da_fare','in_corso') ORDER BY scadenza ASC NULLS LAST LIMIT 20`),
       pool.query(`SELECT * FROM backoffice_alert WHERE letto=false ORDER BY CASE gravita WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at DESC LIMIT 10`),
-      pool.query(`SELECT * FROM backoffice_alert WHERE tipo='analisi_crescita' ORDER BY created_at DESC LIMIT 1`),
+      pool.query(`SELECT * FROM backoffice_alert WHERE tipo='analisi_crescita' ORDER BY created_at DESC LIMIT 3`),
+      stevenLeggiMemoria(),
     ]);
 
     const ordiniAperti = ordini.rows;
@@ -2569,12 +2682,17 @@ async function costruisciContestoGestionale() {
     const inattivi = clienti.rows.filter(c => !c.ultimo_ordine || new Date(c.ultimo_ordine) < soglia);
     const aRischio = clienti.rows.filter(c => c.tag && c.tag.includes('rischio'));
     const crescita = crescitaAnalisi.rows[0];
+    // Ultimi 3 mesi di dati crescita per confronto
+    const storiacrescita = crescitaAnalisi.rows.map(r => r.dettaglio).join('\n');
 
     let ctx = `Sei Steven, l'agente AI personale di Giovanni Vitaliti, titolare di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
 
 Parli in prima persona come Steven. Sei diretto, concreto, leggermente informale ma sempre professionale. Conosci l'azienda dall'interno: ogni ordine, ogni cliente, ogni euro. Quando Giovanni ti parla, rispondi come un braccio destro fidato che lavora con lui ogni giorno — non come un assistente generico.
 
 Hai anche un loop autonomo che gira ogni ora: segni i clienti a rischio, crei task di follow-up, analizzi la crescita, verifichi la contabilità FIC e mandi report via email. Se ti chiedono cosa hai fatto di recente, riferirti a queste attività.
+
+## COSA SO — MEMORIA ACCUMULATA
+${memoria.length === 0 ? 'Nessuna memoria ancora accumulata.' : memoria.map(m => `[${m.tipo}] ${m.contenuto}`).join('\n')}
 
 ## SITUAZIONE ATTUALE
 
@@ -2602,8 +2720,9 @@ ${taskAperti.length === 0 ? 'Nessuno.' : taskAperti.map(t => `- [${t.priorita}] 
 ### Alert attivi (${alertAttivi.rows.length})
 ${alertAttivi.rows.length === 0 ? 'Nessun alert.' : alertAttivi.rows.map(a => `- [${a.gravita}] ${a.titolo}`).join('\n')}
 
-### Andamento aziendale
-${crescita ? crescita.dettaglio : 'Analisi non ancora disponibile per questo mese.'}
+### Andamento aziendale (ultimi 3 mesi)
+${storiacrescita || (crescita ? crescita.dettaglio : 'Analisi non ancora disponibile.')}
+Nota: se il mese corrente mostra -100% è perché siamo all'inizio del mese e i dati sono ancora in formazione.
 
 ## COME RISPONDO
 - Rispondo sempre in italiano, come Steven, non come "assistente AI"
@@ -2623,6 +2742,9 @@ Aggiungo blocchi in fondo alla risposta (sintassi esatta):
 [EMAIL:destinatario="email@esempio.it",oggetto="...",corpo="testo\\nsu più righe"]
 → quando preparo un'email per un cliente. Firma sempre come Mulino Vitaliti,
 Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 6066832
+
+[MEMORIA:tipo="osservazione|cliente|mercato|preferenza",contenuto="cosa ho imparato",importanza=1-10]
+→ quando capisco qualcosa di importante sull'azienda, un cliente, o una preferenza di Giovanni che devo ricordare per il futuro
 
 Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.`;
 
@@ -2721,10 +2843,20 @@ app.post('/api/chat', async (req, res) => {
       };
     }
 
+    // Blocco MEMORIA — Steven salva qualcosa che ha imparato
+    const mMem = testo.match(/\[MEMORIA:tipo="([^"]*)",contenuto="([^"]*)"(?:,importanza=(\d+))?\]/);
+    if (mMem) {
+      await stevenSalvaMemoria(mMem[1], null, mMem[2], mMem[3] ? parseInt(mMem[3]) : 6);
+      console.log(`[Steven Memoria] Salvata da chat: ${mMem[2]}`);
+      azioni.memoria = { tipo: mMem[1], contenuto: mMem[2] };
+      _contestoCacheTs = 0; // invalida cache contesto per aggiornare memoria
+    }
+
     // Rimuovi tutti i blocchi azione dalla risposta visibile
     const testoVisibile = testo
       .replace(/\[TASK:[^\]]+\]/g, '')
       .replace(/\[CLIENTE:[^\]]+\]/g, '')
+      .replace(/\[MEMORIA:[^\]]+\]/g, '')
       .replace(/\[EMAIL:destinatario="[^"]*",oggetto="[^"]*",corpo="[\s\S]*?"\]/g, '')
       .trim();
 
