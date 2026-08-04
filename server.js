@@ -1,4 +1,12 @@
 const express = require('express');
+
+// Cattura errori non gestiti per loggare prima del crash
+process.on('uncaughtException', (err) => {
+  console.error('[CRASH] Errore non gestito:', err.message, err.stack);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[CRASH] Promise rejection non gestita:', reason);
+});
 const cors = require('cors');
 const path = require('path');
 const https = require('https');
@@ -4452,8 +4460,15 @@ app.get('/api/version', (req, res) => res.json({ v: SERVER_START_TIME }));
 
 const PORT = process.env.PORT || 3000;
 initDB().then(async () => {
+  console.log('[Avvio] DB pronto, carico token Gmail...');
   await loadGmailTokens();
+  console.log('[Avvio] Gmail principale OK, carico Gmail spedizioni...');
   await loadGmailSpedizioniTokens();
+  console.log('[Avvio] Gmail spedizioni OK, carico FIC...');
   await loadFicTokens();
+  console.log('[Avvio] FIC OK, avvio server...');
   app.listen(PORT, () => console.log(`✅ Server avviato su porta ${PORT}`));
+}).catch(err => {
+  console.error('[Avvio] ERRORE FATALE:', err.message, err.stack);
+  process.exit(1);
 });
