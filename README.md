@@ -1,1 +1,0 @@
-# Gestionale-Vitaliti
