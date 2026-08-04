@@ -371,7 +371,7 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="s-section" onclick="toggleSection('sec-admin')"><span>AI &amp; Admin</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-admin">
-      <div class="nav-item" onclick="showPage('ai')" id="nav-ai"><strong style="font-size:14px;font-weight:800">S</strong><span>Steven</span></div>
+      <div class="nav-item" onclick="showPage('ai')" id="nav-ai"><i class="ti ti-building-factory" style="font-size:16px"></i><span>Virtual Co.</span></div>
       <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
       <div class="nav-item" onclick="showPage('impostazioni')" id="nav-impostazioni"><i class="ti ti-settings"></i><span>Impostazioni</span></div>
     </div>
@@ -1064,18 +1064,37 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="page" id="page-ai">
       <div class="page-header">
-        <div style="display:flex;align-items:center;gap:12px">
-          <div style="width:38px;height:38px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0">S</div>
-          <div>
-            <div class="page-title" style="margin:0">Steven</div>
-            <div style="font-size:12px;color:var(--text-3)">Agente AI · Mulino Vitaliti · loop ogni ora</div>
-          </div>
+        <div>
+          <div class="page-title" style="margin:0">Virtual Company</div>
+          <div style="font-size:12px;color:var(--text-3)">Il tuo team AI — Mulino Vitaliti</div>
         </div>
         <div style="display:flex;gap:8px">
           <div id="agente-stato-badge" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3);padding:0 8px"></div>
           <button class="btn btn-sm" onclick="boToggleBriefing()" id="btn-toggle-briefing"><i class="ti ti-clipboard-list"></i>Rapporto</button>
           <button class="btn btn-sm btn-primary" onclick="eseguiAgenteManuale()" id="btn-esegui-agente"><i class="ti ti-robot"></i>Esegui agente</button>
           <button class="btn btn-sm" onclick="clearChat()"><i class="ti ti-trash"></i>Pulisci</button>
+        </div>
+      </div>
+
+      <!-- Team AI -->
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <!-- Steven - attivo -->
+        <div onclick="selezionaAgente('steven')" id="agente-card-steven"
+          style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--brand);border-radius:var(--r);background:var(--brand-light);cursor:pointer;min-width:200px">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">S</div>
+          <div>
+            <div style="font-size:13px;font-weight:700">Steven</div>
+            <div style="font-size:11px;color:var(--text-2)">Back office · loop ogni ora</div>
+          </div>
+          <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+        </div>
+        <!-- Placeholder figure future -->
+        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px dashed var(--border);border-radius:var(--r);cursor:not-allowed;min-width:200px;opacity:0.5">
+          <div style="width:36px;height:36px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">+</div>
+          <div>
+            <div style="font-size:13px;font-weight:700;color:var(--text-3)">Prossima figura</div>
+            <div style="font-size:11px;color:var(--text-3)">In arrivo...</div>
+          </div>
         </div>
       </div>
 
@@ -1121,7 +1140,7 @@ tbody tr:hover{background:var(--surface-2)}
 
       <!-- Ricerca cliente rapida -->
       <div style="position:relative;margin-bottom:14px">
-        <input type="text" id="ai-cliente-search" placeholder="🔍 Scrivi il nome di un cliente per vedere la sua scheda completa..." autocomplete="off"
+        <input type="text" id="ai-cliente-search" placeholder="🔍 Cerca un cliente per vedere la sua scheda..." autocomplete="off"
           oninput="aiFiltraClienti()" onfocus="aiFiltraClienti()"
           style="width:100%;padding:10px 14px;border:1.5px solid var(--border);border-radius:var(--r);font-size:13px">
         <div id="ai-cliente-suggestions" style="display:none;position:absolute;top:100%;left:0;right:0;background:#fff;border:1.5px solid var(--border);border-radius:var(--r);max-height:240px;overflow-y:auto;z-index:60;box-shadow:0 6px 16px rgba(0,0,0,0.12);margin-top:2px"></div>
@@ -1134,8 +1153,14 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
 
       <div class="chat-container">
-        <div class="chat-messages" id="chat-messages">
-          <div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Ciao Giovanni 👋 Sono Steven, il tuo agente. Conosco ogni ordine, cliente e movimento in tempo reale — e lavoro in autonomia ogni ora per tenerti aggiornato.<br><br>Dimmi cosa ti serve o cosa vuoi che faccia. Puoi anche dirmi <em>"cosa hai fatto stamattina"</em> e ti aggiorno su tutto.</div></div>
+        <!-- Chi sta rispondendo -->
+        <div id="chat-agente-label" style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--surface-2);border-radius:var(--r) var(--r) 0 0;border:1px solid var(--border);border-bottom:none;font-size:12px;color:var(--text-2)">
+          <div style="width:22px;height:22px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:800;color:#fff">S</div>
+          <span>Stai parlando con <strong style="color:var(--brand)">Steven</strong> — Back Office · loop ogni ora</span>
+          <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--green)"></div>
+        </div>
+        <div class="chat-messages" id="chat-messages" style="border-radius:0 0 var(--r) var(--r)">
+          <div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Ciao Giovanni 👋 Sono <strong>Steven</strong>, il responsabile back office della tua Virtual Company.<br><br>Conosco ogni ordine, cliente e movimento in tempo reale — e lavoro in autonomia ogni ora. Posso anche <strong>modificare direttamente</strong> i tuoi contatti e importare dati.<br><br>Dimmi cosa ti serve.</div></div>
         </div>
         <div class="chat-input-wrap">
           <textarea class="chat-input" id="chat-input" placeholder="Scrivi a Steven..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
@@ -4405,6 +4430,27 @@ async function eseguiAgenteManuale(){
 
 // Aggiorna stato agente ogni 2 minuti
 setInterval(aggiornaStatoAgente, 2 * 60 * 1000);
+
+let _agenteAttivo = 'steven';
+
+function selezionaAgente(id){
+  _agenteAttivo = id;
+  // Aggiorna visual delle card
+  document.querySelectorAll('[id^="agente-card-"]').forEach(el => {
+    el.style.borderColor = 'var(--border)';
+    el.style.background = 'var(--surface)';
+  });
+  const card = document.getElementById('agente-card-'+id);
+  if(card){ card.style.borderColor='var(--brand)'; card.style.background='var(--brand-light)'; }
+  // Pulisci chat
+  clearChat();
+}
+
+function clearChat(){
+  const nomi = { steven: 'Steven' };
+  const nome = nomi[_agenteAttivo] || 'Steven';
+  document.getElementById('chat-messages').innerHTML=`<div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">${nome[0]}</strong></div><div class="msg-bubble ai">Chat pulita. Dimmi cosa ti serve, Giovanni.</div></div>`;
+}
 
 function boToggleBriefing(){
   const card = document.getElementById('backoffice-briefing');
