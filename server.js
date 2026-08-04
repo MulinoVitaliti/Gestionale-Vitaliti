@@ -2781,12 +2781,24 @@ async function estraiESalvaTask(testo) {
 
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
 app.post('/api/chat', async (req, res) => {
+  const start = Date.now();
+  console.log('[Steven Chat] Richiesta ricevuta');
   try {
+    if (!process.env.ANTHROPIC_API_KEY) {
+      console.error('[Steven Chat] ANTHROPIC_API_KEY non impostata!');
+      return res.json({ reply: 'Errore: chiave API Anthropic non configurata. Aggiungila nelle variabili Railway.' });
+    }
+
+    console.log('[Steven Chat] Costruisco contesto...');
     const systemPrompt = await costruisciContestoGestionale();
+    console.log(`[Steven Chat] Contesto pronto (${Date.now()-start}ms), chiamo Anthropic...`);
 
     // Timeout di 25 secondi sulla chiamata Anthropic
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 25000);
+    const timeout = setTimeout(() => {
+      console.error('[Steven Chat] TIMEOUT dopo 25 secondi');
+      controller.abort();
+    }, 25000);
 
     let response;
     try {
@@ -2805,6 +2817,12 @@ app.post('/api/chat', async (req, res) => {
         }),
         signal: controller.signal
       });
+      console.log(`[Steven Chat] Risposta Anthropic: ${response.status} (${Date.now()-start}ms)`);
+    } catch (fetchErr) {
+      if (fetchErr.name === 'AbortError') {
+        return res.json({ reply: 'Steven ha impiegato troppo tempo a rispondere. Riprova.' });
+      }
+      throw fetchErr;
     } finally {
       clearTimeout(timeout);
     }
@@ -2861,7 +2879,10 @@ app.post('/api/chat', async (req, res) => {
       .trim();
 
     res.json({ reply: testoVisibile, azioni, taskCreato: azioni.task });
-  } catch (err) { res.json({ error: err.message }); }
+  } catch (err) { 
+    console.error('[Steven Chat] Errore:', err.message, err.stack?.slice(0,300));
+    res.json({ reply: 'Errore interno: ' + err.message }); 
+  }
 });
 
 
