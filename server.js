@@ -2536,8 +2536,16 @@ app.get('/api/clienti/:id/scheda', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── Cache contesto Steven (aggiornata ogni 5 minuti) ─────────────────────
+let _contestoCache = null;
+let _contestoCacheTs = 0;
+
 // ── Costruisce il contesto live del gestionale per il system prompt AI ────
 async function costruisciContestoGestionale() {
+  // Usa cache se fresca (max 5 minuti)
+  if (_contestoCache && Date.now() - _contestoCacheTs < 5 * 60 * 1000) {
+    return _contestoCache;
+  }
   try {
     const oggi = new Date().toISOString().slice(0, 10);
     const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
@@ -2618,6 +2626,8 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
 
 Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.`;
 
+    _contestoCache = ctx;
+    _contestoCacheTs = Date.now();
     return ctx;
   } catch (e) {
     console.error('[Steven] Errore contesto:', e.message);
@@ -2651,20 +2661,37 @@ async function estraiESalvaTask(testo) {
 app.post('/api/chat', async (req, res) => {
   try {
     const systemPrompt = await costruisciContestoGestionale();
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'x-api-key': process.env.ANTHROPIC_API_KEY,
-        'anthropic-version': '2023-06-01'
-      },
-      body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
-        max_tokens: 1024,
-        system: systemPrompt,
-        messages: req.body.messages
-      })
-    });
+
+    // Timeout di 25 secondi sulla chiamata Anthropic
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 25000);
+
+    let response;
+    try {
+      response = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-api-key': process.env.ANTHROPIC_API_KEY,
+          'anthropic-version': '2023-06-01'
+        },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 600,
+          system: systemPrompt,
+          messages: req.body.messages
+        }),
+        signal: controller.signal
+      });
+    } finally {
+      clearTimeout(timeout);
+    }
+
+    if (!response.ok) {
+      const errTxt = await response.text();
+      console.error('[Steven] Errore API Anthropic:', response.status, errTxt);
+      return res.json({ error: `Errore API: ${response.status}`, reply: 'Scusa Giovanni, ho avuto un problema tecnico. Riprova tra un momento.' });
+    }
     const data = await response.json();
     const testo = data.content?.[0]?.text || 'Errore risposta AI';
 
