@@ -201,7 +201,6 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
       );
-      CREATE UNIQUE INDEX IF NOT EXISTS steven_memoria_chiave_idx ON steven_memoria(chiave) WHERE chiave IS NOT NULL;
 
       CREATE TABLE IF NOT EXISTS fic_conflitti (
         id SERIAL PRIMARY KEY,
@@ -454,6 +453,18 @@ async function initDB() {
     }
 
     console.log('✅ Database inizializzato');
+
+    // Crea indice memoria Steven in modo sicuro (ignorando se già esiste)
+    try {
+      await client.query(`
+        CREATE UNIQUE INDEX steven_memoria_chiave_idx ON steven_memoria(chiave) WHERE chiave IS NOT NULL
+      `);
+    } catch (e) {
+      // Ignora errore se l'indice esiste già
+      if (!e.message.includes('already exists')) {
+        console.warn('[DB] Indice steven_memoria:', e.message);
+      }
+    }
   } catch (err) {
     console.error('❌ Errore DB init:', err.message);
   } finally {
