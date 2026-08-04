@@ -372,7 +372,7 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="s-section" onclick="toggleSection('sec-admin')"><span>AI &amp; Admin</span><i class="ti ti-chevron-down s-arrow"></i></div>
     <div class="s-section-items" id="sec-admin">
-      <div class="nav-item" onclick="showPage('ai')" id="nav-ai"><i class="ti ti-robot"></i><span>Assistente AI</span></div>
+      <div class="nav-item" onclick="showPage('ai')" id="nav-ai"><strong style="font-size:14px;font-weight:800">S</strong><span>Steven</span></div>
       <div class="nav-item" onclick="showPage('automazioni')" id="nav-automazioni"><i class="ti ti-settings-automation"></i><span>Automazioni</span></div>
       <div class="nav-item" onclick="showPage('impostazioni')" id="nav-impostazioni"><i class="ti ti-settings"></i><span>Impostazioni</span></div>
     </div>
@@ -1065,7 +1065,13 @@ tbody tr:hover{background:var(--surface-2)}
     </div>
     <div class="page" id="page-ai">
       <div class="page-header">
-        <div class="page-title">Assistente AI <span>Powered by Claude</span></div>
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:18px;font-weight:800;color:#fff;flex-shrink:0">S</div>
+          <div>
+            <div class="page-title" style="margin:0">Steven</div>
+            <div style="font-size:12px;color:var(--text-3)">Agente AI · Mulino Vitaliti · loop ogni ora</div>
+          </div>
+        </div>
         <div style="display:flex;gap:8px">
           <div id="agente-stato-badge" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3);padding:0 8px"></div>
           <button class="btn btn-sm" onclick="boToggleBriefing()" id="btn-toggle-briefing"><i class="ti ti-clipboard-list"></i>Rapporto</button>
@@ -1123,17 +1129,17 @@ tbody tr:hover{background:var(--surface-2)}
       </div>
 
       <div class="quick-actions">
-        <div class="quick-action" onclick="sendAIMessage('Chi sono i clienti che rischio di perdere? Dimmi cosa fare per ognuno, in modo concreto.')"><div style="font-size:20px;margin-bottom:5px">⚠️</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Clienti a rischio</div><div style="font-size:11px;color:var(--text-2)">Chi sto perdendo?</div></div>
-        <div class="quick-action" onclick="sendAIMessage('Guarda gli ordini aperti e dimmi esattamente cosa devo fare oggi, in ordine di priorità.')"><div style="font-size:20px;margin-bottom:5px">📋</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Cosa faccio oggi</div><div style="font-size:11px;color:var(--text-2)">Priorità di giornata</div></div>
-        <div class="quick-action" onclick="sendAIMessage('Analizza la situazione incassi: quanto devo recuperare, da chi, e con che strategia. Sii concreto.')"><div style="font-size:20px;margin-bottom:5px">💰</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Recupero crediti</div><div style="font-size:11px;color:var(--text-2)">Come rientro?</div></div>
+        <div class="quick-action" onclick="sendAIMessage('Steven, cosa hai fatto nelle ultime ore? Dimmi cosa hai trovato e cosa hai già sistemato.')"><div style="font-size:20px;margin-bottom:5px">🤖</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Cosa hai fatto?</div><div style="font-size:11px;color:var(--text-2)">Aggiornamento loop</div></div>
+        <div class="quick-action" onclick="sendAIMessage('Steven, dimmi la cosa più urgente che devo fare adesso e perché.')"><div style="font-size:20px;margin-bottom:5px">🚨</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Cosa faccio ora</div><div style="font-size:11px;color:var(--text-2)">Priorità immediata</div></div>
+        <div class="quick-action" onclick="sendAIMessage('Steven, analizza l\'andamento dell\'azienda. Stiamo crescendo? Dove dobbiamo migliorare?')"><div style="font-size:20px;margin-bottom:5px">📈</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Stiamo crescendo?</div><div style="font-size:11px;color:var(--text-2)">Analisi andamento</div></div>
       </div>
 
       <div class="chat-container">
         <div class="chat-messages" id="chat-messages">
-          <div class="msg-ai"><div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">Ciao Giovanni 👋 Conosco ordini, incassi, clienti e task in tempo reale.<br><br>Posso anche <strong>agire</strong>: dimmi "ricordati di..." e creo il task, chiedimi di scrivere a un cliente e preparo l'email. Scrivi il nome di un cliente qui sopra per aprire la sua scheda.</div></div>
+          <div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Ciao Giovanni 👋 Sono Steven, il tuo agente. Conosco ogni ordine, cliente e movimento in tempo reale — e lavoro in autonomia ogni ora per tenerti aggiornato.<br><br>Dimmi cosa ti serve o cosa vuoi che faccia. Puoi anche dirmi <em>"cosa hai fatto stamattina"</em> e ti aggiorno su tutto.</div></div>
         </div>
         <div class="chat-input-wrap">
-          <textarea class="chat-input" id="chat-input" placeholder="Chiedimi qualsiasi cosa sul mulino..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+          <textarea class="chat-input" id="chat-input" placeholder="Scrivi a Steven..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
           <button class="btn btn-primary" onclick="sendChat()" id="send-btn" style="height:38px;padding:0 13px"><i class="ti ti-send"></i></button>
         </div>
       </div>
@@ -6504,7 +6510,7 @@ function getCtx(){
   return `Sei l'assistente AI del Mulino Vitaliti Antonio, fondato 1930, vende semola rimacinata di grano duro e farine in tutta Italia.\nCLIENTI (${state.clienti.length}):\n${cl}\nORDINI (${state.ordini.length}):\n${or}\nCONTABILITÀ: Entrate €${totE.toFixed(2)} | Uscite €${totU.toFixed(2)} | Saldo €${(totE-totU).toFixed(2)}\nRispondi in italiano, conciso e pratico.`;
 }
 function sendAIMessage(t){document.getElementById('chat-input').value=t;sendChat();}
-function clearChat(){document.getElementById('chat-messages').innerHTML='<div class="msg-ai"><div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">Chat pulita. Come posso aiutarti?</div></div>';}
+function clearChat(){document.getElementById('chat-messages').innerHTML='<div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Chat pulita. Dimmi cosa ti serve, Giovanni.</div></div>';}
 function sendChat(){
   const input=document.getElementById('chat-input'), text=input.value.trim(); if(!text)return;
   input.value=''; input.style.height='38px';
@@ -6513,7 +6519,7 @@ function sendChat(){
   uDiv.innerHTML=`<div class="msg-avatar user">${ini(currentUser.nome)}</div><div class="msg-bubble user">${text}</div>`;
   msgs.appendChild(uDiv);
   const lDiv=document.createElement('div'); lDiv.className='msg-ai'; lDiv.id='ai-load';
-  lDiv.innerHTML=`<div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai" style="color:var(--text-3)">⟳ Elaborazione...</div>`;
+  lDiv.innerHTML=`<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai" style="color:var(--text-3)">⟳ Elaborazione...</div>`;
   msgs.appendChild(lDiv); msgs.scrollTop=msgs.scrollHeight;
   document.getElementById('send-btn').disabled=true;
   fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:getCtx()+'\n\n---\n\n'+text}]})})
@@ -6521,7 +6527,7 @@ function sendChat(){
       document.getElementById('ai-load').remove();
       const reply=data.reply||data.error||'Errore.';
       const aDiv=document.createElement('div'); aDiv.className='msg-ai';
-      aDiv.innerHTML=`<div class="msg-avatar ai"><i class="ti ti-robot"></i></div><div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
+      aDiv.innerHTML=`<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
       msgs.appendChild(aDiv);
 
       const az = data.azioni || {};
