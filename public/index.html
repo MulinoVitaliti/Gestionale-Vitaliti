@@ -1163,7 +1163,9 @@ tbody tr:hover{background:var(--surface-2)}
           <div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Ciao Giovanni 👋 Sono <strong>Steven</strong>, il responsabile back office della tua Virtual Company.<br><br>Conosco ogni ordine, cliente e movimento in tempo reale — e lavoro in autonomia ogni ora. Posso anche <strong>modificare direttamente</strong> i tuoi contatti e importare dati.<br><br>Dimmi cosa ti serve.</div></div>
         </div>
         <div class="chat-input-wrap">
-          <textarea class="chat-input" id="chat-input" placeholder="Scrivi a Steven..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
+          <input type="file" id="steven-file-input" accept=".xlsx,.xls,.csv,.json,.txt" style="display:none" onchange="stevenCaricaFile(this)">
+          <button class="btn btn-sm" onclick="document.getElementById('steven-file-input').click()" title="Carica file da analizzare" style="height:38px;padding:0 10px;flex-shrink:0"><i class="ti ti-paperclip"></i></button>
+          <textarea class="chat-input" id="chat-input" placeholder="Scrivi a Steven o carica un file..." onkeydown="if(event.key==='Enter'&amp;&amp;!event.shiftKey){event.preventDefault();sendChat()}" oninput="this.style.height='38px';this.style.height=Math.min(this.scrollHeight,100)+'px'"></textarea>
           <button class="btn btn-primary" onclick="sendChat()" id="send-btn" style="height:38px;padding:0 13px"><i class="ti ti-send"></i></button>
         </div>
       </div>
