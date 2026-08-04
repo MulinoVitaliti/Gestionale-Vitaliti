@@ -2868,6 +2868,100 @@ app.post('/api/steven/db', async (req, res) => {
   res.json(r);
 });
 
+// ── Steven analizza file caricati dall'utente ─────────────────────────────
+app.post('/api/steven/analizza-file', async (req, res) => {
+  try {
+    const { nome, base64, messaggio } = req.body;
+    if (!base64) return res.json({ errore: 'Nessun file ricevuto' });
+
+    const buffer = Buffer.from(base64, 'base64');
+    let contenuto = '';
+    let righe = [];
+
+    if (nome.match(/\.(csv|txt)$/i)) {
+      const testo = buffer.toString('utf-8');
+      const tutte = testo.split('\n').filter(r => r.trim());
+      const intestazioni = tutte[0]?.split(/[,;|\t]/).map(h => h.trim()) || [];
+      righe = tutte.slice(1).map(r => {
+        const vals = r.split(/[,;|\t]/);
+        const obj = {};
+        intestazioni.forEach((h, i) => { if(vals[i]) obj[h] = vals[i].trim(); });
+        return obj;
+      }).filter(r => Object.keys(r).length);
+      contenuto = `File CSV: ${tutte.length - 1} righe\nColonne: ${intestazioni.join(', ')}\n\nPrime 5:\n${JSON.stringify(righe.slice(0,5), null, 2)}`;
+    } else if (nome.match(/\.(json)$/i)) {
+      const parsed = JSON.parse(buffer.toString('utf-8'));
+      righe = Array.isArray(parsed) ? parsed : [parsed];
+      contenuto = `File JSON: ${righe.length} elementi\nStruttura: ${JSON.stringify(righe[0], null, 2).slice(0, 600)}`;
+    } else if (nome.match(/\.(xlsx|xls)$/i)) {
+      // Per Excel: istruisci Steven a suggerire l'uso della sezione import
+      contenuto = `File Excel "${nome}" (${Math.round(buffer.length/1024)}KB) caricato. Non posso leggerlo direttamente — per importare i contatti usa Impostazioni > Aggiorna contatti da file. Posso però aiutarti in altro modo.`;
+      righe = [];
+    } else {
+      contenuto = buffer.toString('utf-8').slice(0, 3000);
+    }
+
+    // Steven analizza
+    const systemPrompt = await costruisciContestoGestionale();
+    const msgUtente = `Ho caricato un file: "${nome}"\n\nContenuto:\n${contenuto}\n\n${messaggio || 'Analizza questo file e dimmi cosa fare.'}`;
+
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 30000);
+
+    const r = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+      body: JSON.stringify({
+        model: 'claude-haiku-4-5-20251001',
+        max_tokens: 800,
+        system: systemPrompt,
+        messages: [{ role: 'user', content: msgUtente }]
+      }),
+      signal: controller.signal
+    });
+    const data = await r.json();
+    let risposta = data.content?.[0]?.text || 'Non riesco ad analizzare il file.';
+
+    // Esegui eventuali azioni DB
+    const dbMatches = [...risposta.matchAll(/\[DB:op="([^"]+)",params=(\{[\s\S]*?\})\]/g)];
+    const dbRisultati = [];
+    for (const m of dbMatches) {
+      try {
+        const res2 = await stevenEseguiAzioneDB(m[1], JSON.parse(m[2]));
+        dbRisultati.push({ op: m[1], risultato: res2 });
+      } catch(e) { dbRisultati.push({ op: m[1], errore: e.message }); }
+    }
+
+    if (dbRisultati.length > 0) {
+      const r2 = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: 'claude-haiku-4-5-20251001',
+          max_tokens: 400,
+          system: systemPrompt,
+          messages: [
+            { role: 'user', content: msgUtente },
+            { role: 'assistant', content: risposta },
+            { role: 'user', content: `Risultati: ${JSON.stringify(dbRisultati)}. Fai un riepilogo conciso per Giovanni.` }
+          ]
+        })
+      });
+      const d2 = await r2.json();
+      risposta = d2.content?.[0]?.text || risposta;
+    }
+
+    const testoVisibile = risposta
+      .replace(/\[DB:op="[^"]*",params=\{[\s\S]*?\}\]/g, '')
+      .trim();
+
+    res.json({ reply: testoVisibile, dbRisultati, righe: righe.length });
+  } catch (err) {
+    console.error('[Steven File]', err.message);
+    res.json({ errore: err.message, reply: 'Errore nell\'analisi del file: ' + err.message });
+  }
+});
+
 // ── Cache contesto Steven (aggiornata ogni 5 minuti) ─────────────────────
 let _contestoCache = null;
 let _contestoCacheTs = 0;
