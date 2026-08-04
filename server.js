@@ -2261,7 +2261,7 @@ Accedi al gestionale per vedere i dettagli e agire.
     const profile = await withRetry(() => gmail.users.getProfile({ userId: 'me' }));
     const emailTo = profile.data.emailAddress;
 
-    const msg = [`To: ${emailTo}`, `Subject: Agente Mulino Vitaliti — ${new Date().toLocaleDateString('it-IT')}`, `Content-Type: text/plain; charset=utf-8`, '', corpo].join('\n');
+    const msg = [`To: ${emailTo}`, `Subject: ${encodeEmailSubject('Agente Mulino Vitaliti — ' + new Date().toLocaleDateString('it-IT'))}`, `Content-Type: text/plain; charset=utf-8`, '', corpo].join('\n');
     const encoded = Buffer.from(msg).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
     await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
 
@@ -2469,7 +2469,7 @@ app.post('/api/backoffice/solleciti/invia', async (req, res) => {
   try {
     oauth2Client.setCredentials(gmailTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-    const messageParts = [`To: ${email}`, `Subject: ${oggetto}`, `Content-Type: text/plain; charset=utf-8`, '', corpo];
+    const messageParts = [`To: ${email}`, `Subject: ${encodeEmailSubject(oggetto)}`, `Content-Type: text/plain; charset=utf-8`, '', corpo];
     const encoded = Buffer.from(messageParts.join('\n')).toString('base64').replace(/\+/g,'-').replace(/\//g,'_');
     await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
 
@@ -2655,6 +2655,13 @@ app.post('/api/steven/memoria', async (req, res) => {
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
+
+// Codifica soggetto email per caratteri non-ASCII (RFC 2047)
+function encodeEmailSubject(subject) {
+  // Se contiene solo ASCII, nessuna codifica necessaria
+  if (/^[\x00-\x7F]*$/.test(subject)) return subject;
+  return `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`;
+}
 
 // ── Cache contesto Steven (aggiornata ogni 5 minuti) ─────────────────────
 let _contestoCache = null;
@@ -3866,7 +3873,7 @@ app.post('/api/gmail/send', async (req, res) => {
     if (attachments && attachments.length) {
       // Multipart message
       messageParts.push(`To: ${to}`);
-      messageParts.push(`Subject: ${subject}`);
+      messageParts.push(`Subject: ${encodeEmailSubject(subject)}`);
       messageParts.push(`MIME-Version: 1.0`);
       messageParts.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
       messageParts.push('');
@@ -3884,7 +3891,7 @@ app.post('/api/gmail/send', async (req, res) => {
       });
       messageParts.push(`--${boundary}--`);
     } else {
-      messageParts = [`To: ${to}`, `Subject: ${subject}`, `Content-Type: text/${isHtml?'html':'plain'}; charset=utf-8`, '', body];
+      messageParts = [`To: ${to}`, `Subject: ${encodeEmailSubject(subject)}`, `Content-Type: text/${isHtml?'html':'plain'}; charset=utf-8`, '', body];
     }
     const msg = messageParts.join('\n');
     const encoded = Buffer.from(msg).toString('base64').replace(/\+/g,'-').replace(/\//g,'_');
@@ -4113,7 +4120,7 @@ async function inviaEmailAutomazione(a, lead) {
     corpo = corpo.replace(/\{\{nome\}\}/gi, lead.nome||'').replace(/\{\{azienda\}\}/gi, lead.azienda||'');
     const oggetto = (a.azione_email_oggetto||'').replace(/\{\{nome\}\}/gi, lead.nome||'');
     const raw = Buffer.from(
-      `To: ${emailLead}\r\nSubject: ${oggetto}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpo}`
+      `To: ${emailLead}\r\nSubject: ${encodeEmailSubject(oggetto)}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpo}`
     ).toString('base64').replace(/\+/g,'-').replace(/\//g,'_').replace(/=+$/,'');
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
     return { ok: true };
