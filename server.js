@@ -1203,7 +1203,32 @@ app.post('/api/clienti/importa-excel/anteprima', async (req, res) => {
       if (certo) certi.push(entry); else dubbi.push(entry);
     }
 
-    res.json({ certi, dubbi, senzaMatch: senzaMatch.map(r => r.nome || '(riga senza nome)') });
+    res.json({ certi, dubbi, senzaMatch: senzaMatch.map(r => r.nome || '(riga senza nome)'), senzaMatchRighe: senzaMatch });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// FASE 2b: crea nuovi clienti dalle righe senza corrispondenza
+app.post('/api/clienti/importa-excel/crea-nuovi', async (req, res) => {
+  const { righe } = req.body;
+  if (!Array.isArray(righe) || righe.length === 0) return res.json({ creati: 0 });
+  try {
+    let creati = 0, saltati = 0;
+    for (const r of righe) {
+      if (!r.nome || r.nome.trim().length < 2) { saltati++; continue; }
+      // Genera codice progressivo
+      const last = await pool.query(`SELECT codice FROM clienti WHERE codice LIKE 'C%' ORDER BY codice DESC LIMIT 1`);
+      const num = last.rows[0] ? parseInt(last.rows[0].codice.replace('C',''))+1 : 1;
+      const codice = 'C' + String(num).padStart(3,'0');
+      await pool.query(
+        `INSERT INTO clienti (codice,nome,tipo,tel,email,citta,ind_legale,ind_consegna,ref,piva,sdi,pec,note)
+         VALUES ($1,$2,'cliente',$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)`,
+        [codice, r.nome.trim(), r.tel||null, r.email||null, r.citta||null,
+         r.ind_legale||null, r.ind_consegna||null, r.ref||null,
+         r.piva||null, r.sdi||null, r.pec||null, r.note||null]
+      );
+      creati++;
+    }
+    res.json({ creati, saltati });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -1919,23 +1944,349 @@ async function boEseguiCiclo(origine = 'automatico') {
   }
 }
 
-// ── Scheduler: controlla ogni 30 minuti se è ora di generare il rapporto ──
-// Genera automaticamente una volta al giorno, la prima volta dopo le 7:00
+// ══════════════════════════════════════════════════════════════════════════
+// LOOP AGENTE AUTONOMO — gira ogni ora, analizza e agisce
+// ══════════════════════════════════════════════════════════════════════════
+
+let agenteLock = false; // evita esecuzioni sovrapposte
+
+async function eseguiLoopAgente(origine = 'automatico') {
+  if (agenteLock) { console.log('[Agente] Loop già in esecuzione, salto.'); return; }
+  agenteLock = true;
+  const ts = new Date().toISOString();
+  console.log(`\n[Agente] ═══ Inizio ciclo (${origine}) ${ts} ═══`);
+
+  const risultati = {
+    clientiARischio: 0, taskCreati: 0, alertCreati: 0,
+    crescitaAnalizzata: false, ficVerificato: false,
+    errori: []
+  };
+
+  try {
+    // ── 1. SEGNA CLIENTI INATTIVI COME "A RISCHIO" ──────────────────────
+    await agenteSegnaClintiARischio(risultati);
+
+    // ── 2. CREA TASK AUTOMATICI DI FOLLOW-UP ────────────────────────────
+    await agenteTaskFollowUp(risultati);
+
+    // ── 3. ANALISI CRESCITA AZIENDALE ───────────────────────────────────
+    await agenteAnalisiCrescita(risultati);
+
+    // ── 4. VERIFICA COERENZA CONTABILITÀ / FIC ──────────────────────────
+    await agenteVerificaFIC(risultati);
+
+    // ── 5. RAPPORTO GIORNALIERO (solo una volta al giorno, dopo le 7) ────
+    const ora = new Date();
+    if (ora.getHours() >= 7) {
+      const oggi = ora.toISOString().slice(0, 10);
+      const esiste = await pool.query(`SELECT id FROM backoffice_rapporti WHERE data=$1`, [oggi]);
+      if (!esiste.rows.length) {
+        await boEseguiCiclo(origine);
+        console.log('[Agente] Rapporto giornaliero generato');
+      }
+    }
+
+    // ── 6. NOTIFICA RIEPILOGO SU EMAIL SE CI SONO COSE IMPORTANTI ───────
+    if (risultati.clientiARischio > 0 || risultati.taskCreati > 0 || risultati.alertCreati > 0) {
+      await agenteInviaNotificaEmail(risultati);
+    }
+
+    console.log(`[Agente] Ciclo completato: ${JSON.stringify(risultati)}`);
+  } catch (e) {
+    console.error('[Agente] Errore ciclo principale:', e.message);
+    risultati.errori.push(e.message);
+  } finally {
+    agenteLock = false;
+  }
+  return risultati;
+}
+
+// ── 1. Segna clienti inattivi come "a rischio" ────────────────────────────
+async function agenteSegnaClintiARischio(risultati) {
+  try {
+    // Clienti senza ordini da più di 60 giorni che non sono ancora "a rischio"
+    const soglia = new Date(); soglia.setDate(soglia.getDate() - 60);
+    const inattivi = await pool.query(`
+      SELECT c.id, c.nome, c.tag, MAX(o.data) as ultimo_ordine
+      FROM clienti c
+      LEFT JOIN ordini o ON o.cliente_id = c.id
+      WHERE c.tipo = 'cliente'
+      GROUP BY c.id, c.nome, c.tag
+      HAVING (MAX(o.data) IS NULL OR MAX(o.data) < $1)
+        AND (c.tag IS NULL OR c.tag NOT LIKE '%rischio%')
+    `, [soglia.toISOString().slice(0, 10)]);
+
+    for (const c of inattivi.rows) {
+      const gg = c.ultimo_ordine
+        ? Math.floor((new Date() - new Date(c.ultimo_ordine)) / 86400000)
+        : null;
+      const nuovoTag = ((c.tag || '') + ' rischio').trim();
+      await pool.query(`UPDATE clienti SET tag=$1 WHERE id=$2`, [nuovoTag, c.id]);
+
+      // Crea alert
+      const esiste = await pool.query(
+        `SELECT id FROM backoffice_alert WHERE tipo='cliente_rischio' AND riferimento=$1 AND letto=false`,
+        [`cli:${c.id}`]
+      );
+      if (!esiste.rows.length) {
+        await pool.query(
+          `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento)
+           VALUES ('cliente_rischio','media',$1,$2,$3)`,
+          [
+            `Cliente inattivo: ${c.nome}`,
+            `Nessun ordine da ${gg !== null ? gg + ' giorni' : 'sempre'}`,
+            `cli:${c.id}`
+          ]
+        );
+        risultati.clientiARischio++;
+        risultati.alertCreati++;
+      }
+    }
+    console.log(`[Agente] Clienti segnati a rischio: ${risultati.clientiARischio}`);
+  } catch (e) { risultati.errori.push('clientiARischio: ' + e.message); }
+}
+
+// ── 2. Crea task automatici di follow-up ─────────────────────────────────
+async function agenteTaskFollowUp(risultati) {
+  try {
+    // a) Task per insoluti oltre 30 giorni senza task aperto
+    const insoluti = await pool.query(`
+      SELECT m.id, m.descrizione, m.importo, m.data,
+             (CURRENT_DATE - m.data) AS giorni
+      FROM movimenti m
+      WHERE m.tipo = 'entrata' AND m.pagato = false
+        AND (CURRENT_DATE - m.data) >= 30
+    `);
+
+    for (const m of insoluti.rows) {
+      const ref = `sollecito:mov:${m.id}`;
+      const esiste = await pool.query(
+        `SELECT id FROM tasks WHERE titolo LIKE $1 AND stato IN ('da_fare','in_corso')`,
+        [`%mov:${m.id}%`]
+      );
+      if (esiste.rows.length) continue;
+
+      const scadenza = new Date();
+      scadenza.setDate(scadenza.getDate() + 3);
+      await pool.query(
+        `INSERT INTO tasks (titolo, priorita, scadenza, stato, assegnata_a, assegnata_da)
+         VALUES ($1,$2,$3,'da_fare','Giovanni','Agente AI')`,
+        [
+          `Sollecita pagamento: ${m.descrizione || 'mov:' + m.id} — €${Number(m.importo).toFixed(2)} (${m.giorni}gg)`,
+          Number(m.giorni) > 60 ? 'alta' : 'media',
+          scadenza.toISOString().slice(0, 10)
+        ]
+      );
+      risultati.taskCreati++;
+    }
+
+    // b) Task per clienti a rischio senza task di follow-up aperto
+    const aRischio = await pool.query(`
+      SELECT c.id, c.nome FROM clienti c
+      WHERE c.tag LIKE '%rischio%' AND c.tipo = 'cliente'
+    `);
+    for (const c of aRischio.rows) {
+      const esiste = await pool.query(
+        `SELECT id FROM tasks WHERE titolo LIKE $1 AND stato IN ('da_fare','in_corso')`,
+        [`%Ricontatta ${c.nome}%`]
+      );
+      if (esiste.rows.length) continue;
+      const scadenza = new Date(); scadenza.setDate(scadenza.getDate() + 7);
+      await pool.query(
+        `INSERT INTO tasks (titolo, priorita, scadenza, stato, assegnata_a, assegnata_da)
+         VALUES ($1,'media',$2,'da_fare','Giovanni','Agente AI')`,
+        [`Ricontatta ${c.nome} — cliente inattivo`, scadenza.toISOString().slice(0, 10)]
+      );
+      risultati.taskCreati++;
+    }
+    console.log(`[Agente] Task creati: ${risultati.taskCreati}`);
+  } catch (e) { risultati.errori.push('taskFollowUp: ' + e.message); }
+}
+
+// ── 3. Analisi crescita aziendale ─────────────────────────────────────────
+async function agenteAnalisiCrescita(risultati) {
+  try {
+    const oggi = new Date();
+    const meseCorrente = oggi.toISOString().slice(0, 7); // YYYY-MM
+    const mesePrecedente = new Date(oggi.getFullYear(), oggi.getMonth() - 1, 1).toISOString().slice(0, 7);
+    const mese3fa = new Date(oggi.getFullYear(), oggi.getMonth() - 3, 1).toISOString().slice(0, 7);
+
+    const [fatMese, fatPrec, fat3m, ordMese, ordPrec, clientiNuovi] = await Promise.all([
+      pool.query(`SELECT COALESCE(SUM(importo),0) AS tot FROM movimenti WHERE tipo='entrata' AND TO_CHAR(data,'YYYY-MM')=$1`, [meseCorrente]),
+      pool.query(`SELECT COALESCE(SUM(importo),0) AS tot FROM movimenti WHERE tipo='entrata' AND TO_CHAR(data,'YYYY-MM')=$1`, [mesePrecedente]),
+      pool.query(`SELECT COALESCE(SUM(importo),0) AS tot FROM movimenti WHERE tipo='entrata' AND TO_CHAR(data,'YYYY-MM')>=$1`, [mese3fa]),
+      pool.query(`SELECT COUNT(*) AS n FROM ordini WHERE TO_CHAR(data,'YYYY-MM')=$1`, [meseCorrente]),
+      pool.query(`SELECT COUNT(*) AS n FROM ordini WHERE TO_CHAR(data,'YYYY-MM')=$1`, [mesePrecedente]),
+      pool.query(`SELECT COUNT(*) AS n FROM clienti WHERE tipo='cliente' AND TO_CHAR(created_at,'YYYY-MM')=$1`, [meseCorrente]),
+    ]);
+
+    const totMese = Number(fatMese.rows[0].tot);
+    const totPrec = Number(fatPrec.rows[0].tot);
+    const tot3m = Number(fat3m.rows[0].tot);
+    const varPct = totPrec > 0 ? ((totMese - totPrec) / totPrec * 100).toFixed(1) : null;
+    const tendenza = varPct === null ? 'n/d' : (Number(varPct) >= 5 ? '📈 crescita' : Number(varPct) <= -5 ? '📉 calo' : '➡️ stabile');
+
+    // Salva analisi come alert informativo (una volta al giorno)
+    const chiaveGiorno = `crescita:${oggi.toISOString().slice(0, 10)}`;
+    const esisteAnalisi = await pool.query(
+      `SELECT id FROM backoffice_alert WHERE riferimento=$1`, [chiaveGiorno]
+    );
+    if (!esisteAnalisi.rows.length) {
+      await pool.query(
+        `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento, letto)
+         VALUES ('analisi_crescita',$1,$2,$3,$4,false)`,
+        [
+          Number(varPct) <= -10 ? 'alta' : Number(varPct) <= -5 ? 'media' : 'bassa',
+          `Andamento ${meseCorrente}: ${tendenza} (${varPct !== null ? (varPct > 0 ? '+' : '') + varPct + '%' : 'primo mese'})`,
+          `Fatturato mese: €${totMese.toFixed(2)} | Mese prec.: €${totPrec.toFixed(2)} | Ultimi 3 mesi: €${tot3m.toFixed(2)} | Ordini: ${ordMese.rows[0].n} (prec: ${ordPrec.rows[0].n}) | Nuovi clienti: ${clientiNuovi.rows[0].n}`,
+          chiaveGiorno
+        ]
+      );
+      risultati.alertCreati++;
+    }
+
+    risultati.crescitaAnalizzata = true;
+    risultati.datiCrescita = { meseCorrente, totMese, totPrec, varPct, tendenza, tot3m };
+    console.log(`[Agente] Crescita: ${tendenza} ${varPct}%`);
+  } catch (e) { risultati.errori.push('analisiCrescita: ' + e.message); }
+}
+
+// ── 4. Verifica coerenza contabilità / FIC ────────────────────────────────
+async function agenteVerificaFIC(risultati) {
+  if (!ficTokens || !ficCompanyId) return;
+  try {
+    const oggi = new Date().toISOString().slice(0, 10);
+    const chiave = `fic:verifica:${oggi}`;
+    const esiste = await pool.query(`SELECT id FROM backoffice_alert WHERE riferimento=$1`, [chiave]);
+    if (esiste.rows.length) return; // già verificato oggi
+
+    // Conta fatture emesse su FIC nell'ultimo mese
+    const meseScorso = new Date(); meseScorso.setMonth(meseScorso.getMonth() - 1);
+    const dataMin = meseScorso.toISOString().slice(0, 10);
+
+    const ficResp = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=invoice&per_page=100&sort=-date`);
+    const ficData = await ficResp.json();
+    const fattFic = (ficData.data || []).filter(f => f.date >= dataMin);
+    const fattGest = await pool.query(
+      `SELECT COUNT(*) AS n FROM movimenti WHERE tipo='entrata' AND data >= $1`, [dataMin]
+    );
+
+    const nFic = fattFic.length;
+    const nGest = parseInt(fattGest.rows[0].n);
+    const diff = nFic - nGest;
+
+    if (diff > 2) {
+      await pool.query(
+        `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento, letto)
+         VALUES ('fic_disallineamento','media',$1,$2,$3,false)`,
+        [
+          `${diff} fatture FIC non registrate in contabilità`,
+          `FIC ha ${nFic} fatture emesse nell'ultimo mese, il gestionale ne registra ${nGest}. Premi "Importa spese da FIC" per allineare.`,
+          chiave
+        ]
+      );
+      risultati.alertCreati++;
+      console.log(`[Agente] FIC disallineamento: ${diff} fatture mancanti`);
+    } else {
+      // Salva verifica ok senza alert visibile
+      await pool.query(
+        `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento, letto)
+         VALUES ('fic_ok','bassa','FIC allineato',$1,$2,true)`,
+        [`FIC: ${nFic} fatture | Gestionale: ${nGest} movimenti`, chiave]
+      );
+    }
+    risultati.ficVerificato = true;
+  } catch (e) { risultati.errori.push('verificaFIC: ' + e.message); }
+}
+
+// ── 5. Notifica email con riepilogo ───────────────────────────────────────
+async function agenteInviaNotificaEmail(risultati) {
+  if (!gmailTokens) return;
+  try {
+    // Solo una volta al giorno
+    const chiave = `notifica:${new Date().toISOString().slice(0, 10)}`;
+    const esiste = await pool.query(`SELECT id FROM backoffice_alert WHERE riferimento=$1`, [chiave]);
+    if (esiste.rows.length) return;
+
+    const crescita = risultati.datiCrescita;
+    const corpo = `Buongiorno Giovanni,
+
+ecco il riepilogo automatico dell'agente Mulino Vitaliti:
+
+📊 ANDAMENTO
+${crescita ? `${crescita.tendenza} ${crescita.varPct !== null ? (crescita.varPct > 0 ? '+' : '') + crescita.varPct + '%' : ''} rispetto al mese scorso
+Fatturato ${crescita.meseCorrente}: €${Number(crescita.totMese).toFixed(2)}` : 'Analisi non disponibile'}
+
+⚠️ AZIONI AUTOMATICHE
+• ${risultati.clientiARischio} clienti segnati come "a rischio"
+• ${risultati.taskCreati} nuovi task di follow-up creati
+• ${risultati.alertCreati} alert generati
+
+Accedi al gestionale per vedere i dettagli e agire.
+
+— Agente Mulino Vitaliti`;
+
+    const oauth2 = new google.auth.OAuth2(
+      process.env.GOOGLE_CLIENT_ID, process.env.GOOGLE_CLIENT_SECRET, process.env.REDIRECT_URI
+    );
+    oauth2.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2 });
+
+    // Ottieni email dell'account connesso
+    const profile = await withRetry(() => gmail.users.getProfile({ userId: 'me' }));
+    const emailTo = profile.data.emailAddress;
+
+    const msg = [`To: ${emailTo}`, `Subject: Agente Mulino Vitaliti — ${new Date().toLocaleDateString('it-IT')}`, `Content-Type: text/plain; charset=utf-8`, '', corpo].join('\n');
+    const encoded = Buffer.from(msg).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
+
+    await pool.query(
+      `INSERT INTO backoffice_alert (tipo, gravita, titolo, riferimento, letto)
+       VALUES ('notifica_inviata','bassa','Report giornaliero inviato via email',$1,true)`,
+      [chiave]
+    );
+    console.log(`[Agente] Email notifica inviata a ${emailTo}`);
+  } catch (e) { risultati.errori.push('notificaEmail: ' + e.message); }
+}
+
+// ── Endpoint per forzare il loop manualmente ──────────────────────────────
+app.post('/api/agente/esegui', async (req, res) => {
+  try {
+    const risultati = await eseguiLoopAgente('manuale');
+    res.json({ success: true, risultati });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.get('/api/agente/stato', async (req, res) => {
+  try {
+    const [tasks, alert, clientiRischio] = await Promise.all([
+      pool.query(`SELECT COUNT(*) AS n FROM tasks WHERE assegnata_da='Agente AI' AND stato='da_fare'`),
+      pool.query(`SELECT COUNT(*) AS n FROM backoffice_alert WHERE letto=false`),
+      pool.query(`SELECT COUNT(*) AS n FROM clienti WHERE tag LIKE '%rischio%' AND tipo='cliente'`),
+    ]);
+    res.json({
+      agenteLock,
+      taskAperti: parseInt(tasks.rows[0].n),
+      alertNonLetti: parseInt(alert.rows[0].n),
+      clientiARischio: parseInt(clientiRischio.rows[0].n),
+    });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// ── SCHEDULER PRINCIPALE: ogni ora ────────────────────────────────────────
 let boUltimaEsecuzione = null;
 setInterval(async () => {
   try {
     const ora = new Date();
-    const oggi = ora.toISOString().slice(0, 10);
-    if (boUltimaEsecuzione === oggi) return;      // già fatto oggi
-    if (ora.getHours() < 7) return;                // troppo presto
+    // Gira ogni ora esatta (minuto 0)
+    if (ora.getMinutes() > 5) return; // tolleranza 5 minuti
+    const chiaveOra = ora.toISOString().slice(0, 13); // YYYY-MM-DDTHH
+    if (boUltimaEsecuzione === chiaveOra) return;
+    boUltimaEsecuzione = chiaveOra;
+    await eseguiLoopAgente('automatico');
+  } catch (e) { console.error('[Scheduler] Errore:', e.message); }
+}, 60 * 1000); // controlla ogni minuto
 
-    const esiste = await pool.query(`SELECT id FROM backoffice_rapporti WHERE data=$1`, [oggi]);
-    if (esiste.rows.length) { boUltimaEsecuzione = oggi; return; }
-
-    await boEseguiCiclo('automatico');
-    boUltimaEsecuzione = oggi;
-  } catch (e) { /* già loggato */ }
-}, 30 * 60 * 1000);
 
 // ── ENDPOINT AGENTE BACK OFFICE ───────────────────────────────────────────
 
