@@ -1078,23 +1078,35 @@ tbody tr:hover{background:var(--surface-2)}
 
       <!-- Team AI -->
       <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-        <!-- Steven - attivo -->
+        <!-- Steven -->
         <div onclick="selezionaAgente('steven')" id="agente-card-steven"
-          style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--brand);border-radius:var(--r);background:var(--brand-light);cursor:pointer;min-width:200px">
+          style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--brand);border-radius:var(--r);background:var(--brand-light);cursor:pointer;min-width:190px">
           <div style="width:36px;height:36px;border-radius:50%;background:var(--brand);display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">S</div>
           <div>
             <div style="font-size:13px;font-weight:700">Steven</div>
-            <div style="font-size:11px;color:var(--text-2)">Back office · loop ogni ora</div>
+            <div style="font-size:11px;color:var(--text-2)">Back Office</div>
           </div>
           <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
         </div>
-        <!-- Placeholder figure future -->
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px dashed var(--border);border-radius:var(--r);cursor:not-allowed;min-width:200px;opacity:0.5">
-          <div style="width:36px;height:36px;border-radius:50%;background:var(--surface-2);display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">+</div>
+        <!-- Simona -->
+        <div onclick="selezionaAgente('simona')" id="agente-card-simona"
+          style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--border);border-radius:var(--r);background:var(--surface);cursor:pointer;min-width:190px">
+          <div style="width:36px;height:36px;border-radius:50%;background:#e91e8c;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">Si</div>
           <div>
-            <div style="font-size:13px;font-weight:700;color:var(--text-3)">Prossima figura</div>
-            <div style="font-size:11px;color:var(--text-3)">In arrivo...</div>
+            <div style="font-size:13px;font-weight:700">Simona</div>
+            <div style="font-size:11px;color:var(--text-2)">Digital Marketing</div>
           </div>
+          <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
+        </div>
+        <!-- Mirko -->
+        <div onclick="selezionaAgente('mirko')" id="agente-card-mirko"
+          style="display:flex;align-items:center;gap:10px;padding:10px 16px;border:2px solid var(--border);border-radius:var(--r);background:var(--surface);cursor:pointer;min-width:190px">
+          <div style="width:36px;height:36px;border-radius:50%;background:#1976d2;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">M</div>
+          <div>
+            <div style="font-size:13px;font-weight:700">Mirko</div>
+            <div style="font-size:11px;color:var(--text-2)">Commerciale</div>
+          </div>
+          <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
         </div>
       </div>
 
@@ -2139,7 +2151,10 @@ tbody tr:hover{background:var(--surface-2)}
 <!-- Scripts applicazione (separati per modulo) -->
 <script src="app-core.js"></script>
 <script src="app-modules.js"></script>
-<script src="app-steven.js"></script>
+<script src="app-steven-bo.js"></script>
+<script src="app-virtual-company.js"></script>
+<script src="app-simona.js"></script>
+<script src="app-mirko.js"></script>
 <script src="app-ui.js"></script>
 
 </body>
