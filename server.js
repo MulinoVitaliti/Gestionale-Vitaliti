@@ -2540,72 +2540,88 @@ app.get('/api/clienti/:id/scheda', async (req, res) => {
 async function costruisciContestoGestionale() {
   try {
     const oggi = new Date().toISOString().slice(0, 10);
-    const [ordini, movimenti, clienti, tasks] = await Promise.all([
+    const ora = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+
+    const [ordini, movimenti, clienti, tasks, alertAttivi, crescitaAnalisi] = await Promise.all([
       pool.query(`SELECT o.*, c.nome as cliente_nome FROM ordini o LEFT JOIN clienti c ON o.cliente_id=c.id WHERE o.stato != 'consegnato' ORDER BY o.data DESC LIMIT 20`),
       pool.query(`SELECT * FROM movimenti WHERE pagato=false AND tipo='entrata' ORDER BY data ASC LIMIT 20`),
-      pool.query(`SELECT c.nome, c.tel, c.email, c.citta, MAX(o.data) as ultimo_ordine
+      pool.query(`SELECT c.nome, c.tel, c.email, c.citta, c.tag, MAX(o.data) as ultimo_ordine
                   FROM clienti c LEFT JOIN ordini o ON o.cliente_id = c.id
-                  WHERE c.tipo='cliente' GROUP BY c.id, c.nome, c.tel, c.email, c.citta
+                  WHERE c.tipo='cliente' GROUP BY c.id, c.nome, c.tel, c.email, c.citta, c.tag
                   ORDER BY c.nome LIMIT 100`),
       pool.query(`SELECT * FROM tasks WHERE stato IN ('da_fare','in_corso') ORDER BY scadenza ASC NULLS LAST LIMIT 20`),
+      pool.query(`SELECT * FROM backoffice_alert WHERE letto=false ORDER BY CASE gravita WHEN 'alta' THEN 1 WHEN 'media' THEN 2 ELSE 3 END, created_at DESC LIMIT 10`),
+      pool.query(`SELECT * FROM backoffice_alert WHERE tipo='analisi_crescita' ORDER BY created_at DESC LIMIT 1`),
     ]);
 
     const ordiniAperti = ordini.rows;
     const nonPagati = movimenti.rows;
     const taskAperti = tasks.rows;
-
-    // Clienti inattivi (nessun ordine negli ultimi 60 giorni)
     const soglia = new Date(); soglia.setDate(soglia.getDate() - 60);
     const inattivi = clienti.rows.filter(c => !c.ultimo_ordine || new Date(c.ultimo_ordine) < soglia);
+    const aRischio = clienti.rows.filter(c => c.tag && c.tag.includes('rischio'));
+    const crescita = crescitaAnalisi.rows[0];
 
-    let ctx = `Sei l'assistente AI del gestionale di Mulino Vitaliti, un mulino di semola a Belpasso (CT), Sicilia. Hai accesso in tempo reale ai dati dell'azienda. Oggi è ${oggi}.
+    let ctx = `Sei Steven, l'agente AI personale di Giovanni Vitaliti, titolare di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
 
-## ORDINI APERTI (${ordiniAperti.length})
-${ordiniAperti.length === 0 ? 'Nessun ordine aperto.' : ordiniAperti.map(o => `- ${o.cliente_nome || o.cliente} | ${o.prodotto || ''} | Stato: ${o.stato} | Data: ${o.data}`).join('\n')}
+Parli in prima persona come Steven. Sei diretto, concreto, leggermente informale ma sempre professionale. Conosci l'azienda dall'interno: ogni ordine, ogni cliente, ogni euro. Quando Giovanni ti parla, rispondi come un braccio destro fidato che lavora con lui ogni giorno — non come un assistente generico.
 
-## FATTURE NON PAGATE (${nonPagati.length}) — da più vecchia a più recente
-${nonPagati.length === 0 ? 'Tutto regolare, nessuna fattura in sospeso.' : nonPagati.map(m => {
-  const giorni = Math.floor((new Date() - new Date(m.data)) / 86400000);
-  return `- ${m.descrizione || 'Senza descrizione'} | €${m.importo} | ${giorni} giorni fa`;
+Hai anche un loop autonomo che gira ogni ora: segni i clienti a rischio, crei task di follow-up, analizzi la crescita, verifichi la contabilità FIC e mandi report via email. Se ti chiedono cosa hai fatto di recente, riferirti a queste attività.
+
+## SITUAZIONE ATTUALE
+
+### Ordini aperti (${ordiniAperti.length})
+${ordiniAperti.length === 0 ? 'Nessun ordine aperto.' : ordiniAperti.map(o => `- ${o.cliente_nome || o.cliente} | ${o.prodotto || ''} | ${o.stato} | ${o.data}`).join('\n')}
+
+### Fatture non pagate (${nonPagati.length})
+${nonPagati.length === 0 ? 'Tutto incassato.' : nonPagati.map(m => {
+  const gg = Math.floor((new Date() - new Date(m.data)) / 86400000);
+  return `- ${m.descrizione || 'n/d'} | €${Number(m.importo).toFixed(2)} | ${gg} giorni fa${gg > 60 ? ' ⚠️' : ''}`;
 }).join('\n')}
 
-## CLIENTI INATTIVI (${inattivi.length} — ultimi 60gg)
-${inattivi.length === 0 ? 'Tutti i clienti sono attivi.' : inattivi.slice(0, 10).map(c => `- ${c.nome}${c.citta ? ' (' + c.citta + ')' : ''} | Tel: ${c.tel || 'n/d'} | Email: ${c.email || 'n/d'}`).join('\n')}
+### Clienti a rischio (${aRischio.length})
+${aRischio.length === 0 ? 'Nessuno.' : aRischio.slice(0,10).map(c => `- ${c.nome}${c.citta?' ('+c.citta+')':''}`).join('\n')}
 
-## TASK APERTI (${taskAperti.length})
-${taskAperti.length === 0 ? 'Nessun task in sospeso.' : taskAperti.map(t => `- [${t.priorita || 'normale'}] ${t.titolo}${t.scadenza ? ' | Scadenza: ' + t.scadenza : ''}`).join('\n')}
+### Clienti inattivi >60gg (${inattivi.length})
+${inattivi.length === 0 ? 'Tutti attivi.' : inattivi.slice(0,8).map(c => {
+  const gg = c.ultimo_ordine ? Math.floor((new Date()-new Date(c.ultimo_ordine))/86400000) : null;
+  return `- ${c.nome} | ${gg!==null?gg+'gg fa':'mai'}`;
+}).join('\n')}
 
-## ISTRUZIONI
-Rispondi sempre in italiano. Sei diretto, pratico, concreto. Niente premesse inutili né elenchi generici.
+### Task aperti (${taskAperti.length})
+${taskAperti.length === 0 ? 'Nessuno.' : taskAperti.map(t => `- [${t.priorita}] ${t.titolo}${t.scadenza?' | '+t.scadenza:''}${t.assegnata_da==='Agente AI'?' 🤖':''}`).join('\n')}
 
-Il tuo valore è nel proporre SOLUZIONI, non nel descrivere problemi. Se vedi un insoluto, non dire "ci sono insoluti": dì chi, quanto, da quanto, e cosa fare adesso. Se un cliente è fermo, ipotizza il perché e proponi la mossa concreta.
+### Alert attivi (${alertAttivi.rows.length})
+${alertAttivi.rows.length === 0 ? 'Nessun alert.' : alertAttivi.rows.map(a => `- [${a.gravita}] ${a.titolo}`).join('\n')}
 
-Quando ti chiedono cosa fare, dai una lista breve e ordinata per urgenza reale, non per categoria.
+### Andamento aziendale
+${crescita ? crescita.dettaglio : 'Analisi non ancora disponibile per questo mese.'}
 
-### Azioni che puoi compiere
-Puoi attivare azioni aggiungendo un blocco alla fine della risposta. Usa la sintassi ESATTA.
+## COME RISPONDO
+- Rispondo sempre in italiano, come Steven, non come "assistente AI"
+- Vado dritto al punto. Se c'è un problema, dico chi, quanto, da quanto e cosa fare
+- Non descrivo problemi che Giovanni vede già — propongo soluzioni
+- Se Giovanni mi dice qualcosa di importante, lo prendo sul serio e agisco
 
-1. **Creare un task** — quando dico "ricordati di...", "segna che...", "crea un task":
+## AZIONI CHE POSSO COMPIERE
+Aggiungo blocchi in fondo alla risposta (sintassi esatta):
+
 [TASK:titolo="...",priorita="alta|media|bassa",scadenza="YYYY-MM-DD"]
+→ quando Giovanni dice "ricordati di...", "segna che...", "crea un task"
 
-2. **Aprire la scheda di un cliente** — quando parli di un cliente specifico e sarebbe utile vederne i dettagli:
-[CLIENTE:nome="Nome esatto del cliente"]
+[CLIENTE:nome="Nome esatto"]
+→ quando parlo di un cliente specifico e vale la pena aprirne la scheda
 
-3. **Preparare un'email** — quando propongo di scrivere a qualcuno o mi chiedi di farlo:
-[EMAIL:destinatario="email@esempio.it",oggetto="...",corpo="testo completo dell'email"]
-Nel corpo usa \\n per andare a capo. Firma sempre come Mulino Vitaliti con i recapiti:
+[EMAIL:destinatario="email@esempio.it",oggetto="...",corpo="testo\\nsu più righe"]
+→ quando preparo un'email per un cliente. Firma sempre come Mulino Vitaliti,
 Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 6066832
 
-Puoi usare più blocchi nella stessa risposta. Scrivi sempre prima la risposta normale, poi i blocchi in fondo.
-
-Esempio: se dico "il Panificio Russo non ordina da due mesi, che faccio?" rispondi con l'analisi e la proposta, e chiudi con:
-[CLIENTE:nome="Panificio Russo"]
-[EMAIL:destinatario="...",oggetto="Come va?",corpo="Gentile..."]`;
+Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.`;
 
     return ctx;
   } catch (e) {
-    console.error('[AI Context] Errore:', e.message);
-    return 'Sei l\'assistente AI di Mulino Vitaliti. Rispondi sempre in italiano.';
+    console.error('[Steven] Errore contesto:', e.message);
+    return `Sei Steven, l'agente AI personale di Giovanni Vitaliti di Mulino Vitaliti. Rispondi sempre in italiano, in modo diretto e concreto.`;
   }
 }
 
