@@ -121,6 +121,11 @@ setInterval(() => {
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 app.use(express.static(path.join(__dirname, 'public')));
+// Serve anche i file JS dell'app dalla root del progetto
+app.use('/app-core.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-core.js')));
+app.use('/app-modules.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-modules.js')));
+app.use('/app-steven.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-steven.js')));
+app.use('/app-ui.js', (req, res) => res.sendFile(path.join(__dirname, 'public', 'app-ui.js')));
 
 // ── DATABASE ──────────────────────────────────────────────────────────────
 const pool = new Pool({
