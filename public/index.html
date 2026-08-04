@@ -1067,7 +1067,9 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="page-header">
         <div class="page-title">Assistente AI <span>Powered by Claude</span></div>
         <div style="display:flex;gap:8px">
+          <div id="agente-stato-badge" style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text-3);padding:0 8px"></div>
           <button class="btn btn-sm" onclick="boToggleBriefing()" id="btn-toggle-briefing"><i class="ti ti-clipboard-list"></i>Rapporto</button>
+          <button class="btn btn-sm btn-primary" onclick="eseguiAgenteManuale()" id="btn-esegui-agente"><i class="ti ti-robot"></i>Esegui agente</button>
           <button class="btn btn-sm" onclick="clearChat()"><i class="ti ti-trash"></i>Pulisci</button>
         </div>
       </div>
@@ -2342,6 +2344,7 @@ function showPage(id){
   }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
+  if(id==='ai'){ aggiornaStatoAgente(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
@@ -4356,6 +4359,48 @@ async function boInviaSollecito(i){
 }
 
 // ── RICERCA E SCHEDA CLIENTE (sezione AI) ────────────────────────────────
+// ── STATO E CONTROLLO AGENTE ──────────────────────────────────────────────
+async function aggiornaStatoAgente(){
+  try{
+    const r = await api.get('/api/agente/stato');
+    if(r.error) return;
+    const badge = document.getElementById('agente-stato-badge');
+    if(!badge) return;
+    const parti = [];
+    if(r.alertNonLetti > 0) parti.push(`<span style="color:var(--orange)">⚠️ ${r.alertNonLetti} alert</span>`);
+    if(r.clientiARischio > 0) parti.push(`<span style="color:var(--red)">🔴 ${r.clientiARischio} a rischio</span>`);
+    if(r.taskAperti > 0) parti.push(`<span style="color:var(--brand)">📋 ${r.taskAperti} task</span>`);
+    if(r.agenteLock) parti.push(`<span style="color:var(--text-3)"><i class="ti ti-loader"></i> in esecuzione</span>`);
+    badge.innerHTML = parti.join(' · ') || '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> tutto ok</span>';
+  }catch(e){}
+}
+
+async function eseguiAgenteManuale(){
+  const btn = document.getElementById('btn-esegui-agente');
+  if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Elaboro...'; }
+  try{
+    const r = await api.post('/api/agente/esegui', {});
+    if(r.error){ mostraToast('Errore: '+r.error, 'error'); return; }
+    const ris = r.risultati || {};
+    let msg = '✅ Agente completato:\n';
+    if(ris.clientiARischio) msg += `• ${ris.clientiARischio} clienti segnati a rischio\n`;
+    if(ris.taskCreati) msg += `• ${ris.taskCreati} task di follow-up creati\n`;
+    if(ris.alertCreati) msg += `• ${ris.alertCreati} alert generati\n`;
+    if(ris.crescitaAnalizzata && ris.datiCrescita) msg += `• Crescita: ${ris.datiCrescita.tendenza} ${ris.datiCrescita.varPct!==null?(ris.datiCrescita.varPct>0?'+':'')+ris.datiCrescita.varPct+'%':'n/d'}\n`;
+    if(ris.ficVerificato) msg += `• Contabilità FIC verificata\n`;
+    mostraToast(msg.split('\n')[0]);
+    aggiornaStatoAgente();
+    boCaricaAlert();
+    boCaricaListe();
+    // Aggiorna task nel gestionale
+    try{ const t=await api.get('/api/tasks'); if(!t.error){state.tasks=t; if(typeof renderTasks==='function')renderTasks();} }catch(e){}
+  }catch(e){ mostraToast('Errore: '+e.message, 'error'); }
+  finally{ if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-robot"></i>Esegui agente'; } }
+}
+
+// Aggiorna stato agente ogni 2 minuti
+setInterval(aggiornaStatoAgente, 2 * 60 * 1000);
+
 function boToggleBriefing(){
   const card = document.getElementById('backoffice-briefing');
   if(!card) return;
