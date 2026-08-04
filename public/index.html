@@ -6521,7 +6521,7 @@ function sendChat(){
   lDiv.innerHTML=`<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai" style="color:var(--text-3)">⟳ Elaborazione...</div>`;
   msgs.appendChild(lDiv); msgs.scrollTop=msgs.scrollHeight;
   document.getElementById('send-btn').disabled=true;
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:getCtx()+'\n\n---\n\n'+text}]})})
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:text}]})})
     .then(r=>r.json()).then(data=>{
       document.getElementById('ai-load').remove();
       const reply=data.reply||data.error||'Errore.';
