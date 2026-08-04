@@ -2385,6 +2385,80 @@ function getCtx(){
   const totU=state.movimenti.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+m.importo,0);
   return `Sei l'assistente AI del Mulino Vitaliti Antonio, fondato 1930, vende semola rimacinata di grano duro e farine in tutta Italia.\nCLIENTI (${state.clienti.length}):\n${cl}\nORDINI (${state.ordini.length}):\n${or}\nCONTABILITÀ: Entrate €${totE.toFixed(2)} | Uscite €${totU.toFixed(2)} | Saldo €${(totE-totU).toFixed(2)}\nRispondi in italiano, conciso e pratico.`;
 }
+// ── UPLOAD FILE A STEVEN ──────────────────────────────────────────────────
+async function stevenCaricaFile(input) {
+  const file = input.files?.[0];
+  if (!file) return;
+  input.value = ''; // reset input
+
+  const msgs = document.getElementById('chat-messages');
+
+  // Mostra messaggio utente con nome file
+  const uDiv = document.createElement('div'); uDiv.className = 'msg-user';
+  uDiv.innerHTML = `<div class="msg-avatar user">${ini(currentUser?.nome||'G')}</div>
+    <div class="msg-bubble user" style="display:flex;align-items:center;gap:8px">
+      <i class="ti ti-paperclip"></i>
+      <span>${file.name} (${Math.round(file.size/1024)}KB)</span>
+    </div>`;
+  msgs.appendChild(uDiv);
+
+  // Mostra loading
+  const lDiv = document.createElement('div'); lDiv.className = 'msg-ai'; lDiv.id = 'ai-load';
+  lDiv.innerHTML = `<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div>
+    <div class="msg-bubble ai" style="color:var(--text-3)">⟳ Analizzo ${file.name}...</div>`;
+  msgs.appendChild(lDiv);
+  msgs.scrollTop = msgs.scrollHeight;
+  document.getElementById('send-btn').disabled = true;
+
+  try {
+    // Leggi file come base64
+    const base64 = await new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = e => resolve(e.target.result.split(',')[1]);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+
+    const messaggio = document.getElementById('chat-input').value.trim() || '';
+    document.getElementById('chat-input').value = '';
+
+    const r = await fetch('/api/steven/analizza-file', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ nome: file.name, base64, messaggio })
+    });
+    const data = await r.json();
+
+    document.getElementById('ai-load')?.remove();
+
+    const reply = data.reply || data.errore || 'Non riesco ad analizzare il file.';
+    const aDiv = document.createElement('div'); aDiv.className = 'msg-ai';
+    aDiv.innerHTML = `<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div>
+      <div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
+    msgs.appendChild(aDiv);
+
+    // Mostra risultati DB se ci sono stati
+    if (data.dbRisultati?.length) {
+      const dbDiv = document.createElement('div'); dbDiv.className = 'msg-ai';
+      dbDiv.innerHTML = `<div class="msg-avatar ai" style="opacity:0"></div>
+        <div style="font-size:11px;color:var(--text-3);padding:4px 8px;background:var(--surface-2);border-radius:6px">
+          ${data.dbRisultati.map(r => `✅ ${r.op}: ${r.risultato?.dati ? JSON.stringify(r.risultato.dati).slice(0,100) : r.errore||'ok'}`).join('<br>')}
+        </div>`;
+      msgs.appendChild(dbDiv);
+    }
+
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch(e) {
+    document.getElementById('ai-load')?.remove();
+    const eDiv = document.createElement('div'); eDiv.className = 'msg-ai';
+    eDiv.innerHTML = `<div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div>
+      <div class="msg-bubble ai" style="color:var(--red)">Errore: ${e.message}</div>`;
+    msgs.appendChild(eDiv);
+  } finally {
+    document.getElementById('send-btn').disabled = false;
+  }
+}
+
 function sendAIMessage(t){document.getElementById('chat-input').value=t;sendChat();}
 function clearChat(){document.getElementById('chat-messages').innerHTML='<div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Chat pulita. Dimmi cosa ti serve, Giovanni.</div></div>';}
 function sendChat(){
