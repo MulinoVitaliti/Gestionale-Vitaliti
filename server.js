@@ -2663,6 +2663,149 @@ function encodeEmailSubject(subject) {
   return `=?UTF-8?B?${Buffer.from(subject).toString('base64')}?=`;
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// STEVEN DB ACCESS — accesso diretto al database dalla chat
+// ══════════════════════════════════════════════════════════════════════════
+
+// Whitelist di operazioni sicure che Steven può eseguire
+const STEVEN_DB_OPERAZIONI = {
+
+  // Cerca contatti per nome/email/tel
+  'cerca_contatto': async (params) => {
+    const q = (params.query || '').toLowerCase();
+    const r = await pool.query(
+      `SELECT id, codice, nome, tipo, tel, email, citta, piva, tag
+       FROM clienti
+       WHERE LOWER(nome) LIKE $1 OR LOWER(email) LIKE $1 OR tel LIKE $2
+       ORDER BY nome LIMIT 10`,
+      [`%${q}%`, `%${params.query}%`]
+    );
+    return r.rows;
+  },
+
+  // Aggiorna un campo specifico di un contatto
+  'aggiorna_contatto': async (params) => {
+    const { id, campo, valore } = params;
+    const CAMPI_CONSENTITI = ['tel', 'email', 'citta', 'ind_legale', 'ind_consegna', 'ref', 'piva', 'sdi', 'pec', 'note', 'tag'];
+    if (!CAMPI_CONSENTITI.includes(campo)) throw new Error(`Campo "${campo}" non modificabile da Steven`);
+    if (!id) throw new Error('ID contatto obbligatorio');
+    const r = await pool.query(
+      `UPDATE clienti SET ${campo}=$1 WHERE id=$2 RETURNING id, nome, ${campo}`,
+      [valore, id]
+    );
+    if (!r.rows[0]) throw new Error(`Contatto ${id} non trovato`);
+    return r.rows[0];
+  },
+
+  // Crea un nuovo contatto
+  'crea_contatto': async (params) => {
+    const { nome, tipo = 'cliente', tel, email, citta, piva, ref, note } = params;
+    if (!nome) throw new Error('Nome obbligatorio per creare un contatto');
+    const last = await pool.query(`SELECT codice FROM clienti WHERE codice LIKE 'C%' ORDER BY codice DESC LIMIT 1`);
+    const num = last.rows[0] ? parseInt(last.rows[0].codice.replace('C',''))+1 : 1;
+    const codice = 'C' + String(num).padStart(3,'0');
+    const r = await pool.query(
+      `INSERT INTO clienti (codice, nome, tipo, tel, email, citta, piva, ref, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id, codice, nome`,
+      [codice, nome, tipo, tel||null, email||null, citta||null, piva||null, ref||null, note||null]
+    );
+    return r.rows[0];
+  },
+
+  // Leggi lista contatti con filtri
+  'lista_contatti': async (params) => {
+    const { tipo, tag, citta, limit = 20 } = params;
+    let where = [], vals = [];
+    if (tipo) { where.push(`tipo=$${vals.length+1}`); vals.push(tipo); }
+    if (tag) { where.push(`tag LIKE $${vals.length+1}`); vals.push(`%${tag}%`); }
+    if (citta) { where.push(`LOWER(citta) LIKE $${vals.length+1}`); vals.push(`%${citta.toLowerCase()}%`); }
+    const r = await pool.query(
+      `SELECT id, codice, nome, tipo, tel, email, citta, tag FROM clienti
+       ${where.length ? 'WHERE '+where.join(' AND ') : ''}
+       ORDER BY nome LIMIT $${vals.length+1}`,
+      [...vals, limit]
+    );
+    return r.rows;
+  },
+
+  // Importa lista di contatti (array di oggetti)
+  'importa_contatti': async (params) => {
+    const { contatti } = params; // array [{nome, tel, email, citta, ...}]
+    if (!Array.isArray(contatti) || !contatti.length) throw new Error('Array contatti vuoto');
+    let creati = 0, aggiornati = 0, errori = [];
+    for (const c of contatti) {
+      if (!c.nome) { errori.push('Riga senza nome ignorata'); continue; }
+      try {
+        // Controlla se esiste già per nome
+        const esiste = await pool.query(`SELECT id FROM clienti WHERE LOWER(nome)=LOWER($1) LIMIT 1`, [c.nome]);
+        if (esiste.rows[0]) {
+          // Aggiorna i campi non vuoti
+          const aggiorna = {};
+          ['tel','email','citta','piva','ref','sdi','pec','note'].forEach(k => { if(c[k]) aggiorna[k] = c[k]; });
+          if (Object.keys(aggiorna).length) {
+            const sets = Object.keys(aggiorna).map((k,i) => `${k}=$${i+2}`).join(',');
+            await pool.query(`UPDATE clienti SET ${sets} WHERE id=$1`, [esiste.rows[0].id, ...Object.values(aggiorna)]);
+            aggiornati++;
+          }
+        } else {
+          const last = await pool.query(`SELECT codice FROM clienti WHERE codice LIKE 'C%' ORDER BY codice DESC LIMIT 1`);
+          const num = last.rows[0] ? parseInt(last.rows[0].codice.replace('C',''))+1 : 1;
+          const codice = 'C' + String(num).padStart(3,'0');
+          await pool.query(
+            `INSERT INTO clienti (codice, nome, tipo, tel, email, citta, piva, ref, note)
+             VALUES ($1,$2,'cliente',$3,$4,$5,$6,$7,$8)`,
+            [codice, c.nome, c.tel||null, c.email||null, c.citta||null, c.piva||null, c.ref||null, c.note||null]
+          );
+          creati++;
+        }
+      } catch(e) { errori.push(`${c.nome}: ${e.message}`); }
+    }
+    _contestoCacheTs = 0; // invalida cache
+    return { creati, aggiornati, errori: errori.slice(0,5) };
+  },
+
+  // Leggi ordini di un cliente
+  'ordini_cliente': async (params) => {
+    const r = await pool.query(
+      `SELECT o.id, o.data, o.prodotto, o.qty, o.importo, o.stato
+       FROM ordini o WHERE o.cliente_id=$1 ORDER BY o.data DESC LIMIT 20`,
+      [params.id]
+    );
+    return r.rows;
+  },
+
+  // Leggi movimenti (fatture) non pagati
+  'insoluti': async (params) => {
+    const r = await pool.query(
+      `SELECT m.id, m.data, m.importo, m.descrizione, (CURRENT_DATE-m.data) AS giorni
+       FROM movimenti m WHERE m.tipo='entrata' AND m.pagato=false
+       ORDER BY m.data ASC LIMIT 30`
+    );
+    return r.rows;
+  }
+};
+
+// Esegue un'azione DB richiesta da Steven
+async function stevenEseguiAzioneDB(nomeOp, params) {
+  const fn = STEVEN_DB_OPERAZIONI[nomeOp];
+  if (!fn) return { errore: `Operazione "${nomeOp}" non riconosciuta` };
+  try {
+    const risultato = await fn(params);
+    console.log(`[Steven DB] ${nomeOp} →`, JSON.stringify(risultato).slice(0,200));
+    return { ok: true, dati: risultato };
+  } catch (e) {
+    console.error(`[Steven DB] Errore ${nomeOp}:`, e.message);
+    return { errore: e.message };
+  }
+}
+
+// Endpoint diretto per azioni DB di Steven
+app.post('/api/steven/db', async (req, res) => {
+  const { operazione, params } = req.body;
+  const r = await stevenEseguiAzioneDB(operazione, params || {});
+  res.json(r);
+});
+
 // ── Cache contesto Steven (aggiornata ogni 5 minuti) ─────────────────────
 let _contestoCache = null;
 let _contestoCacheTs = 0;
@@ -2759,7 +2902,21 @@ Aggiungo blocchi in fondo alla risposta (sintassi esatta):
 Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 6066832
 
 [MEMORIA:tipo="osservazione|cliente|mercato|preferenza",contenuto="cosa ho imparato",importanza=1-10]
-→ quando capisco qualcosa di importante sull'azienda, un cliente, o una preferenza di Giovanni che devo ricordare per il futuro
+→ quando capisco qualcosa di importante sull'azienda, un cliente, o una preferenza di Giovanni
+
+[DB:op="nome_operazione",params={...JSON...}]
+→ quando devo leggere o modificare il database. Operazioni disponibili:
+  - cerca_contatto: {query:"testo"} — cerca per nome/email/tel
+  - aggiorna_contatto: {id:123,campo:"tel",valore:"333..."} — modifica un campo (tel,email,citta,ind_legale,ind_consegna,ref,piva,sdi,pec,note,tag)
+  - crea_contatto: {nome:"...",tel:"...",email:"...",citta:"...",piva:"..."} — crea nuovo cliente
+  - lista_contatti: {tipo:"cliente",tag:"rischio",citta:"...",limit:20} — lista con filtri
+  - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
+  - ordini_cliente: {id:123} — storico ordini di un cliente
+  - insoluti: {} — tutte le fatture non pagate
+
+Quando usi [DB:...], il sistema esegue l'operazione e ti risponde con i dati. Puoi poi usarli nella risposta.
+Esempio: "Giovanni mi chiede chi non ha email" → uso lista_contatti, vedo i risultati, rispondo.
+Puoi fare più blocchi [DB:...] in una stessa risposta per operazioni multiple. che devo ricordare per il futuro
 
 Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.`;
 
@@ -2850,7 +3007,7 @@ app.post('/api/chat', async (req, res) => {
     const data = await response.json();
     const testo = data.content?.[0]?.text || 'Errore risposta AI';
 
-    const azioni = { task: null, cliente: null, email: null };
+    const azioni = { task: null, cliente: null, email: null, db: [] };
 
     // Task
     const taskCreato = await estraiESalvaTask(testo);
@@ -2876,24 +3033,75 @@ app.post('/api/chat', async (req, res) => {
       };
     }
 
-    // Blocco MEMORIA — Steven salva qualcosa che ha imparato
+    // Blocco MEMORIA
     const mMem = testo.match(/\[MEMORIA:tipo="([^"]*)",contenuto="([^"]*)"(?:,importanza=(\d+))?\]/);
     if (mMem) {
       await stevenSalvaMemoria(mMem[1], null, mMem[2], mMem[3] ? parseInt(mMem[3]) : 6);
       console.log(`[Steven Memoria] Salvata da chat: ${mMem[2]}`);
       azioni.memoria = { tipo: mMem[1], contenuto: mMem[2] };
-      _contestoCacheTs = 0; // invalida cache contesto per aggiornare memoria
+      _contestoCacheTs = 0;
+    }
+
+    // Blocchi DB — esegui tutte le operazioni e raccogli i risultati
+    const dbMatches = [...testo.matchAll(/\[DB:op="([^"]+)",params=(\{[\s\S]*?\})\]/g)];
+    const dbRisultati = [];
+    for (const m of dbMatches) {
+      try {
+        const opNome = m[1];
+        const params = JSON.parse(m[2]);
+        const r = await stevenEseguiAzioneDB(opNome, params);
+        dbRisultati.push({ op: opNome, risultato: r });
+        azioni.db.push({ op: opNome, ok: r.ok, messaggio: r.ok
+          ? `✅ ${opNome}: ${Array.isArray(r.dati) ? r.dati.length + ' risultati' : JSON.stringify(r.dati).slice(0,100)}`
+          : `❌ ${opNome}: ${r.errore}` });
+      } catch(e) {
+        azioni.db.push({ op: m[1], ok: false, messaggio: `❌ Errore parsing params: ${e.message}` });
+      }
+    }
+
+    // Se ci sono azioni DB, fai un secondo giro con i risultati per una risposta più ricca
+    let testoFinale = testo;
+    if (dbRisultati.length > 0) {
+      // Aggiungi i risultati al contesto e chiedi a Steven di rispondere
+      const risultatiTesto = dbRisultati.map(r =>
+        `[Risultato ${r.op}]: ${JSON.stringify(r.risultato.dati || r.risultato.errore).slice(0,500)}`
+      ).join('\n');
+
+      const controller2 = new AbortController();
+      const t2 = setTimeout(() => controller2.abort(), 20000);
+      try {
+        const r2 = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 600,
+            system: systemPrompt,
+            messages: [
+              ...req.body.messages,
+              { role: 'assistant', content: testo },
+              { role: 'user', content: `Ecco i risultati delle operazioni DB che hai richiesto:\n${risultatiTesto}\n\nOra rispondi a Giovanni in modo completo basandoti su questi dati reali.` }
+            ]
+          }),
+          signal: controller2.signal
+        });
+        if (r2.ok) {
+          const d2 = await r2.json();
+          testoFinale = d2.content?.[0]?.text || testoFinale;
+        }
+      } catch(e) { /* usa la risposta originale */ } finally { clearTimeout(t2); }
     }
 
     // Rimuovi tutti i blocchi azione dalla risposta visibile
-    const testoVisibile = testo
+    const testoVisibile = testoFinale
       .replace(/\[TASK:[^\]]+\]/g, '')
       .replace(/\[CLIENTE:[^\]]+\]/g, '')
       .replace(/\[MEMORIA:[^\]]+\]/g, '')
+      .replace(/\[DB:op="[^"]*",params=\{[\s\S]*?\}\]/g, '')
       .replace(/\[EMAIL:destinatario="[^"]*",oggetto="[^"]*",corpo="[\s\S]*?"\]/g, '')
       .trim();
 
-    res.json({ reply: testoVisibile, azioni, taskCreato: azioni.task });
+    res.json({ reply: testoVisibile, azioni, taskCreato: azioni.task, dbAzioni: azioni.db });
   } catch (err) { 
     console.error('[Steven Chat] Errore:', err.message, err.stack?.slice(0,300));
     res.json({ reply: 'Errore interno: ' + err.message }); 
