@@ -77,12 +77,11 @@ function selezionaAgente(id){
       <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--green)"></div>`;
   }
 
-  // Carica quick actions specifiche dell'agente
+  // Carica quick actions specifiche
   setTimeout(() => {
     if (id === 'simona' && typeof simonaQuickActions === 'function') simonaQuickActions();
     else if (id === 'mirko' && typeof mirkoQuickActions === 'function') mirkoQuickActions();
     else {
-      // Ripristina quick actions di Steven
       const qa = document.querySelector('.quick-actions');
       if (qa) qa.innerHTML = `
         <div class="quick-action" onclick="sendAIMessage('Steven, cosa hai fatto nelle ultime ore? Dimmi cosa hai trovato e cosa hai già sistemato.')"><div style="font-size:20px;margin-bottom:5px">🤖</div><div style="font-size:13px;font-weight:600;margin-bottom:2px">Cosa hai fatto?</div><div style="font-size:11px;color:var(--text-2)">Aggiornamento loop</div></div>
@@ -91,20 +90,81 @@ function selezionaAgente(id){
     }
   }, 50);
 
-  clearChat();
+  // Reset cronologia sessione per questo agente
+  if (_conversazione[id]) _conversazione[id] = [];
+
+  // Carica cronologia dal DB
+  caricaCronologiaChat(id);
+}
+
+// Carica cronologia chat dal DB e la mostra
+async function caricaCronologiaChat(agente) {
+  const msgs = document.getElementById('chat-messages');
+  const ag = AGENTI[agente] || AGENTI.steven;
+
+  // Messaggio di benvenuto
+  const benvenuto = `<div class="msg-ai">
+    <div class="msg-avatar ai" style="background:${ag.colore}"><strong style="font-size:11px">${ag.iniziale}</strong></div>
+    <div class="msg-bubble ai">Ciao Giovanni 👋 Sono <strong>${ag.nome}</strong>${
+      agente === 'steven' ? ', il responsabile back office della tua Virtual Company.' :
+      agente === 'simona' ? ', la tua responsabile Digital Marketing.' :
+      ', il tuo responsabile commerciale.'
+    }<br><br>Dimmi cosa ti serve.</div>
+  </div>`;
+
+  try {
+    const r = await fetch(`/api/chat/cronologia/${agente}`);
+    const dati = await r.json();
+
+    if (!dati.length) {
+      msgs.innerHTML = benvenuto;
+      return;
+    }
+
+    // Mostra separatore cronologia
+    let html = `<div style="text-align:center;padding:8px;font-size:11px;color:var(--text-3);border-bottom:1px solid var(--border);margin-bottom:8px">
+      📅 Cronologia ultimi 10 giorni · <button onclick="cancellaCronologia('${agente}')" style="background:none;border:none;color:var(--red);cursor:pointer;font-size:11px">Cancella</button>
+    </div>`;
+
+    for (const m of dati) {
+      const data = new Date(m.created_at).toLocaleDateString('it-IT', {day:'2-digit',month:'2-digit',hour:'2-digit',minute:'2-digit'});
+      if (m.ruolo === 'user') {
+        html += `<div class="msg-user">
+          <div class="msg-avatar user">GV</div>
+          <div class="msg-bubble user">
+            <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-bottom:3px">${data}</div>
+            ${m.contenuto.replace(/\n/g,'<br>')}
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="msg-ai">
+          <div class="msg-avatar ai" style="background:${ag.colore}"><strong style="font-size:11px">${ag.iniziale}</strong></div>
+          <div class="msg-bubble ai">
+            <div style="font-size:10px;color:var(--text-3);margin-bottom:3px">${data}</div>
+            ${m.contenuto.replace(/\n/g,'<br>')}
+          </div>
+        </div>`;
+      }
+    }
+
+    msgs.innerHTML = html;
+    msgs.scrollTop = msgs.scrollHeight;
+  } catch(e) {
+    msgs.innerHTML = benvenuto;
+  }
+}
+
+// Cancella cronologia di un agente
+async function cancellaCronologia(agente) {
+  if (!confirm(`Cancellare tutta la cronologia con ${AGENTI[agente]?.nome || agente}?`)) return;
+  await fetch(`/api/chat/cronologia/${agente}`, { method: 'DELETE' });
+  caricaCronologiaChat(agente);
+  mostraToast('Cronologia cancellata');
 }
 
 function clearChat(){
-  const ag = AGENTI[_agenteAttivo] || AGENTI.steven;
-  document.getElementById('chat-messages').innerHTML = `
-    <div class="msg-ai">
-      <div class="msg-avatar ai" style="background:${ag.colore}"><strong style="font-size:11px">${ag.iniziale}</strong></div>
-      <div class="msg-bubble ai">Ciao Giovanni 👋 Sono <strong>${ag.nome}</strong>${
-        _agenteAttivo === 'steven' ? ', il responsabile back office della tua Virtual Company. Conosco ogni ordine, cliente e movimento in tempo reale.' :
-        _agenteAttivo === 'simona' ? ', la tua responsabile Digital Marketing. Posso aiutarti con campagne email, social media, strategie di contenuto e acquisizione clienti.' :
-        ', il tuo responsabile commerciale. Gestisco pipeline, clienti, lead e opportunità di crescita. Dimmi cosa vuoi sviluppare.'
-      }<br><br>Dimmi cosa ti serve.</div>
-    </div>`;
+  // Ricarica cronologia (non cancella — usa cancellaCronologia per quello)
+  caricaCronologiaChat(_agenteAttivo);
 }
 
 
@@ -476,6 +536,17 @@ async function stevenCaricaFile(input) {
 
 function sendAIMessage(t){document.getElementById('chat-input').value=t;sendChat();}
 function clearChat(){document.getElementById('chat-messages').innerHTML='<div class="msg-ai"><div class="msg-avatar ai"><strong style="font-size:13px">S</strong></div><div class="msg-bubble ai">Chat pulita. Dimmi cosa ti serve, Giovanni.</div></div>';}
+// Cronologia conversazione in memoria per sessione (max 20 messaggi per agente)
+const _conversazione = { steven: [], simona: [], mirko: [] };
+
+function _aggiungiAllaConversazione(agente, ruolo, contenuto) {
+  if (!_conversazione[agente]) _conversazione[agente] = [];
+  _conversazione[agente].push({ role: ruolo, content: contenuto });
+  if (_conversazione[agente].length > 20) {
+    _conversazione[agente] = _conversazione[agente].slice(-20);
+  }
+}
+
 function sendChat(){
   const input=document.getElementById('chat-input'), text=input.value.trim(); if(!text)return;
   input.value=''; input.style.height='38px';
@@ -487,10 +558,15 @@ function sendChat(){
   lDiv.innerHTML=`${_makeAgenteAvatar()}<div class="msg-bubble ai" style="color:var(--text-3)">⟳ Elaborazione...</div>`;
   msgs.appendChild(lDiv); msgs.scrollTop=msgs.scrollHeight;
   document.getElementById('send-btn').disabled=true;
-  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages:[{role:'user',content:text}], agente: _agenteAttivo})})
+  // Aggiungi messaggio utente alla cronologia sessione
+  _aggiungiAllaConversazione(_agenteAttivo, 'user', text);
+
+  fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({messages: _conversazione[_agenteAttivo] || [{role:'user',content:text}], agente: _agenteAttivo})})
     .then(r=>r.json()).then(data=>{
       document.getElementById('ai-load').remove();
       const reply=data.reply||data.error||'Errore.';
+      // Salva risposta nella cronologia sessione
+      _aggiungiAllaConversazione(_agenteAttivo, 'assistant', reply);
       const aDiv=document.createElement('div'); aDiv.className='msg-ai';
       aDiv.innerHTML=`${_makeAgenteAvatar()}<div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
       msgs.appendChild(aDiv);
@@ -529,6 +605,16 @@ function sendChat(){
       }
 
       msgs.scrollTop = msgs.scrollHeight;
+
+      // Salva in cronologia DB
+      fetch(`/api/chat/cronologia/${_agenteAttivo}`, {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ messaggi: [
+          { ruolo: 'user', contenuto: text },
+          { ruolo: 'assistant', contenuto: reply }
+        ]})
+      }).catch(()=>{});
 
       // Mostra azioni DB eseguite
       if(data.dbAzioni && data.dbAzioni.length){
