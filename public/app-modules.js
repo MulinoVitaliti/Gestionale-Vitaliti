@@ -1921,3 +1921,144 @@ async function aggiornaCliente(){
   closeModal('modal-edit-cliente');
   renderClienti(); renderFornitori(); showSave();
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// VIRTUAL COMPANY — widget dashboard e impostazioni
+// ══════════════════════════════════════════════════════════════════════════
+
+const VC_COLORI = { steven:'#A8412A', simona:'#e91e8c', mirko:'#1976d2' };
+const VC_INIZIALI = { steven:'S', simona:'Si', mirko:'M' };
+
+// Carica e mostra il widget dashboard
+async function vcCaricaDashboard() {
+  try {
+    const r = await fetch('/api/vc/dashboard');
+    const d = await r.json();
+    const widget = document.getElementById('vc-dashboard-widget');
+    const grid = document.getElementById('vc-figure-grid');
+    if (!widget || !grid) return;
+
+    if (!d.figure || !d.figure.length) { widget.style.display='none'; return; }
+
+    // Calcola colonne in base al numero di figure
+    const n = d.figure.length;
+    grid.style.gridTemplateColumns = n === 1 ? '1fr' : n === 2 ? '1fr 1fr' : 'repeat(3,1fr)';
+    widget.style.display = 'block';
+
+    grid.innerHTML = d.figure.map(f => {
+      const colore = VC_COLORI[f.figura] || '#888';
+      const iniziale = VC_INIZIALI[f.figura] || f.figura[0].toUpperCase();
+      const dati = f.dati || {};
+
+      let badges = '';
+      if (f.figura === 'steven') {
+        if (dati.alert > 0) badges += `<span style="background:#fff3cd;color:#856404;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.alert} alert</span>`;
+        if (dati.task > 0) badges += `<span style="background:#cfe2ff;color:#084298;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.task} task</span>`;
+        if (dati.rischio > 0) badges += `<span style="background:#f8d7da;color:#842029;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.rischio} a rischio</span>`;
+      } else if (f.figura === 'simona') {
+        badges += `<span style="background:#f8d7da;color:#842029;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.rischio||0} clienti inattivi</span>`;
+        badges += `<span style="background:#cfe2ff;color:#084298;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.leads||0} lead</span>`;
+      } else if (f.figura === 'mirko') {
+        badges += `<span style="background:#f8d7da;color:#842029;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.rischio||0} a rischio</span>`;
+        badges += `<span style="background:#cfe2ff;color:#084298;border-radius:4px;padding:2px 8px;font-size:11px;font-weight:600">${dati.leads||0} lead</span>`;
+      }
+
+      return `<div onclick="vcApriAgente('${f.figura}')"
+        style="background:var(--surface);border:1px solid var(--border);border-radius:12px;padding:14px 16px;cursor:pointer;transition:border-color 0.15s"
+        onmouseover="this.style.borderColor='${colore}'"
+        onmouseout="this.style.borderColor='var(--border)'">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="width:32px;height:32px;border-radius:50%;background:${colore};display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;color:#fff;flex-shrink:0">${iniziale}</div>
+          <div>
+            <div style="font-size:13px;font-weight:600;text-transform:capitalize">${f.figura}</div>
+            <div style="font-size:11px;color:var(--text-2)">${f.ruolo_label}</div>
+          </div>
+          <div style="margin-left:auto;width:7px;height:7px;border-radius:50%;background:var(--green)"></div>
+        </div>
+        <div style="display:flex;flex-wrap:wrap;gap:5px">${badges}</div>
+        <div style="font-size:10px;color:var(--text-3);margin-top:8px">Clicca per aprire →</div>
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('[VC Dashboard]', e); }
+}
+
+// Apri Virtual Company sulla figura selezionata
+function vcApriAgente(figura) {
+  showPage('ai');
+  setTimeout(() => {
+    if (typeof selezionaAgente === 'function') selezionaAgente(figura);
+  }, 100);
+}
+
+// Carica impostazioni nella pagina Impostazioni
+async function vcCaricaImpostazioni() {
+  try {
+    const r = await fetch('/api/vc/impostazioni');
+    const figure = await r.json();
+    const lista = document.getElementById('vc-impostazioni-lista');
+    if (!lista) return;
+
+    lista.innerHTML = figure.map(f => {
+      const colore = VC_COLORI[f.figura] || '#888';
+      const iniziale = VC_INIZIALI[f.figura] || f.figura[0].toUpperCase();
+      const descr = { steven:'Monitora pagamenti, consegne e FIC ogni ora', simona:'Campagne email, clienti inattivi, social media', mirko:'Pipeline, lead, clienti a rischio, offerte' };
+
+      return `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
+        <div style="display:flex;align-items:center;gap:12px">
+          <div style="width:38px;height:38px;border-radius:50%;background:${colore};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${iniziale}</div>
+          <div style="flex:1">
+            <div style="font-size:13px;font-weight:600;text-transform:capitalize">${f.figura}</div>
+            <div style="font-size:12px;color:var(--text-2)">${f.ruolo_label} — ${descr[f.figura]||''}</div>
+          </div>
+          <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+            <span style="font-size:12px;color:var(--text-2)">${f.attiva ? 'Attiva' : 'Non attiva'}</span>
+            <input type="checkbox" id="vc-tog-${f.figura}" ${f.attiva?'checked':''} onchange="this.previousElementSibling.textContent=this.checked?'Attiva':'Non attiva'">
+          </label>
+        </div>
+        ${f.figura === 'steven' ? `
+        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
+          <div>
+            <label style="font-size:12px;color:var(--text-2);display:block;margin-bottom:4px">Assegna task a</label>
+            <select id="vc-assegna-${f.figura}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r)">
+              <option value="Giovanni" ${f.assegna_a==='Giovanni'?'selected':''}>Giovanni (tu)</option>
+              <option value="Marco" ${f.assegna_a==='Marco'?'selected':''}>Marco (back office)</option>
+              <option value="Entrambi" ${f.assegna_a==='Entrambi'?'selected':''}>Entrambi</option>
+            </select>
+          </div>
+          <div>
+            <label style="font-size:12px;color:var(--text-2);display:block;margin-bottom:4px">Notifica via</label>
+            <select id="vc-notifica-${f.figura}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r)">
+              <option value="email" ${f.notifica_via==='email'?'selected':''}>Email</option>
+              <option value="whatsapp" ${f.notifica_via==='whatsapp'?'selected':''}>WhatsApp</option>
+              <option value="entrambi" ${f.notifica_via==='entrambi'?'selected':''}>Email + WhatsApp</option>
+            </select>
+          </div>
+        </div>` : ''}
+      </div>`;
+    }).join('');
+  } catch(e) { console.error('[VC Impostazioni]', e); }
+}
+
+// Salva impostazioni
+async function salvaVCImpostazioni() {
+  const figure = ['steven','simona','mirko'];
+  try {
+    for (const f of figure) {
+      const tog = document.getElementById(`vc-tog-${f}`);
+      const assegna = document.getElementById(`vc-assegna-${f}`);
+      const notifica = document.getElementById(`vc-notifica-${f}`);
+      if (!tog) continue;
+      await fetch(`/api/vc/impostazioni/${f}`, {
+        method: 'PUT',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({
+          attiva: tog.checked,
+          assegna_a: assegna?.value || 'Giovanni',
+          notifica_via: notifica?.value || 'email'
+        })
+      });
+    }
+    mostraToast('✅ Impostazioni Virtual Company salvate');
+    vcCaricaDashboard(); // aggiorna widget dashboard
+  } catch(e) { mostraToast('Errore: '+e.message, 'error'); }
+}
