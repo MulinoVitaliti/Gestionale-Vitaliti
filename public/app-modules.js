@@ -2062,3 +2062,108 @@ async function salvaVCImpostazioni() {
     vcCaricaDashboard(); // aggiorna widget dashboard
   } catch(e) { mostraToast('Errore: '+e.message, 'error'); }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// UTENTI & PERMESSI
+// ══════════════════════════════════════════════════════════════════════════
+
+const PERM_SEZIONI = ['dashboard','clienti','ordini','pipeline','contabilita','email','ai','impostazioni'];
+const PERM_LABELS = { dashboard:'Dashboard', clienti:'Contatti', ordini:'Ordini', pipeline:'Pipeline', contabilita:'Contabilità', email:'Email', ai:'Virtual Co.', impostazioni:'Impostazioni' };
+const ROLE_COLORS = { admin:'#A8412A', commerciale:'#1976d2', contabile:'#2e7d32', magazzino:'#e65100', backoffice:'#6a1b9a' };
+const VC_FIGURE_LABEL = { steven:'Steven', simona:'Simona', mirko:'Mirko' };
+const VC_FIGURE_COLOR = { steven:'#A8412A', simona:'#e91e8c', mirko:'#1976d2' };
+
+async function renderUtenti() {
+  const container = document.getElementById('users-list');
+  if (!container) return;
+  container.innerHTML = '';
+  try {
+    const utenti = await api.get('/api/utenti');
+    if (!utenti.length) {
+      container.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text-2)">Nessun utente aggiunto.</div>';
+      return;
+    }
+    utenti.forEach(u => {
+      const perms = u.permessi || {};
+      const colore = ROLE_COLORS[u.ruolo] || 'var(--brand)';
+      const figuraVC = u.figura_vc;
+      const div = document.createElement('div');
+      div.style.cssText = 'display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)';
+      div.innerHTML = `
+        <div style="width:38px;height:38px;border-radius:50%;background:${colore};display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0">${ini(u.nome)}</div>
+        <div style="flex:1;min-width:0">
+          <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;flex-wrap:wrap">
+            <span style="font-weight:600;font-size:13px">${u.nome}</span>
+            <span style="background:${colore}22;color:${colore};padding:2px 8px;border-radius:20px;font-size:11px;font-weight:600">${u.ruolo}</span>
+            <span style="font-size:11px;color:var(--text-3);font-family:monospace">@${u.username}</span>
+            ${u.pending ? '<span style="background:#FFF4E0;color:var(--orange);padding:2px 8px;border-radius:20px;font-size:11px">⏳ In attesa</span>' : ''}
+          </div>
+
+          ${figuraVC ? `
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+            <div style="width:18px;height:18px;border-radius:50%;background:${VC_FIGURE_COLOR[figuraVC]||'#888'};display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff">${(VC_FIGURE_LABEL[figuraVC]||'?')[0]}</div>
+            <span style="font-size:12px;color:var(--text-2)">Figura AI: <strong>${VC_FIGURE_LABEL[figuraVC]||figuraVC}</strong></span>
+          </div>` : ''}
+
+          <div style="display:flex;flex-wrap:wrap;gap:5px">
+            ${PERM_SEZIONI.map(p => {
+              const on = perms[p] !== false && (u.ruolo === 'admin' || perms[p] === true);
+              return `<span style="font-size:11px;padding:2px 7px;border-radius:4px;background:${on?'#d1fae5':'#f1f5f9'};color:${on?'#065f46':'#64748b'}">${on?'✓':'✗'} ${PERM_LABELS[p]}</span>`;
+            }).join('')}
+          </div>
+        </div>
+
+        ${u.id !== (currentUser?.id) && currentUser?.ruolo === 'admin' ? `
+        <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm" onclick="modificaFiguraUtente(${u.id},'${u.figura_vc||''}')" title="Associa figura AI"><i class="ti ti-robot"></i></button>
+          <button class="btn btn-sm btn-danger" onclick="eliminaUtente(${u.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+        </div>` : ''}
+      `;
+      container.appendChild(div);
+    });
+  } catch(e) {
+    container.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--red)">Errore caricamento utenti</div>';
+  }
+}
+
+async function salvaUtente() {
+  const nome = document.getElementById('u-nome').value.trim();
+  const username = document.getElementById('u-user').value.trim().toLowerCase();
+  const pass = document.getElementById('u-pass').value;
+  const ruolo = document.getElementById('u-role').value;
+  const figura_vc = document.getElementById('u-figura-vc')?.value || null;
+
+  if (!nome || !username || !pass) { alert('Compila nome, username e password'); return; }
+
+  // Raccoglie permessi
+  const permessi = {};
+  PERM_SEZIONI.forEach(p => {
+    const el = document.getElementById('perm-' + p);
+    if (el) permessi[p] = el.checked;
+  });
+
+  const data = await api.post('/api/utenti', { nome, username, password: pass, ruolo, figura_vc, permessi });
+  if (data.error) { alert(data.error); return; }
+
+  closeModal('modal-utente');
+  renderUtenti();
+  mostraToast('✅ Utente creato');
+  ['u-nome','u-user','u-pass'].forEach(id => { const el=document.getElementById(id); if(el) el.value=''; });
+}
+
+async function eliminaUtente(id) {
+  if (!confirm('Eliminare questo utente?')) return;
+  await api.del('/api/utenti/' + id);
+  renderUtenti();
+  mostraToast('Utente eliminato');
+}
+
+async function modificaFiguraUtente(id, figuraAttuale) {
+  const nuovaFigura = prompt(`Associa figura AI a questo utente:\n\n- steven (Back Office)\n- simona (Digital Marketing)\n- mirko (Commerciale)\n- vuoto per nessuna\n\nFigura attuale: ${figuraAttuale||'nessuna'}`, figuraAttuale || '');
+  if (nuovaFigura === null) return;
+  const valido = ['steven','simona','mirko',''].includes(nuovaFigura.trim().toLowerCase());
+  if (!valido) { alert('Valore non valido. Usa: steven, simona, mirko oppure lascia vuoto'); return; }
+  await api.patch('/api/utenti/'+id, { figura_vc: nuovaFigura.trim() || null });
+  renderUtenti();
+  mostraToast('✅ Figura AI aggiornata');
+}
