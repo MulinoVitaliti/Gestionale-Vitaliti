@@ -3260,7 +3260,10 @@ Quando usi [DB:...], il sistema esegue l'operazione e ti risponde con i dati. Pu
 Esempio: "Giovanni mi chiede chi non ha email" → uso lista_contatti, vedo i risultati, rispondo.
 Puoi fare più blocchi [DB:...] in una stessa risposta per operazioni multiple. che devo ricordare per il futuro
 
-Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.`;
+Posso usare più blocchi nella stessa risposta. Prima scrivo la risposta normale, poi i blocchi.
+
+## WEB SEARCH
+Quando non trovo la risposta nei dati del gestionale — prezzi di mercato, normative, fiere di settore, informazioni su fornitori, notizie recenti — uso il web search automaticamente. Non lo annuncio, cerco e integro la risposta direttamente.`;
 
     _contestoCache = ctx;
     _contestoCacheTs = Date.now();
@@ -3336,6 +3339,8 @@ Proponi sempre azioni concrete e misurabili: campagne email, post social, strate
 
 Produci materiali se te li chiedono: testi per email, post LinkedIn/Instagram, idee campagne, oggetti email accattivanti.
 
+Quando non hai i dati nel gestionale — trend social, benchmark settore food B2B, esempi campagne concorrenti, dati consumo farine in Italia — cerca online e integra la risposta direttamente.
+
 Rispondi sempre in italiano.`;
   } catch(e) {
     return `Sei Simona, responsabile Digital Marketing di Mulino Vitaliti. Specializzata in marketing B2B agroalimentare. Rispondi in italiano.`;
@@ -3386,6 +3391,8 @@ ${aRischio.slice(0,5).map(c=>`- ${c.nome}${c.citta?' ('+c.citta+')':''}`).join('
 ## COME LAVORI
 Proponi azioni commerciali concrete: chiamate da fare, offerte da preparare, clienti da riattivare, nuovi prospect da contattare. Usa [TASK:...] per creare promemoria commerciali. Usa [EMAIL:...] per preparare email commerciali. Usa [CLIENTE:...] per aprire schede cliente.
 
+Quando hai bisogno di dati esterni — prezzi grano duro, fiere di settore, normative commerciali, info su potenziali clienti o concorrenti — cerca online e integra direttamente.
+
 Rispondi sempre in italiano.`;
   } catch(e) {
     return `Sei Mirko, responsabile commerciale di Mulino Vitaliti. Specializzato in vendite B2B agroalimentare. Rispondi in italiano.`;
@@ -3429,9 +3436,16 @@ app.post('/api/chat', async (req, res) => {
         },
         body: JSON.stringify({
           model: 'claude-haiku-4-5-20251001',
-          max_tokens: 600,
+          max_tokens: 800,
           system: systemPrompt,
-          messages: req.body.messages
+          messages: req.body.messages,
+          tools: [
+            {
+              type: "web_search_20250305",
+              name: "web_search",
+              max_uses: 3
+            }
+          ]
         }),
         signal: controller.signal
       });
@@ -3451,7 +3465,17 @@ app.post('/api/chat', async (req, res) => {
       return res.json({ error: `Errore API: ${response.status}`, reply: 'Scusa Giovanni, ho avuto un problema tecnico. Riprova tra un momento.' });
     }
     const data = await response.json();
-    const testo = data.content?.[0]?.text || 'Errore risposta AI';
+
+    // Estrai il testo dalla risposta — può contenere blocchi tool_use (web search)
+    let testo = '';
+    if (data.content) {
+      for (const block of data.content) {
+        if (block.type === 'text') testo += block.text;
+      }
+    }
+    if (!testo) testo = 'Non ho trovato una risposta. Riprova.';
+
+    console.log(`[${agente.toUpperCase()} Chat] Risposta pronta, stop_reason: ${data.stop_reason}`);
 
     const azioni = { task: null, cliente: null, email: null, db: [] };
 
