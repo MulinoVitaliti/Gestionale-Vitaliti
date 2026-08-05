@@ -214,6 +214,15 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Cronologia chat Virtual Company (Steven, Simona, Mirko)
+      CREATE TABLE IF NOT EXISTS chat_cronologia (
+        id SERIAL PRIMARY KEY,
+        agente TEXT NOT NULL DEFAULT 'steven',
+        ruolo TEXT NOT NULL,
+        contenuto TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS fic_conflitti (
         id SERIAL PRIMARY KEY,
         cliente_id INTEGER REFERENCES clienti(id) ON DELETE CASCADE,
@@ -2002,6 +2011,9 @@ async function eseguiLoopAgente(origine = 'automatico') {
     // ── 4. VERIFICA COERENZA CONTABILITÀ / FIC ──────────────────────────
     await agenteVerificaFIC(risultati);
 
+    // ── 5. MONITORAGGIO TEMPI CONSEGNA ───────────────────────────────────
+    await agenteMonitoraConsegne(risultati);
+
     // ── 5. RAPPORTO GIORNALIERO (solo una volta al giorno, dopo le 7) ────
     const ora = new Date();
     if (ora.getHours() >= 7) {
@@ -2276,6 +2288,74 @@ Accedi al gestionale per vedere i dettagli e agire.
     );
     console.log(`[Agente] Email notifica inviata a ${emailTo}`);
   } catch (e) { risultati.errori.push('notificaEmail: ' + e.message); }
+}
+
+// ── 5. Monitoraggio tempi consegna ───────────────────────────────────────
+async function agenteMonitoraConsegne(risultati) {
+  try {
+    // Ordini aperti da troppo tempo per stato
+    const soglie = {
+      'confermato': 3,    // alert dopo 3 giorni
+      'in_lavorazione': 2, // alert dopo 2 giorni
+      'pronto': 1,        // alert dopo 1 giorno (pronto ma non spedito)
+      'spedito': 5,       // alert dopo 5 giorni (spedito ma non consegnato)
+    };
+
+    const ordini = await pool.query(`
+      SELECT o.id, o.cliente, o.prodotto, o.stato, o.data,
+             c.nome as cliente_nome, c.tel as cliente_tel,
+             (CURRENT_DATE - o.data::date) AS giorni_totali,
+             o.data_consegna_prevista
+      FROM ordini o
+      LEFT JOIN clienti c ON c.id = o.cliente_id
+      WHERE o.stato NOT IN ('consegnato','annullato')
+      ORDER BY o.data ASC
+    `);
+
+    let alertCreati = 0;
+    for (const o of ordini.rows) {
+      const soglia = soglie[o.stato];
+      if (!soglia) continue;
+
+      const giorni = Number(o.giorni_totali || 0);
+      if (giorni < soglia) continue;
+
+      const chiave = `consegna:${o.id}:${o.stato}`;
+      const esiste = await pool.query(
+        `SELECT id FROM backoffice_alert WHERE riferimento=$1 AND letto=false`, [chiave]
+      );
+      if (esiste.rows.length) continue;
+
+      const cliente = o.cliente_nome || o.cliente || 'Cliente sconosciuto';
+      let titolo, dettaglio, gravita;
+
+      if (o.stato === 'pronto') {
+        titolo = `Ordine pronto da ${giorni}g non ancora spedito: ${cliente}`;
+        dettaglio = `${o.prodotto || ''} — pronto da ${giorni} giorni, in attesa di spedizione`;
+        gravita = giorni > 2 ? 'alta' : 'media';
+      } else if (o.stato === 'spedito') {
+        titolo = `Spedizione in ritardo (${giorni}g): ${cliente}`;
+        dettaglio = `${o.prodotto || ''} — spedito ${giorni} giorni fa, non ancora consegnato`;
+        gravita = giorni > 7 ? 'alta' : 'media';
+      } else {
+        titolo = `Ordine fermo in "${o.stato}" da ${giorni}g: ${cliente}`;
+        dettaglio = `${o.prodotto || ''} — nessun avanzamento da ${giorni} giorni`;
+        gravita = giorni > soglia * 2 ? 'alta' : 'media';
+      }
+
+      await pool.query(
+        `INSERT INTO backoffice_alert (tipo, gravita, titolo, dettaglio, riferimento)
+         VALUES ('consegna_ritardo',$1,$2,$3,$4)`,
+        [gravita, titolo, dettaglio, chiave]
+      );
+      alertCreati++;
+    }
+
+    if (alertCreati > 0) {
+      risultati.alertCreati = (risultati.alertCreati || 0) + alertCreati;
+      console.log(`[Agente] Consegne in ritardo: ${alertCreati} nuovi alert`);
+    }
+  } catch(e) { console.error('[Agente] Errore monitoraggio consegne:', e.message); }
 }
 
 // ── Endpoint per forzare il loop manualmente ──────────────────────────────
@@ -2638,6 +2718,46 @@ async function stevenAggiornaMemoriaDaCiclo(risultati) {
 }
 
 // Endpoint per vedere/gestire la memoria di Steven
+// ── CRONOLOGIA CHAT VIRTUAL COMPANY ──────────────────────────────────────
+
+// Leggi cronologia di un agente (ultimi 10 giorni)
+app.get('/api/chat/cronologia/:agente', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, ruolo, contenuto, created_at FROM chat_cronologia
+       WHERE agente=$1 AND created_at >= NOW() - INTERVAL '10 days'
+       ORDER BY created_at ASC`,
+      [req.params.agente]
+    );
+    res.json(r.rows);
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+// Salva messaggi in cronologia
+app.post('/api/chat/cronologia/:agente', async (req, res) => {
+  try {
+    const { messaggi } = req.body; // array [{ruolo, contenuto}]
+    if (!Array.isArray(messaggi)) return res.json({ error: 'messaggi deve essere array' });
+    for (const m of messaggi) {
+      await pool.query(
+        `INSERT INTO chat_cronologia (agente, ruolo, contenuto) VALUES ($1,$2,$3)`,
+        [req.params.agente, m.ruolo, m.contenuto]
+      );
+    }
+    // Pulizia automatica messaggi oltre 10 giorni
+    await pool.query(`DELETE FROM chat_cronologia WHERE created_at < NOW() - INTERVAL '10 days'`);
+    res.json({ ok: true, salvati: messaggi.length });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+// Cancella cronologia di un agente
+app.delete('/api/chat/cronologia/:agente', async (req, res) => {
+  try {
+    const r = await pool.query(`DELETE FROM chat_cronologia WHERE agente=$1`, [req.params.agente]);
+    res.json({ eliminati: r.rowCount });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
 app.get('/api/steven/memoria', async (req, res) => {
   try {
     const r = await pool.query(`SELECT * FROM steven_memoria ORDER BY importanza DESC, updated_at DESC`);
@@ -2867,6 +2987,37 @@ app.post('/api/steven/db', async (req, res) => {
   res.json(r);
 });
 
+// ── Aggiorna email e tel da CSV ───────────────────────────────────────────
+app.post('/api/clienti/aggiorna-da-csv', async (req, res) => {
+  const { righe } = req.body;
+  if (!Array.isArray(righe) || !righe.length) return res.json({ error: 'Nessuna riga ricevuta' });
+  try {
+    const clienti = await pool.query(`SELECT id, nome, email, tel FROM clienti WHERE tipo='cliente'`);
+    let aggiornati = 0, nonTrovati = 0;
+    for (const r of righe) {
+      if (!r.nome) continue;
+      const nomeLow = r.nome.toLowerCase().trim();
+      let cliente = clienti.rows.find(c => c.nome.toLowerCase().trim() === nomeLow);
+      if (!cliente) {
+        cliente = clienti.rows.find(c => {
+          const cn = c.nome.toLowerCase().trim();
+          return nomeLow.includes(cn) || cn.includes(nomeLow);
+        });
+      }
+      if (!cliente) { nonTrovati++; continue; }
+      const aggiorna = {};
+      if (r.email && r.email !== 'nan' && !cliente.email) aggiorna.email = r.email;
+      if (r.tel && r.tel !== 'nan' && !cliente.tel) aggiorna.tel = r.tel.split(',')[0].trim();
+      if (!Object.keys(aggiorna).length) continue;
+      const sets = Object.keys(aggiorna).map((k,i) => `${k}=$${i+2}`).join(',');
+      await pool.query(`UPDATE clienti SET ${sets} WHERE id=$1`, [cliente.id, ...Object.values(aggiorna)]);
+      aggiornati++;
+    }
+    console.log(`[CSV Import] ${aggiornati} aggiornati, ${nonTrovati} non trovati/già completi`);
+    res.json({ aggiornati, nonTrovati });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
 // ── Steven analizza file caricati dall'utente ─────────────────────────────
 app.post('/api/steven/analizza-file', async (req, res) => {
   try {
@@ -2893,9 +3044,43 @@ app.post('/api/steven/analizza-file', async (req, res) => {
       righe = Array.isArray(parsed) ? parsed : [parsed];
       contenuto = `File JSON: ${righe.length} elementi\nStruttura: ${JSON.stringify(righe[0], null, 2).slice(0, 600)}`;
     } else if (nome.match(/\.(xlsx|xls)$/i)) {
-      // Per Excel: istruisci Steven a suggerire l'uso della sezione import
-      contenuto = `File Excel "${nome}" (${Math.round(buffer.length/1024)}KB) caricato. Non posso leggerlo direttamente — per importare i contatti usa Impostazioni > Aggiorna contatti da file. Posso però aiutarti in altro modo.`;
-      righe = [];
+      try {
+        const XLSX = require('xlsx');
+        const wb = XLSX.read(buffer, { type: 'buffer', raw: false });
+        const sheet = wb.Sheets[wb.SheetNames[0]];
+        righe = XLSX.utils.sheet_to_json(sheet, { defval: '', raw: false });
+
+        // Normalizza le colonne Pipedrive → nomi standard
+        const ALIAS = {
+          'persona - organizzazione': 'nome', 'ragione sociale': 'nome', 'azienda': 'nome',
+          'persona - nome': 'referente', 'referente': 'referente',
+          'persona - email - lavoro': 'email', 'email': 'email', 'mail': 'email',
+          'persona - telefono - lavoro': 'tel', 'telefono': 'tel', 'tel': 'tel',
+          'persona - telefono - cellulare': 'tel2', 'cellulare': 'tel2',
+          'persona - etichette': 'tag', 'città': 'citta', 'citta': 'citta',
+          'partita iva': 'piva', 'p.iva': 'piva', 'piva': 'piva',
+        };
+
+        righe = righe.map(row => {
+          const obj = {};
+          Object.entries(row).forEach(([k, v]) => {
+            const kNorm = k.toLowerCase().trim();
+            const campo = ALIAS[kNorm] || kNorm;
+            const val = String(v || '').trim();
+            if (val && val !== 'nan' && val !== 'NaN' && !obj[campo]) {
+              obj[campo] = val;
+            }
+          });
+          return obj;
+        }).filter(r => r.nome && r.nome.trim().length > 1);
+
+        contenuto = `File Excel "${nome}": ${righe.length} righe valide trovate.\n`;
+        contenuto += `Colonne riconosciute: ${[...new Set(righe.flatMap(r => Object.keys(r)))].join(', ')}\n`;
+        contenuto += `Prime 3 righe:\n${JSON.stringify(righe.slice(0, 3), null, 2)}`;
+      } catch(e) {
+        contenuto = `Errore lettura Excel: ${e.message}. Prova a convertirlo in CSV.`;
+        righe = [];
+      }
     } else {
       contenuto = buffer.toString('utf-8').slice(0, 3000);
     }
