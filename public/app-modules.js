@@ -1992,17 +1992,15 @@ function vcApriAgente(figura) {
 
 // Carica impostazioni nella pagina Impostazioni
 async function vcCaricaImpostazioni() {
+  const lista = document.getElementById('vc-impostazioni-lista');
+  if (!lista) return;
   try {
     const r = await fetch('/api/vc/impostazioni');
     const figure = await r.json();
-    const lista = document.getElementById('vc-impostazioni-lista');
-    if (!lista) return;
-
     lista.innerHTML = figure.map(f => {
       const colore = VC_COLORI[f.figura] || '#888';
       const iniziale = VC_INIZIALI[f.figura] || f.figura[0].toUpperCase();
       const descr = { steven:'Monitora pagamenti, consegne e FIC ogni ora', simona:'Campagne email, clienti inattivi, social media', mirko:'Pipeline, lead, clienti a rischio, offerte' };
-
       return `<div style="background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:14px 16px">
         <div style="display:flex;align-items:center;gap:12px">
           <div style="width:38px;height:38px;border-radius:50%;background:${colore};display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#fff;flex-shrink:0">${iniziale}</div>
@@ -2011,29 +2009,10 @@ async function vcCaricaImpostazioni() {
             <div style="font-size:12px;color:var(--text-2)">${f.ruolo_label} — ${descr[f.figura]||''}</div>
           </div>
           <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
-            <span style="font-size:12px;color:var(--text-2)">${f.attiva ? 'Attiva' : 'Non attiva'}</span>
+            <span style="font-size:12px;color:var(--text-2)">${f.attiva?'Attiva':'Non attiva'}</span>
             <input type="checkbox" id="vc-tog-${f.figura}" ${f.attiva?'checked':''} onchange="this.previousElementSibling.textContent=this.checked?'Attiva':'Non attiva'">
           </label>
         </div>
-        ${f.figura === 'steven' ? `
-        <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--border);display:grid;grid-template-columns:1fr 1fr;gap:10px">
-          <div>
-            <label style="font-size:12px;color:var(--text-2);display:block;margin-bottom:4px">Assegna task a</label>
-            <select id="vc-assegna-${f.figura}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r)">
-              <option value="Giovanni" ${f.assegna_a==='Giovanni'?'selected':''}>Giovanni (tu)</option>
-              <option value="Marco" ${f.assegna_a==='Marco'?'selected':''}>Marco (back office)</option>
-              <option value="Entrambi" ${f.assegna_a==='Entrambi'?'selected':''}>Entrambi</option>
-            </select>
-          </div>
-          <div>
-            <label style="font-size:12px;color:var(--text-2);display:block;margin-bottom:4px">Notifica via</label>
-            <select id="vc-notifica-${f.figura}" style="width:100%;font-size:13px;padding:6px 8px;border:1px solid var(--border);border-radius:var(--r)">
-              <option value="email" ${f.notifica_via==='email'?'selected':''}>Email</option>
-              <option value="whatsapp" ${f.notifica_via==='whatsapp'?'selected':''}>WhatsApp</option>
-              <option value="entrambi" ${f.notifica_via==='entrambi'?'selected':''}>Email + WhatsApp</option>
-            </select>
-          </div>
-        </div>` : ''}
       </div>`;
     }).join('');
   } catch(e) { console.error('[VC Impostazioni]', e); }
