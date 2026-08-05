@@ -77,6 +77,7 @@ const api = {
   get: url => fetch(url).then(r=>r.json()),
   post: (url,data) => fetch(url,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()),
   put: (url,data) => fetch(url,{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()),
+  patch: (url,data) => fetch(url,{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)}).then(r=>r.json()),
   del: url => fetch(url,{method:'DELETE'}).then(r=>r.json()),
 };
 
