@@ -678,7 +678,7 @@ tbody tr:hover{background:var(--surface-2)}
             <span id="clienti-count" style="font-size:12px;color:var(--text-3);flex-shrink:0"></span>
           </div>
         </div>
-        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Città</th><th>Telefono</th><th>SDI / PEC</th><th>Prodotti</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
+        <div class="table-wrap"><table><thead><tr><th>Codice</th><th>Cliente</th><th>Telefono</th><th>Email</th><th>SDI / PEC</th><th></th></tr></thead><tbody id="tbl-clienti"></tbody></table></div>
       </div>
 
       <!-- Vista Fornitori -->
@@ -1380,8 +1380,9 @@ tbody tr:hover{background:var(--surface-2)}
       <div id="cl-risultati-ricerca" style="margin-top:8px"></div>
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="cl-ref"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="cl-tel" placeholder="Es. 095 913523"></div><div class="form-group"><label class="form-label">Cellulare / Secondo numero</label><input type="text" id="cl-tel2" placeholder="Es. 389 6066832"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Email</label><input type="text" id="cl-email"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="cl-citta"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="cl-piva" placeholder="Es. 01234567890"></div></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
       <input type="text" id="cl-ind-consegna" placeholder="Es. Via Garibaldi 5, 20100 Milano (MI)" oninput="if(document.getElementById('cl-ind-same').checked){document.getElementById('cl-ind-legale').value=this.value}">
@@ -1408,7 +1409,8 @@ tbody tr:hover{background:var(--surface-2)}
       <button id="edit-tipo-fornitore" onclick="setEditTipo('fornitore')" style="flex:1;padding:9px;border:none;font-size:13px;font-weight:600;cursor:pointer;background:#fff;color:var(--text-2);display:flex;align-items:center;justify-content:center;gap:6px;transition:all .15s"><i class="ti ti-building-factory-2"></i>Fornitore</button>
     </div>
     <div class="form-row"><div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="edit-cl-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-cl-ref"></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-cl-tel"></div><div class="form-group"><label class="form-label">Cellulare / Secondo numero</label><input type="text" id="edit-cl-tel2"></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Email</label><input type="text" id="edit-cl-email"></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-cl-citta"></div><div class="form-group"><label class="form-label">P.IVA</label><input type="text" id="edit-cl-piva"></div></div>
     <div class="form-group">
       <label class="form-label"><i class="ti ti-truck-delivery" style="font-size:13px;color:var(--brand)"></i> Indirizzo consegna</label>
