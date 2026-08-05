@@ -204,6 +204,21 @@ async function initDB() {
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tag TEXT;
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tel2 TEXT;
 
+      CREATE TABLE IF NOT EXISTS vc_impostazioni (
+        id SERIAL PRIMARY KEY,
+        figura TEXT NOT NULL UNIQUE,
+        attiva BOOLEAN DEFAULT FALSE,
+        ordine INTEGER DEFAULT 0,
+        ruolo_label TEXT,
+        assegna_a TEXT DEFAULT 'Giovanni',
+        notifica_via TEXT DEFAULT 'email'
+      );
+      INSERT INTO vc_impostazioni (figura, attiva, ordine, ruolo_label) VALUES
+        ('steven', true,  1, 'Back Office'),
+        ('simona', false, 2, 'Digital Marketing'),
+        ('mirko',  false, 3, 'Commerciale')
+      ON CONFLICT (figura) DO NOTHING;
+
       -- Memoria persistente di Steven
       CREATE TABLE IF NOT EXISTS steven_memoria (
         id SERIAL PRIMARY KEY,
@@ -2754,6 +2769,60 @@ app.delete('/api/chat/cronologia/:agente', async (req, res) => {
   try {
     const r = await pool.query(`DELETE FROM chat_cronologia WHERE agente=$1`, [req.params.agente]);
     res.json({ eliminati: r.rowCount });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+// ── VIRTUAL COMPANY IMPOSTAZIONI ─────────────────────────────────────────
+app.get('/api/vc/impostazioni', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM vc_impostazioni ORDER BY ordine`);
+    res.json(r.rows);
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+app.put('/api/vc/impostazioni/:figura', async (req, res) => {
+  const { attiva, assegna_a, notifica_via } = req.body;
+  try {
+    await pool.query(
+      `UPDATE vc_impostazioni SET attiva=$1, assegna_a=$2, notifica_via=$3 WHERE figura=$4`,
+      [attiva, assegna_a || 'Giovanni', notifica_via || 'email', req.params.figura]
+    );
+    res.json({ ok: true });
+  } catch(err) { res.json({ error: err.message }); }
+});
+
+// Dati live per il widget dashboard Virtual Company
+app.get('/api/vc/dashboard', async (req, res) => {
+  try {
+    const [impost, alertNonLetti, taskAperti, clientiRischio, insoluti, leads] = await Promise.all([
+      pool.query(`SELECT * FROM vc_impostazioni WHERE attiva=true ORDER BY ordine`),
+      pool.query(`SELECT COUNT(*) AS n FROM backoffice_alert WHERE letto=false`),
+      pool.query(`SELECT COUNT(*) AS n FROM tasks WHERE stato IN ('da_fare','in_corso') AND assegnata_da='Agente AI'`),
+      pool.query(`SELECT COUNT(*) AS n FROM clienti WHERE tag LIKE '%rischio%' AND tipo='cliente'`),
+      pool.query(`SELECT COUNT(*) AS n, COALESCE(SUM(importo),0) AS tot FROM movimenti WHERE tipo='entrata' AND pagato=false`),
+      pool.query(`SELECT COUNT(*) AS n FROM leads WHERE stato NOT IN ('vinto','perso')`),
+    ]);
+
+    const figure = impost.rows.map(f => {
+      const dati = {};
+      if (f.figura === 'steven') {
+        dati.alert = parseInt(alertNonLetti.rows[0].n);
+        dati.task = parseInt(taskAperti.rows[0].n);
+        dati.rischio = parseInt(clientiRischio.rows[0].n);
+        dati.esposizione = Number(insoluti.rows[0].tot).toFixed(0);
+        dati.ultimoLoop = new Date().toLocaleTimeString('it-IT', {hour:'2-digit', minute:'2-digit'});
+      } else if (f.figura === 'simona') {
+        dati.leads = parseInt(leads.rows[0].n);
+        dati.rischio = parseInt(clientiRischio.rows[0].n);
+      } else if (f.figura === 'mirko') {
+        dati.leads = parseInt(leads.rows[0].n);
+        dati.rischio = parseInt(clientiRischio.rows[0].n);
+        dati.insoluti = parseInt(insoluti.rows[0].n);
+      }
+      return { ...f, dati };
+    });
+
+    res.json({ figure });
   } catch(err) { res.json({ error: err.message }); }
 });
 
