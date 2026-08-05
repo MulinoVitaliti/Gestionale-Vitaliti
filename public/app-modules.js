@@ -783,11 +783,10 @@ function renderClienti(){
     const tr=document.createElement('tr'); tr.id='cl-row-'+c.id;
     tr.innerHTML=`
       <td><span style="font-family:monospace;font-size:11px;background:var(--surface-2);color:var(--text-2);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
-      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
-      <td>${c.citta||'—'}</td>
-      <td>${c.tel||'—'}</td>
+      <td><div class="flex-row"><div class="avatar">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.citta||''}</div></div></div></td>
+      <td>${c.tel||'—'}${c.tel2?' · '+c.tel2:''}</td>
+      <td style="font-size:12px">${c.email||'<span style="color:var(--text-3)">—</span>'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
-      <td style="font-size:12px;color:var(--text-2);max-width:130px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${c.prod||'—'}</td>
       <td style="white-space:nowrap">
         <button class="btn btn-sm" onclick="apriDettaglio(${c.id})" title="Dettaglio"><i class="ti ti-eye"></i></button>
         <button class="btn btn-sm" onclick="editCliente(${c.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
@@ -813,7 +812,7 @@ function renderFornitori(){
       <td><span style="font-family:monospace;font-size:11px;background:var(--green-light);color:var(--green);padding:2px 6px;border-radius:4px">${c.codice||'—'}</span></td>
       <td><div class="flex-row"><div class="avatar" style="background:var(--green-light);color:var(--green)">${ini(c.nome)}</div><div><div style="font-weight:600">${c.nome}</div><div style="font-size:11px;color:var(--text-3)">${c.email||''}</div></div></div></td>
       <td>${c.citta||'—'}</td>
-      <td>${c.tel||'—'}</td>
+      <td>${c.tel||'—'}${c.tel2?' · '+c.tel2:''}</td>
       <td style="font-size:12px;color:var(--text-2)">${c.piva||'—'}</td>
       <td>${sdiPec||'<span style="color:var(--text-3)">—</span>'}</td>
       <td style="white-space:nowrap">
@@ -1853,7 +1852,9 @@ async function salvaCliente(){
   const data=await api.post('/api/clienti',{
     tipo:tipoModal,
     nome, ref:document.getElementById('cl-ref').value,
-    tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
+    tel:document.getElementById('cl-tel').value,
+    tel2:document.getElementById('cl-tel2')?.value || '',
+    email:document.getElementById('cl-email').value,
     citta:document.getElementById('cl-citta').value,
     piva:document.getElementById('cl-piva').value.trim(),
     ind_legale:document.getElementById('cl-ind-legale').value.trim(),
@@ -1869,7 +1870,7 @@ async function salvaCliente(){
   closeModal('modal-cliente');
   if(tipoModal==='fornitore') renderFornitori(); else renderClienti();
   renderDash(); showSave();
-  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['cl-nome','cl-ref','cl-tel','cl-tel2','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
 }
 
 function setEditTipo(tipo){
@@ -1888,7 +1889,7 @@ function setEditTipo(tipo){
 function editCliente(id){
   const c=state.clienti.find(x=>x.id===id); if(!c)return;
   document.getElementById('edit-cl-id').value=c.id;
-  ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
+  ['nome','ref','tel','tel2','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
     const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
   });
   const same = document.getElementById('edit-cl-ind-same');
@@ -1903,7 +1904,9 @@ async function aggiornaCliente(){
   const body={
     tipo,
     nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
-    tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
+    tel:document.getElementById('edit-cl-tel').value,
+    tel2:document.getElementById('edit-cl-tel2')?.value || '',
+    email:document.getElementById('edit-cl-email').value,
     citta:document.getElementById('edit-cl-citta').value,
     piva:document.getElementById('edit-cl-piva')?.value.trim()||'',
     ind_legale:document.getElementById('edit-cl-ind-legale')?.value.trim()||'',
