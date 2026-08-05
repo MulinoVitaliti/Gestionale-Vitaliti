@@ -1280,7 +1280,7 @@ tbody tr:hover{background:var(--surface-2)}
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
           <div class="card-title"><i class="ti ti-shield-lock" style="color:var(--brand)"></i>Utenti & Permessi</div>
-          <button class="btn btn-primary btn-sm" onclick="openModal('modal-utente')"><i class="ti ti-plus"></i>Aggiungi utente</button>
+          <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-utente').classList.add('open')"><i class="ti ti-plus"></i>Aggiungi utente</button>
         </div>
         <div class="card-body" style="padding:0">
           <div style="display:grid;gap:8px;padding:14px" id="users-list"></div>
@@ -1839,74 +1839,46 @@ tbody tr:hover{background:var(--surface-2)}
   </div>
 </div>
 <div class="modal-overlay" id="modal-utente">
-  <div class="modal" style="max-width:560px">
+  <div class="modal" style="max-width:480px">
     <div class="modal-header">
       <div class="modal-title"><i class="ti ti-user-plus" style="color:var(--brand)"></i>Aggiungi utente</div>
-      <button class="btn btn-icon" onclick="closeModal('modal-utente')"><i class="ti ti-x"></i></button>
+      <button class="btn btn-icon" onclick="document.getElementById('modal-utente').classList.remove('open')"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body">
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Nome completo *</label><input type="text" id="u-nome" autocomplete="off"></div>
-        <div class="form-group"><label class="form-label">Username *</label><input type="text" id="u-user" autocomplete="off"></div>
+      <div class="form-group"><label class="form-label">Nome completo *</label><input type="text" id="u-nome" autocomplete="off" placeholder="Es. Angela Apa"></div>
+      <div class="form-group"><label class="form-label">Username *</label><input type="text" id="u-user" autocomplete="off" placeholder="Es. angela"></div>
+      <div class="form-group"><label class="form-label">Password *</label><input type="password" id="u-pass" autocomplete="new-password"></div>
+      <div class="form-group"><label class="form-label">Ruolo</label>
+        <select id="u-role" style="width:100%">
+          <option value="commerciale">Commerciale</option>
+          <option value="backoffice">Back Office</option>
+          <option value="contabile">Contabile</option>
+          <option value="magazzino">Magazzino</option>
+          <option value="admin">Admin</option>
+        </select>
       </div>
-      <div class="form-row">
-        <div class="form-group"><label class="form-label">Password *</label><input type="password" id="u-pass" autocomplete="new-password"></div>
-        <div class="form-group"><label class="form-label">Ruolo</label>
-          <select id="u-role">
-            <option value="commerciale">Commerciale</option>
-            <option value="contabile">Contabile</option>
-            <option value="magazzino">Magazzino</option>
-            <option value="backoffice">Back Office</option>
-            <option value="admin">Admin</option>
-          </select>
-        </div>
-      </div>
-
-      <!-- Figura AI associata -->
-      <div class="form-group">
-        <label class="form-label"><i class="ti ti-robot" style="font-size:13px;color:var(--brand)"></i> Figura AI associata</label>
+      <div class="form-group"><label class="form-label"><i class="ti ti-robot" style="font-size:13px;color:var(--brand)"></i> Figura AI associata</label>
         <select id="u-figura-vc" style="width:100%">
-          <option value="">— Nessuna figura AI —</option>
+          <option value="">— Nessuna —</option>
           <option value="steven">Steven — Back Office</option>
           <option value="simona">Simona — Digital Marketing</option>
           <option value="mirko">Mirko — Commerciale</option>
         </select>
-        <div style="font-size:11px;color:var(--text-3);margin-top:4px">La figura AI associata apparirà nella dashboard di questo utente</div>
       </div>
-
-      <!-- Permessi sezioni -->
-      <div class="form-group">
-        <label class="form-label">Accesso alle sezioni</label>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px">
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-dashboard" checked> Dashboard
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-contatti" checked> Contatti
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-ordini" checked> Ordini
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-pipeline"> Pipeline
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-contabilita"> Contabilità
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-email"> Email
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-ai"> Virtual Company
-          </label>
-          <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
-            <input type="checkbox" id="perm-impostazioni"> Impostazioni
-          </label>
+      <div class="form-group"><label class="form-label">Sezioni accessibili</label>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:4px">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-dashboard" checked> Dashboard</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-contatti" checked> Contatti</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-ordini" checked> Ordini</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-pipeline"> Pipeline</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-contabilita"> Contabilità</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-email"> Email</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-ai"> Virtual Company</label>
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px"><input type="checkbox" id="perm-impostazioni"> Impostazioni</label>
         </div>
       </div>
-
-      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
-        <button class="btn" onclick="closeModal('modal-utente')">Annulla</button>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="document.getElementById('modal-utente').classList.remove('open')">Annulla</button>
         <button class="btn btn-primary" onclick="salvaUtente()"><i class="ti ti-check"></i>Crea utente</button>
       </div>
     </div>
