@@ -242,7 +242,7 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); vcCaricaImpostazioni(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
   if(id==='ai'){ aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
 }
 function openModal(id){
