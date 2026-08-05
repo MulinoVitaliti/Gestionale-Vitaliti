@@ -396,6 +396,15 @@ tbody tr:hover{background:var(--surface-2)}
         <div id="dash-search-results" style="display:none;position:absolute;top:calc(100% + 6px);left:0;right:0;background:#fff;border:1px solid var(--border);border-radius:var(--rl);box-shadow:var(--shadow-md);z-index:100;max-height:380px;overflow-y:auto"></div>
       </div>
 
+      <!-- Widget Virtual Company -->
+      <div id="vc-dashboard-widget" style="margin-bottom:18px;display:none">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+          <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.6px;white-space:nowrap">Virtual Company</div>
+          <div style="flex:1;height:1px;background:var(--border)"></div>
+        </div>
+        <div id="vc-figure-grid" style="display:grid;gap:10px"></div>
+      </div>
+
       <!-- Task del Giorno - Focus Giornaliero -->
       <div class="card" style="margin-bottom:14px;overflow:hidden">
         <!-- Header motivazionale -->
@@ -1200,6 +1209,20 @@ tbody tr:hover{background:var(--surface-2)}
     <!-- IMPOSTAZIONI -->
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
+
+      <!-- Virtual Company -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-building-factory" style="color:var(--brand)"></i>Virtual Company</div>
+        </div>
+        <div class="card-body">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:16px">Attiva le figure che vuoi vedere nella dashboard. Solo quelle attive compariranno nel widget.</div>
+          <div id="vc-impostazioni-lista" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div style="margin-top:14px;display:flex;justify-content:flex-end">
+            <button class="btn btn-primary" onclick="salvaVCImpostazioni()"><i class="ti ti-check"></i>Salva impostazioni</button>
+          </div>
+        </div>
+      </div>
 
       <!-- Connessione Gmail -->
       <div class="card" style="margin-bottom:20px">
