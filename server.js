@@ -203,6 +203,8 @@ async function initDB() {
       -- Migrazione: aggiunge tag se non esiste
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tag TEXT;
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tel2 TEXT;
+      ALTER TABLE utenti ADD COLUMN IF NOT EXISTS figura_vc TEXT DEFAULT NULL;
+      ALTER TABLE utenti ADD COLUMN IF NOT EXISTS permessi JSONB DEFAULT '{}';
 
       CREATE TABLE IF NOT EXISTS vc_impostazioni (
         id SERIAL PRIMARY KEY,
@@ -556,22 +558,36 @@ app.post('/api/reset-password', async (req, res) => {
 // ── UTENTI API ────────────────────────────────────────────────────────────
 app.get('/api/utenti', async (req, res) => {
   try {
-    const r = await pool.query('SELECT id, nome, username, ruolo, email, pending FROM utenti ORDER BY id');
+    const r = await pool.query('SELECT id, nome, username, ruolo, email, pending, figura_vc, permessi FROM utenti ORDER BY id');
     res.json(r.rows);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.post('/api/utenti', async (req, res) => {
-  const { nome, username, password, ruolo, email } = req.body;
+  const { nome, username, password, ruolo, email, figura_vc, permessi } = req.body;
   try {
     const hash = hashPassword(password);
-    const r = await pool.query('INSERT INTO utenti (nome, username, password, ruolo, email) VALUES ($1,$2,$3,$4,$5) RETURNING *', [nome, username, hash, ruolo, email || '']);
+    const r = await pool.query(
+      'INSERT INTO utenti (nome, username, password, ruolo, email, figura_vc, permessi) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
+      [nome, username, hash, ruolo, email || '', figura_vc || null, JSON.stringify(permessi || {})]
+    );
     const { password: _, ...userSafe } = r.rows[0];
     res.json(userSafe);
   } catch (err) {
     if (err.code === '23505') return res.json({ error: 'Username già esistente' });
     res.json({ error: err.message });
   }
+});
+
+app.patch('/api/utenti/:id', async (req, res) => {
+  const { figura_vc, permessi, ruolo } = req.body;
+  try {
+    await pool.query(
+      'UPDATE utenti SET figura_vc=$1, permessi=$2, ruolo=COALESCE($3,ruolo) WHERE id=$4',
+      [figura_vc || null, JSON.stringify(permessi || {}), ruolo || null, req.params.id]
+    );
+    res.json({ ok: true });
+  } catch (err) { res.json({ error: err.message }); }
 });
 
 app.delete('/api/utenti/:id', async (req, res) => {
