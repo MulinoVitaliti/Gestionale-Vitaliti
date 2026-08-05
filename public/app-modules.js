@@ -2068,8 +2068,6 @@ async function salvaVCImpostazioni() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const PERM_SEZIONI = ['dashboard','clienti','ordini','pipeline','contabilita','email','ai','impostazioni'];
-const PERM_LABELS = { dashboard:'Dashboard', clienti:'Contatti', ordini:'Ordini', pipeline:'Pipeline', contabilita:'Contabilità', email:'Email', ai:'Virtual Co.', impostazioni:'Impostazioni' };
-const ROLE_COLORS = { admin:'#A8412A', commerciale:'#1976d2', contabile:'#2e7d32', magazzino:'#e65100', backoffice:'#6a1b9a' };
 const VC_FIGURE_LABEL = { steven:'Steven', simona:'Simona', mirko:'Mirko' };
 const VC_FIGURE_COLOR = { steven:'#A8412A', simona:'#e91e8c', mirko:'#1976d2' };
 
@@ -2085,7 +2083,7 @@ async function renderUtenti() {
     }
     utenti.forEach(u => {
       const perms = u.permessi || {};
-      const colore = ROLE_COLORS[u.ruolo] || 'var(--brand)';
+      const colore = ({admin:'#A8412A',commerciale:'#1976d2',contabile:'#2e7d32',magazzino:'#e65100',backoffice:'#6a1b9a'})[u.ruolo] || 'var(--brand)';
       const figuraVC = u.figura_vc;
       const div = document.createElement('div');
       div.style.cssText = 'display:flex;align-items:flex-start;gap:12px;padding:12px 14px;border:1px solid var(--border);border-radius:10px;background:var(--surface-2)';
