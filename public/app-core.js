@@ -230,7 +230,8 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
-  if(id==='dashboard')renderDash();
+  if(id==='dashboard'){ renderDash(); vcCaricaDashboard(); }
+
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
@@ -240,8 +241,8 @@ function showPage(id){
     initPaginaSpedizioni(); 
   }
   if(id==='utenti')renderUtenti();
-  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); }
-  if(id==='ai'){ aggiornaStatoAgente(); }
+  if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); vcCaricaImpostazioni(); }
+  if(id==='ai'){ aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
