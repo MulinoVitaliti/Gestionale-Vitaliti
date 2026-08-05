@@ -1292,11 +1292,6 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
           <div class="card-title"><i class="ti ti-shield-lock" style="color:var(--brand)"></i>Utenti & Permessi</div>
-          <button class="btn btn-sm" onclick="
-            var m=document.getElementById('modal-utente');
-            if(!m){alert('ERRORE: modal-utente non trovato nel DOM');}
-            else{m.classList.add('open');alert('Modal aperto - se non vedi nulla c\\'è un problema CSS');}
-          ">Test modal</button>
           <button class="btn btn-primary btn-sm" onclick="document.getElementById('modal-utente').classList.add('open')"><i class="ti ti-plus"></i>Aggiungi utente</button>
         </div>
         <div class="card-body" style="padding:0">
