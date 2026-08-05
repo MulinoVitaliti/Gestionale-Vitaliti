@@ -2067,7 +2067,7 @@ async function salvaVCImpostazioni() {
 // UTENTI & PERMESSI
 // ══════════════════════════════════════════════════════════════════════════
 
-const PERM_SEZIONI = ['dashboard','clienti','ordini','pipeline','contabilita','email','ai','impostazioni'];
+const PERM_SEZIONI = ['dashboard','contatti','ordini','pipeline','contabilita','email','ai','impostazioni'];
 const VC_FIGURE_LABEL = { steven:'Steven', simona:'Simona', mirko:'Mirko' };
 const VC_FIGURE_COLOR = { steven:'#A8412A', simona:'#e91e8c', mirko:'#1976d2' };
 
@@ -2157,11 +2157,30 @@ async function eliminaUtente(id) {
 }
 
 async function modificaFiguraUtente(id, figuraAttuale) {
-  const nuovaFigura = prompt(`Associa figura AI a questo utente:\n\n- steven (Back Office)\n- simona (Digital Marketing)\n- mirko (Commerciale)\n- vuoto per nessuna\n\nFigura attuale: ${figuraAttuale||'nessuna'}`, figuraAttuale || '');
-  if (nuovaFigura === null) return;
-  const valido = ['steven','simona','mirko',''].includes(nuovaFigura.trim().toLowerCase());
-  if (!valido) { alert('Valore non valido. Usa: steven, simona, mirko oppure lascia vuoto'); return; }
-  await api.patch('/api/utenti/'+id, { figura_vc: nuovaFigura.trim() || null });
-  renderUtenti();
-  mostraToast('✅ Figura AI aggiornata');
+  // Crea un mini-modal inline invece di prompt()
+  const overlay = document.createElement('div');
+  overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:9999;display:flex;align-items:center;justify-content:center';
+  overlay.innerHTML = `
+    <div style="background:#fff;border-radius:12px;padding:24px;min-width:320px;box-shadow:0 8px 32px rgba(0,0,0,0.2)">
+      <div style="font-size:15px;font-weight:600;margin-bottom:16px">Associa figura AI</div>
+      <select id="figura-select" style="width:100%;padding:8px 10px;border:1.5px solid var(--border);border-radius:8px;font-size:14px;margin-bottom:16px">
+        <option value="">— Nessuna figura AI —</option>
+        <option value="steven" ${figuraAttuale==='steven'?'selected':''}>Steven — Back Office</option>
+        <option value="simona" ${figuraAttuale==='simona'?'selected':''}>Simona — Digital Marketing</option>
+        <option value="mirko" ${figuraAttuale==='mirko'?'selected':''}>Mirko — Commerciale</option>
+      </select>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="this.closest('[style*=fixed]').remove()" style="padding:8px 16px;border:1px solid var(--border);border-radius:8px;background:#fff;cursor:pointer;font-size:13px">Annulla</button>
+        <button id="btn-salva-figura" style="padding:8px 16px;background:var(--brand);color:#fff;border:none;border-radius:8px;cursor:pointer;font-size:13px">Salva</button>
+      </div>
+    </div>`;
+  document.body.appendChild(overlay);
+
+  document.getElementById('btn-salva-figura').onclick = async () => {
+    const nuovaFigura = document.getElementById('figura-select').value;
+    await api.patch('/api/utenti/'+id, { figura_vc: nuovaFigura || null });
+    overlay.remove();
+    renderUtenti();
+    mostraToast('✅ Figura AI aggiornata');
+  };
 }
