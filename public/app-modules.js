@@ -667,6 +667,25 @@ function switchContattiTab(tab, el){
 }
 
 // ── IMPORTAZIONE RAPIDA CSV — aggiorna email e telefono ───────────────────
+function parseCSVRiga(riga) {
+  const risultato = [];
+  let corrente = '';
+  let inVirgolette = false;
+  for (let i = 0; i < riga.length; i++) {
+    const c = riga[i];
+    if (c === '"') {
+      inVirgolette = !inVirgolette;
+    } else if (c === ',' && !inVirgolette) {
+      risultato.push(corrente.trim());
+      corrente = '';
+    } else {
+      corrente += c;
+    }
+  }
+  risultato.push(corrente.trim());
+  return risultato;
+}
+
 async function importaCSVVeloce(input) {
   const file = input.files?.[0];
   if (!file) return;
@@ -679,51 +698,50 @@ async function importaCSVVeloce(input) {
     if (!righe.length) return alert('File CSV vuoto');
 
     // Leggi intestazioni
-    const sep = righe[0].includes(';') ? ';' : ',';
-    const intestazioni = righe[0].split(sep).map(h => h.replace(/"/g,'').trim().toLowerCase());
+    const intestazioni = parseCSVRiga(righe[0]).map(h => h.toLowerCase().replace(/"/g,'').trim());
 
-    const idxNome = intestazioni.findIndex(h => ['nome','organizzazione','azienda','ragione sociale'].includes(h));
-    const idxEmail = intestazioni.findIndex(h => ['email','mail'].includes(h));
+    const idxNome = intestazioni.findIndex(h => h === 'nome');
+    const idxEmail = intestazioni.findIndex(h => h === 'email');
     const idxTel = intestazioni.findIndex(h => ['tel','telefono','cellulare'].includes(h));
 
-    if (idxNome === -1) return alert('Colonna "nome" non trovata nel CSV');
+    if (idxNome === -1) {
+      return alert(`Colonna "nome" non trovata.\nColonne nel file: ${intestazioni.join(', ')}`);
+    }
 
     // Parsa righe
     const dati = [];
     for (let i = 1; i < righe.length; i++) {
-      const cols = righe[i].split(sep).map(c => c.replace(/"/g,'').trim());
+      const cols = parseCSVRiga(righe[i]);
       const nome = cols[idxNome] || '';
       if (!nome) continue;
       dati.push({
-        nome,
-        email: idxEmail >= 0 ? cols[idxEmail] || '' : '',
-        tel: idxTel >= 0 ? cols[idxTel] || '' : ''
+        nome: nome.replace(/"/g,'').trim(),
+        email: idxEmail >= 0 ? (cols[idxEmail] || '').replace(/"/g,'').trim() : '',
+        tel: idxTel >= 0 ? (cols[idxTel] || '').replace(/"/g,'').trim() : ''
       });
     }
 
     if (!dati.length) return alert('Nessuna riga valida trovata');
 
-    const conferma = confirm(`Trovate ${dati.length} righe.\n\nVerranno aggiornati email e telefono per i clienti già presenti in anagrafica.\nI clienti non trovati verranno ignorati.\n\nProcedere?`);
+    const conferma = confirm(`Trovate ${dati.length} righe.\n\nVerranno aggiornati email e telefono per i clienti già presenti in anagrafica (solo i campi vuoti).\n\nProcedere?`);
     if (!conferma) return;
 
-    // Invia al server
-    const btn = document.querySelector('[onclick*="import-csv-quick"]');
+    const btn = document.querySelector('button[onclick*="import-csv-quick"]') ||
+                document.querySelector('.btn-primary[onclick*="import-csv-quick"]');
     if (btn) { btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i> Importo...'; }
 
     try {
       const r = await api.post('/api/clienti/aggiorna-da-csv', { righe: dati });
       if (r.error) { alert('Errore: ' + r.error); return; }
-
-      // Ricarica clienti
       const clientiAggiornati = await api.get('/api/clienti');
       if (!clientiAggiornati.error) state.clienti = clientiAggiornati;
       renderClienti();
-
-      mostraToast(`✅ ${r.aggiornati} contatti aggiornati · ${r.nonTrovati} non trovati`);
+      mostraToast(`✅ ${r.aggiornati} contatti aggiornati · ${r.nonTrovati} non trovati o già completi`);
     } catch(err) {
       alert('Errore: ' + err.message);
     } finally {
-      if (btn) { btn.disabled = false; btn.innerHTML = '<i class="ti ti-file-import"></i>Aggiorna da CSV'; }
+      const b = document.querySelector('button[onclick*="import-csv-quick"]');
+      if (b) { b.disabled = false; b.innerHTML = '<i class="ti ti-file-import"></i>Aggiorna da CSV'; }
     }
   };
   reader.readAsText(file, 'utf-8');
