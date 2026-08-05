@@ -1764,3 +1764,76 @@ async function spostaLeadPipelineFase(leadId){
   if(btn){ btn.disabled=false; btn.innerHTML='<i class="ti ti-arrows-right-left"></i>Sposta'; }
 }
 
+
+// ── MODIFICA CLIENTE ──────────────────────────────────────────────────────
+async function salvaCliente(){
+  const nome=document.getElementById('cl-nome').value.trim(); if(!nome)return alert('Inserisci la ragione sociale');
+  const tipoModal = document.getElementById('modal-cliente').dataset.tipo || 'cliente';
+  const data=await api.post('/api/clienti',{
+    tipo:tipoModal,
+    nome, ref:document.getElementById('cl-ref').value,
+    tel:document.getElementById('cl-tel').value, email:document.getElementById('cl-email').value,
+    citta:document.getElementById('cl-citta').value,
+    piva:document.getElementById('cl-piva').value.trim(),
+    ind_legale:document.getElementById('cl-ind-legale').value.trim(),
+    ind_consegna:document.getElementById('cl-ind-consegna').value.trim(),
+    sdi:document.getElementById('cl-sdi').value.toUpperCase().trim(),
+    pec:document.getElementById('cl-pec').value.trim(),
+    prod:document.getElementById('cl-prod').value, note:document.getElementById('cl-note').value
+  });
+  if(!data.error) state.clienti.push(data);
+  document.getElementById('modal-cliente').dataset.tipo = 'cliente';
+  const title = document.querySelector('#modal-cliente .modal-title');
+  if(title) title.textContent = 'Nuovo cliente';
+  closeModal('modal-cliente');
+  if(tipoModal==='fornitore') renderFornitori(); else renderClienti();
+  renderDash(); showSave();
+  ['cl-nome','cl-ref','cl-tel','cl-email','cl-citta','cl-piva','cl-ind-legale','cl-ind-consegna','cl-sdi','cl-pec','cl-prod','cl-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+}
+
+function setEditTipo(tipo){
+  const btnC = document.getElementById('edit-tipo-cliente');
+  const btnF = document.getElementById('edit-tipo-fornitore');
+  if(tipo === 'fornitore'){
+    btnC.style.background='#fff'; btnC.style.color='var(--text-2)';
+    btnF.style.background='var(--orange)'; btnF.style.color='#fff';
+  } else {
+    btnC.style.background='var(--brand)'; btnC.style.color='#fff';
+    btnF.style.background='#fff'; btnF.style.color='var(--text-2)';
+  }
+  document.getElementById('modal-edit-cliente').dataset.tipo = tipo;
+}
+
+function editCliente(id){
+  const c=state.clienti.find(x=>x.id===id); if(!c)return;
+  document.getElementById('edit-cl-id').value=c.id;
+  ['nome','ref','tel','email','citta','piva','ind-legale','ind-consegna','sdi','pec','prod','note'].forEach(f=>{
+    const el=document.getElementById('edit-cl-'+f); if(el) el.value=c[f.replace('-','_')]||'';
+  });
+  const same = document.getElementById('edit-cl-ind-same');
+  if(same) same.checked = !!(c.ind_legale && c.ind_consegna && c.ind_legale===c.ind_consegna);
+  setEditTipo(c.tipo || 'cliente');
+  openModal('modal-edit-cliente');
+}
+
+async function aggiornaCliente(){
+  const id=parseInt(document.getElementById('edit-cl-id').value);
+  const tipo = document.getElementById('modal-edit-cliente').dataset.tipo || 'cliente';
+  const body={
+    tipo,
+    nome:document.getElementById('edit-cl-nome').value, ref:document.getElementById('edit-cl-ref').value,
+    tel:document.getElementById('edit-cl-tel').value, email:document.getElementById('edit-cl-email').value,
+    citta:document.getElementById('edit-cl-citta').value,
+    piva:document.getElementById('edit-cl-piva')?.value.trim()||'',
+    ind_legale:document.getElementById('edit-cl-ind-legale')?.value.trim()||'',
+    ind_consegna:document.getElementById('edit-cl-ind-consegna')?.value.trim()||'',
+    sdi:document.getElementById('edit-cl-sdi').value.toUpperCase().trim(),
+    pec:document.getElementById('edit-cl-pec').value.trim(),
+    prod:document.getElementById('edit-cl-prod').value, note:document.getElementById('edit-cl-note').value
+  };
+  await api.put('/api/clienti/'+id, body);
+  const aggiornati = await api.get('/api/clienti');
+  if(!aggiornati.error) state.clienti = aggiornati;
+  closeModal('modal-edit-cliente');
+  renderClienti(); renderFornitori(); showSave();
+}
