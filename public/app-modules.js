@@ -2163,3 +2163,35 @@ async function modificaFiguraUtente(id, figuraAttuale) {
     mostraToast('✅ Figura AI aggiornata');
   };
 }
+
+// ── WHATSAPP TWILIO ───────────────────────────────────────────────────────
+async function caricaStatoWhatsApp() {
+  try {
+    const r = await api.get('/api/whatsapp/stato');
+    const el = document.getElementById('wa-stato');
+    if (!el) return;
+    if (r.configurato) {
+      el.innerHTML = `<span style="color:var(--green)">✅ Connesso</span> · Numero: <strong>${r.numero||'n/d'}</strong> · Destinatario: <strong>${r.destinatario||'non impostato'}</strong>`;
+    } else {
+      el.innerHTML = `<span style="color:var(--orange)">⚠️ Non configurato</span> — Aggiungi TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN, TWILIO_WHATSAPP_NUMBER e TWILIO_WHATSAPP_TO nelle variabili Railway.`;
+    }
+  } catch(e) {}
+}
+
+async function testWhatsApp() {
+  const btn = document.querySelector('button[onclick="testWhatsApp()"]');
+  const res = document.getElementById('wa-test-result');
+  if (btn) { btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Invio...'; }
+  try {
+    const r = await api.post('/api/whatsapp/test', {});
+    if (r.ok) {
+      res.innerHTML = '<span style="color:var(--green)">✅ Messaggio inviato! Controlla WhatsApp.</span>';
+    } else {
+      res.innerHTML = `<span style="color:var(--red)">❌ Errore: ${r.errore}</span>`;
+    }
+  } catch(e) {
+    res.innerHTML = `<span style="color:var(--red)">❌ ${e.message}</span>`;
+  } finally {
+    if (btn) { btn.disabled=false; btn.innerHTML='<i class="ti ti-send"></i>Invia messaggio di test'; }
+  }
+}
