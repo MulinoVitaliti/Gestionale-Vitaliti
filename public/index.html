@@ -1222,6 +1222,18 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="page" id="page-impostazioni">
       <div class="page-header"><div class="page-title">Impostazioni</div></div>
 
+      <!-- WhatsApp Twilio -->
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
+          <div class="card-title"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i>WhatsApp (Twilio)</div>
+        </div>
+        <div class="card-body">
+          <div id="wa-stato" style="font-size:13px;color:var(--text-2);margin-bottom:12px">Caricamento...</div>
+          <button class="btn btn-primary" onclick="testWhatsApp()"><i class="ti ti-send"></i>Invia messaggio di test</button>
+          <div id="wa-test-result" style="margin-top:10px;font-size:13px"></div>
+        </div>
+      </div>
+
       <!-- Connessione Gmail -->
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
