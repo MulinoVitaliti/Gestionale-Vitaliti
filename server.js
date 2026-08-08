@@ -1,5 +1,53 @@
 const express = require('express');
 
+// ── TWILIO WHATSAPP ───────────────────────────────────────────────────────
+async function inviaWhatsApp(to, messaggio) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_WHATSAPP_NUMBER || 'whatsapp:+14155238886';
+
+  if (!sid || !token) {
+    console.warn('[Twilio] Credenziali non configurate');
+    return { ok: false, errore: 'Twilio non configurato' };
+  }
+
+  // Normalizza il numero destinatario
+  let toNum = to.toString().replace(/\s/g, '');
+  if (!toNum.startsWith('whatsapp:')) {
+    if (!toNum.startsWith('+')) toNum = '+39' + toNum.replace(/^0/, '');
+    toNum = 'whatsapp:' + toNum;
+  }
+
+  try {
+    const body = new URLSearchParams({
+      From: from,
+      To: toNum,
+      Body: messaggio
+    });
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+        'Content-Type': 'application/x-www-form-urlencoded'
+      },
+      body: body.toString()
+    });
+    const data = await r.json();
+    if (data.error_code) {
+      console.error('[Twilio] Errore:', data.error_message);
+      return { ok: false, errore: data.error_message };
+    }
+    console.log(`[Twilio] Messaggio inviato a ${toNum}: ${data.sid}`);
+    return { ok: true, sid: data.sid };
+  } catch(e) {
+    console.error('[Twilio] Errore fetch:', e.message);
+    return { ok: false, errore: e.message };
+  }
+}
+
+// Endpoint per inviare WhatsApp dal gestionale
+// app.post('/api/whatsapp/send') — aggiunto sotto
+
 // Cattura errori non gestiti per loggare prima del crash
 process.on('uncaughtException', (err) => {
   console.error('[CRASH] Errore non gestito:', err.message, err.stack);
@@ -2316,7 +2364,17 @@ Accedi al gestionale per vedere i dettagli e agire.
        VALUES ('notifica_inviata','bassa','Report giornaliero inviato via email',$1,true)`,
       [chiave]
     );
-    console.log(`[Agente] Email notifica inviata a ${emailTo}`);
+    // Manda anche WhatsApp se configurato
+    const waTo = process.env.TWILIO_WHATSAPP_TO;
+    if (waTo) {
+      const waTesto = `🤖 *Steven — Mulino Vitaliti*\n\n` +
+        (crescita ? `📊 ${crescita.tendenza} ${crescita.varPct !== null ? (crescita.varPct > 0 ? '+' : '') + crescita.varPct + '%' : ''}\n` : '') +
+        `⚠️ ${risultati.clientiARischio} clienti a rischio\n` +
+        `📋 ${risultati.taskCreati} nuovi task\n` +
+        `🔔 ${risultati.alertCreati} alert\n\n` +
+        `_Apri il gestionale per i dettagli_`;
+      await inviaWhatsApp(waTo, waTesto);
+    }
   } catch (e) { risultati.errori.push('notificaEmail: ' + e.message); }
 }
 
@@ -2840,6 +2898,33 @@ app.get('/api/vc/dashboard', async (req, res) => {
 
     res.json({ figure });
   } catch(err) { res.json({ error: err.message }); }
+});
+
+// ── ENDPOINT WHATSAPP TWILIO ──────────────────────────────────────────────
+
+// Invia messaggio WhatsApp
+app.post('/api/whatsapp/send', async (req, res) => {
+  const { to, messaggio } = req.body;
+  if (!to || !messaggio) return res.json({ error: 'to e messaggio obbligatori' });
+  const r = await inviaWhatsApp(to, messaggio);
+  res.json(r);
+});
+
+// Test connessione Twilio — manda messaggio a TWILIO_WHATSAPP_TO
+app.post('/api/whatsapp/test', async (req, res) => {
+  const to = process.env.TWILIO_WHATSAPP_TO;
+  if (!to) return res.json({ error: 'TWILIO_WHATSAPP_TO non configurato' });
+  const r = await inviaWhatsApp(to, '✅ Test Mulino Vitaliti — WhatsApp collegato correttamente!');
+  res.json(r);
+});
+
+// Stato connessione Twilio
+app.get('/api/whatsapp/stato', async (req, res) => {
+  res.json({
+    configurato: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN),
+    numero: process.env.TWILIO_WHATSAPP_NUMBER || null,
+    destinatario: process.env.TWILIO_WHATSAPP_TO || null
+  });
 });
 
 app.get('/api/steven/memoria', async (req, res) => {
