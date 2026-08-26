@@ -1695,7 +1695,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
-      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
+      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov(); syncFatturazioneDaIva('mov')"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
     <!-- Fallback per uscite senza prodotti, o importo manuale -->
     <div class="form-group" id="mov-importo-netto-manuale-wrap" style="display:none">
@@ -1743,7 +1743,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
-      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva" onchange="calcolaImportoEditMov()"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
+      <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva" onchange="calcolaImportoEditMov(); syncFatturazioneDaIva('edit-mov')"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
     </div>
     <div class="form-group" id="edit-mov-importo-netto-manuale-wrap" style="display:none">
       <label class="form-label">Imponibile netto (€) *</label><input type="number" id="edit-mov-importo-netto" step="0.01" min="0" placeholder="es. 100.00" oninput="calcolaImportoEditMov()">
