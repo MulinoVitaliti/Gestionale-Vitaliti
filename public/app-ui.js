@@ -72,6 +72,17 @@ function salvaCambiaPwd(){
   setTimeout(()=>closeModal('modal-cambia-pwd'),1500);
 }
 
+
+// ── SYNC FATTURAZIONE DA IVA ──────────────────────────────────────────────
+// Regola di Giovanni: IVA 4/10/22 => Fatturato; Esente (0) => Black.
+function syncFatturazioneDaIva(prefix){
+  const iva = document.getElementById(prefix + '-iva');
+  const fatt = document.getElementById(prefix + '-fatturazione');
+  if(!iva || !fatt) return;
+  fatt.value = (parseInt(iva.value) === 0) ? 'da_fatturare' : 'fatturato';
+}
+window.syncFatturazioneDaIva = syncFatturazioneDaIva;
+
 // ── PASSWORD FINANZA ──────────────────────────────────────────────────────
 let finanzaSblocata = false;
 let finanzaModoClean = false; // true = modalità senza Black
@@ -80,10 +91,28 @@ let _finanzaTarget = '';
 function checkFinanzaPassword(pagina){
   if(finanzaSblocata){ showPage(pagina); return; }
   _finanzaTarget = pagina;
-  document.getElementById('finanza-pwd-input').value='';
-  document.getElementById('finanza-pwd-error').style.display='none';
-  openModal('modal-finanza-pwd');
-  setTimeout(()=>document.getElementById('finanza-pwd-input').focus(),150);
+  const input = document.getElementById('finanza-pwd-input');
+  const overlay = document.getElementById('modal-finanza-pwd');
+  if(input && overlay){
+    try{
+      input.value='';
+      const err = document.getElementById('finanza-pwd-error');
+      if(err) err.style.display='none';
+      openModal('modal-finanza-pwd');
+      setTimeout(()=>input.focus(),150);
+      return;
+    }catch(e){ console.warn('Modal Finanza non disponibile, uso prompt:', e); }
+  }
+  // Fallback: richiesta password nativa del browser (non puo' fallire)
+  const pwd = prompt('Password sezione Finanza:');
+  if(pwd === null) return;
+  if(pwd === getPwdSezione('contabilita')){
+    finanzaSblocata = true; finanzaModoClean = false; showPage(pagina);
+  } else if(pwd === getPwdClean()){
+    finanzaSblocata = true; finanzaModoClean = true; showPage(pagina);
+  } else {
+    alert('Password non corretta.');
+  }
 }
 
 function getPwdClean(){
