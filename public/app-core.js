@@ -13,13 +13,7 @@ const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:
 const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',contatti:'Contatti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
 
 let currentUser = null;
-let usersDB = [
-  {id:1,nome:'Giovanni Vitaliti',username:'giovanni',password:'vitaliti2024',ruolo:'admin',email:'mulino.vitaliti@gmail.com'},
-  {id:2,nome:'Antonio Vitaliti',username:'antonio',password:'antonio2024',ruolo:'admin',email:''},
-  {id:3,nome:'Marco Commerciale',username:'marco',password:'marco2024',ruolo:'commerciale',email:''},
-  {id:4,nome:'Laura Contabile',username:'laura',password:'laura2024',ruolo:'contabile',email:''},
-  {id:5,nome:'Giuseppe Magazzino',username:'giuseppe',password:'giuseppe2024',ruolo:'magazzino',email:''},
-];
+// usersDB rimosso: gli utenti vivono SOLO nel database lato server (sicurezza)
 
 let state = {
   fasi:[
