@@ -582,7 +582,7 @@ app.post('/api/login', loginLimiter, async (req, res) => {
     res.json({
       success: true,
       sessionExpiry,
-      user: { id: u.id, nome: u.nome, username: u.username, ruolo: u.ruolo, email: u.email }
+      user: { id: u.id, nome: u.nome, username: u.username, ruolo: u.ruolo, email: u.email, figura_vc: u.figura_vc || null }
     });
   } catch (err) { res.json({ error: err.message }); }
 });
