@@ -3,8 +3,6 @@
 // e invia il dettaglio al server (visibile nei log Railway).
 
 (function(){
-  let avvisoMostrato = false;
-
   function segnala(msg, url, line, col, stack){
     try {
       fetch('/api/client-error', {
@@ -20,15 +18,15 @@
   }
 
   function mostraAvviso(){
-    if (avvisoMostrato) return;
-    avvisoMostrato = true;
-    const b = document.createElement('div');
+    let b = document.getElementById('vv-guardia-banner');
+    if (b) return; // una barra sola alla volta
+    b = document.createElement('div');
+    b.id = 'vv-guardia-banner';
     b.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:99999;background:#973D37;color:#fff;padding:10px 16px;font:13px/1.4 system-ui;display:flex;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.25)';
-    b.innerHTML = '<span>⚠️ Qualcosa è andato storto in questa pagina. I dati sono al sicuro: ricarica per continuare.</span>' +
+    b.innerHTML = '<span>\u26a0\ufe0f Qualcosa \u00e8 andato storto in questa pagina. I dati sono al sicuro: ricarica per continuare.</span>' +
       '<button onclick="location.reload()" style="margin-left:auto;background:#fff;color:#973D37;border:0;border-radius:6px;padding:6px 14px;font-weight:600;cursor:pointer">Ricarica</button>' +
-      '<button onclick="this.parentNode.remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:6px 10px;cursor:pointer">Ignora</button>';
+      '<button onclick="document.getElementById(\'vv-guardia-banner\').remove()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.5);border-radius:6px;padding:6px 10px;cursor:pointer">Ignora</button>';
     (document.body || document.documentElement).appendChild(b);
-    setTimeout(()=>{ avvisoMostrato = false; }, 30000);
   }
 
   window.addEventListener('error', function(e){
