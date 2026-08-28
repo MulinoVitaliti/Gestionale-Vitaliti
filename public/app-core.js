@@ -131,6 +131,7 @@ async function doLogin(){
     document.getElementById('app-screen').style.display='flex';
     await loadAllData();
     applyPermissions(); renderDash();
+    if(typeof initDashAgenteChat==='function')initDashAgenteChat();
     // Avvia controllo scadenza sessione ogni minuto
     iniziaControlloScadenza();
   } catch(e){err.textContent='Errore di connessione.';err.style.display='block';}
@@ -225,7 +226,7 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
-  if(id==='dashboard'){ renderDash(); vcCaricaDashboard(); }
+  if(id==='dashboard'){ renderDash(); vcCaricaDashboard(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
 
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
@@ -237,7 +238,7 @@ function showPage(id){
   }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); caricaStatoWhatsApp(); }
-  if(id==='ai'){ aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
+  if(id==='ai'){ if(typeof applicaFiltroFigura==='function')applicaFiltroFigura(); aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
