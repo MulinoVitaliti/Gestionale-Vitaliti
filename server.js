@@ -634,14 +634,30 @@ app.post('/api/utenti', async (req, res) => {
 });
 
 app.patch('/api/utenti/:id', async (req, res) => {
-  const { figura_vc, permessi, ruolo } = req.body;
+  const { figura_vc, permessi, ruolo, nome, username, email, password } = req.body;
   try {
+    // Modifica anagrafica completa (matita): nome/username/email/ruolo/password
+    if (nome !== undefined || username !== undefined || email !== undefined || password) {
+      const campi = []; const valori = []; let i = 1;
+      if (nome !== undefined)     { campi.push(`nome=$${i++}`); valori.push(nome); }
+      if (username !== undefined) { campi.push(`username=$${i++}`); valori.push(String(username).toLowerCase().trim()); }
+      if (email !== undefined)    { campi.push(`email=$${i++}`); valori.push(email); }
+      if (ruolo)                  { campi.push(`ruolo=$${i++}`); valori.push(ruolo); }
+      if (password)               { campi.push(`password=$${i++}`); valori.push(hashPassword(password)); }
+      valori.push(req.params.id);
+      await pool.query(`UPDATE utenti SET ${campi.join(',')} WHERE id=$${i}`, valori);
+      return res.json({ ok: true });
+    }
+    // Comportamento storico: figura AI / permessi / ruolo
     await pool.query(
       'UPDATE utenti SET figura_vc=$1, permessi=$2, ruolo=COALESCE($3,ruolo) WHERE id=$4',
       [figura_vc || null, JSON.stringify(permessi || {}), ruolo || null, req.params.id]
     );
     res.json({ ok: true });
-  } catch (err) { res.json({ error: err.message }); }
+  } catch (err) {
+    if (err.code === '23505') return res.json({ error: 'Username già esistente' });
+    res.json({ error: err.message });
+  }
 });
 
 app.delete('/api/utenti/:id', async (req, res) => {
