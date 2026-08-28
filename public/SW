@@ -1,4 +1,4 @@
-const CACHE = 'vitaliti-v1';
+const CACHE = 'vitaliti-v2';
 const ASSETS = ['/', '/manifest.json', '/logo-192.png'];
 
 self.addEventListener('install', e => {
