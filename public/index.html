@@ -1862,6 +1862,34 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-edit-utente">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-pencil" style="color:var(--brand)"></i>Modifica utente</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-edit-utente')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <input type="hidden" id="eu-id">
+      <div class="form-group"><label class="form-label">Nome completo *</label><input type="text" id="eu-nome" autocomplete="off"></div>
+      <div class="form-group"><label class="form-label">Username *</label><input type="text" id="eu-user" autocomplete="off"></div>
+      <div class="form-group"><label class="form-label">Email</label><input type="text" id="eu-email" autocomplete="off"></div>
+      <div class="form-group"><label class="form-label">Ruolo</label>
+        <select id="eu-role" style="width:100%">
+          <option value="commerciale">Commerciale</option>
+          <option value="backoffice">Back Office</option>
+          <option value="contabile">Contabile</option>
+          <option value="magazzino">Magazzino</option>
+          <option value="admin">Admin</option>
+        </select>
+      </div>
+      <div class="form-group"><label class="form-label">Nuova password</label><input type="password" id="eu-pass" autocomplete="new-password" placeholder="Lascia vuoto per non cambiarla"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+        <button class="btn" onclick="closeModal('modal-edit-utente')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaEditUtente()"><i class="ti ti-check"></i>Salva modifiche</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-utente">
   <div class="modal" style="max-width:480px">
     <div class="modal-header">
