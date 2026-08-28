@@ -168,7 +168,13 @@ setInterval(() => {
 
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'public'), {
+  setHeaders: (res, filePath) => {
+    if (filePath.endsWith('.html') || filePath.endsWith('.js')) {
+      res.setHeader('Cache-Control', 'no-cache, must-revalidate');
+    }
+  }
+}));
 // Serve i file JS dell'app dalla cartella public
 ['app-core.js','app-modules.js','app-steven-bo.js','app-virtual-company.js','app-simona.js','app-mirko.js','app-ui.js'].forEach(f => {
   app.use('/'+f, (req, res) => res.sendFile(path.join(__dirname, 'public', f)));
@@ -5064,6 +5070,17 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
 });
 
 // Fallback: serve index.html per tutte le route non-API
+// ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
+// Riceve gli errori JavaScript dal browser e li scrive nei log Railway.
+let _clientErrCount = 0;
+setInterval(() => { _clientErrCount = 0; }, 60000);
+app.post('/api/client-error', (req, res) => {
+  if (_clientErrCount++ > 30) return res.json({ok:false}); // anti-flood
+  const { msg, url, line, col, stack, utente, pagina } = req.body || {};
+  console.error(`[ERRORE CLIENT] ${new Date().toISOString()} | utente=${utente||'?'} | pagina=${pagina||'?'} | ${msg} | ${url}:${line}:${col}\n${(stack||'').slice(0,800)}`);
+  res.json({ok:true});
+});
+
 app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
