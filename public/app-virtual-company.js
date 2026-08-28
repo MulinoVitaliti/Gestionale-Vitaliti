@@ -1012,3 +1012,84 @@ function conferma(callback){
   });
 }
 
+
+
+// ── FIGURA ASSEGNATA: filtro pagina AI ───────────────────────────────────
+// Se l'utente (non admin) ha una figura AI assegnata, vede SOLO quella.
+function applicaFiltroFigura(){
+  const fig = currentUser && currentUser.figura_vc;
+  const admin = currentUser && currentUser.ruolo === 'admin';
+  ['steven','simona','mirko'].forEach(a=>{
+    const card = document.getElementById('agente-card-'+a);
+    if(card) card.style.display = (admin || !fig || a===fig) ? '' : 'none';
+  });
+  if(!admin && fig && AGENTI[fig] && _agenteAttivo !== fig){
+    selezionaAgente(fig);
+  }
+}
+window.applicaFiltroFigura = applicaFiltroFigura;
+
+// ── MINI-CHAT ASSISTENTE IN DASHBOARD ────────────────────────────────────
+let _dacHistory = [];
+
+function initDashAgenteChat(){
+  const box = document.getElementById('dash-agente-chat');
+  if(!box) return;
+  const fig = currentUser && currentUser.figura_vc;
+  if(!fig || !AGENTI[fig]){ box.style.display='none'; return; }
+  const ag = AGENTI[fig];
+  box.style.display='';
+  const av = document.getElementById('dac-avatar');
+  av.style.background = ag.colore; av.textContent = ag.iniziale;
+  document.getElementById('dac-nome').textContent = 'Il tuo assistente: ' + ag.nome;
+  document.getElementById('dac-ruolo').textContent = ag.ruolo;
+  _dacHistory = [];
+  const msgs = document.getElementById('dac-messages'); msgs.innerHTML='';
+  fetch('/api/chat/cronologia/'+fig).then(r=>r.json()).then(dati=>{
+    (Array.isArray(dati)?dati.slice(-8):[]).forEach(m=>_dacAppend(m.ruolo==='user'?'user':'assistant', m.contenuto, true));
+    if(!msgs.children.length){
+      _dacAppend('assistant', 'Ciao ' + ((currentUser.nome||'').split(' ')[0]) + '! Sono ' + ag.nome + ', dimmi pure cosa ti serve.', true);
+    }
+  }).catch(()=>{
+    _dacAppend('assistant', 'Ciao! Sono ' + ag.nome + ', dimmi pure.', true);
+  });
+}
+
+function _dacAppend(ruolo, testo, senzaStoria){
+  const msgs = document.getElementById('dac-messages'); if(!msgs) return;
+  const d = document.createElement('div');
+  if(ruolo==='user'){
+    d.style.cssText='align-self:flex-end;background:var(--brand);color:#fff;padding:7px 11px;border-radius:12px 12px 3px 12px;max-width:80%;word-wrap:break-word';
+  } else {
+    d.style.cssText='align-self:flex-start;background:var(--surface);border:1px solid var(--border);padding:7px 11px;border-radius:12px 12px 12px 3px;max-width:85%;word-wrap:break-word';
+  }
+  d.innerHTML = String(testo||'').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+  msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
+  if(!senzaStoria){
+    _dacHistory.push({role: ruolo==='user'?'user':'assistant', content: testo});
+    if(_dacHistory.length>20) _dacHistory = _dacHistory.slice(-20);
+  }
+}
+
+async function dacInvia(){
+  const inp = document.getElementById('dac-input');
+  const text = inp.value.trim(); if(!text) return;
+  const fig = currentUser && currentUser.figura_vc; if(!fig) return;
+  inp.value='';
+  _dacAppend('user', text);
+  _dacHistory.push({role:'user', content:text});
+  const btn = document.getElementById('dac-send'); btn.disabled = true;
+  try{
+    const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({messages: _dacHistory, agente: fig})});
+    const data = await r.json();
+    const reply = data.reply || data.error || 'Errore.';
+    _dacAppend('assistant', reply);
+    _dacHistory.push({role:'assistant', content:reply});
+    fetch('/api/chat/cronologia/'+fig,{method:'POST',headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({messaggi:[{ruolo:'user',contenuto:text},{ruolo:'assistant',contenuto:reply}]})}).catch(()=>{});
+  }catch(e){ _dacAppend('assistant','Errore di connessione, riprova.'); }
+  finally{ btn.disabled = false; inp.focus(); }
+}
+window.initDashAgenteChat = initDashAgenteChat;
+window.dacInvia = dacInvia;
