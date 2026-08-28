@@ -2056,6 +2056,7 @@ async function renderUtenti() {
   container.innerHTML = '';
   try {
     const utenti = await api.get('/api/utenti');
+    window._utentiCache = utenti;
     if (!utenti.length) {
       container.innerHTML = '<div style="padding:14px;font-size:13px;color:var(--text-2)">Nessun utente aggiunto.</div>';
       return;
@@ -2090,10 +2091,12 @@ async function renderUtenti() {
           </div>
         </div>
 
-        ${u.id !== (currentUser?.id) && currentUser?.ruolo === 'admin' ? `
+        ${currentUser?.ruolo === 'admin' ? `
         <div style="display:flex;gap:6px;flex-shrink:0">
+          <button class="btn btn-sm" onclick="apriEditUtente(${u.id})" title="Modifica dati e password"><i class="ti ti-pencil"></i></button>
+          ${u.id !== (currentUser?.id) ? `
           <button class="btn btn-sm" onclick="modificaFiguraUtente(${u.id},'${u.figura_vc||''}')" title="Associa figura AI"><i class="ti ti-robot"></i></button>
-          <button class="btn btn-sm btn-danger" onclick="eliminaUtente(${u.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+          <button class="btn btn-sm btn-danger" onclick="eliminaUtente(${u.id})" title="Elimina"><i class="ti ti-trash"></i></button>` : ''}
         </div>` : ''}
       `;
       container.appendChild(div);
@@ -2195,3 +2198,42 @@ async function testWhatsApp() {
     if (btn) { btn.disabled=false; btn.innerHTML='<i class="ti ti-send"></i>Invia messaggio di test'; }
   }
 }
+
+
+// ── MODIFICA UTENTE (matita) ─────────────────────────────────────────────
+function apriEditUtente(id){
+  const u = (window._utentiCache||[]).find(x=>x.id===id);
+  if(!u) return alert('Utente non trovato, ricarica la pagina.');
+  document.getElementById('eu-id').value = u.id;
+  document.getElementById('eu-nome').value = u.nome||'';
+  document.getElementById('eu-user').value = u.username||'';
+  document.getElementById('eu-email').value = u.email||'';
+  document.getElementById('eu-role').value = u.ruolo||'commerciale';
+  document.getElementById('eu-pass').value = '';
+  openModal('modal-edit-utente');
+}
+
+async function salvaEditUtente(){
+  const id = document.getElementById('eu-id').value;
+  const nome = document.getElementById('eu-nome').value.trim();
+  const username = document.getElementById('eu-user').value.trim().toLowerCase();
+  const email = document.getElementById('eu-email').value.trim();
+  const ruolo = document.getElementById('eu-role').value;
+  const password = document.getElementById('eu-pass').value;
+  if(!nome || !username) return alert('Nome e username sono obbligatori.');
+  if(password && password.length < 6) return alert('La password deve avere almeno 6 caratteri.');
+  const body = { nome, username, email, ruolo };
+  if(password) body.password = password;
+  const r = await api.patch('/api/utenti/'+id, body);
+  if(r.error) return alert(r.error);
+  closeModal('modal-edit-utente');
+  showSave();
+  renderUtenti();
+  // se ho modificato me stesso, aggiorno l'intestazione
+  if(currentUser && String(currentUser.id)===String(id)){
+    currentUser.nome=nome; currentUser.username=username; currentUser.ruolo=ruolo;
+    applyPermissions();
+  }
+}
+window.apriEditUtente = apriEditUtente;
+window.salvaEditUtente = salvaEditUtente;
