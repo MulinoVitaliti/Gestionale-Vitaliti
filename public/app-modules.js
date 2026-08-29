@@ -216,6 +216,9 @@ function renderPipeline(){
         <button onclick="iniziaRinominaFaseInline('${fase.id}')" title="Rinomina fase" style="background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.5;transition:opacity .15s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
           <i class="ti ti-pencil" style="font-size:13px;color:${fase.color}"></i>
         </button>
+        <button onclick="eliminaFaseConCheck('${fase.id}')" title="Elimina fase" style="background:none;border:none;cursor:pointer;padding:2px 4px;opacity:0.5;transition:opacity .15s" onmouseover="this.style.opacity='1'" onmouseout="this.style.opacity='0.5'">
+          <i class="ti ti-trash" style="font-size:13px;color:var(--red)"></i>
+        </button>
         <span class="pl-col-count">${items.length}</span>
       </div>`;
     col.appendChild(header);
@@ -371,16 +374,19 @@ async function rinominaFase(id,nome){
 }
 
 async function eliminaFaseConCheck(id){
-  if(state.leads.some(l=>statoLeadInPipeline(l, currentPipelineId)===id)){
-    alert('Sposta prima i contatti da questa fase prima di eliminarla.');
+  const fase = state.fasi.find(f=>String(f.id)===String(id));
+  const nContatti = state.leads.filter(l=>String(statoLeadInPipeline(l, currentPipelineId))===String(id)).length;
+  if(nContatti){
+    alert(`Non posso eliminare "${fase?fase.label:'questa fase'}": ci sono ancora ${nContatti} contatt${nContatti===1?'o':'i'}.\nSpostali in un'altra fase (trascinandoli) e riprova.`);
     return;
   }
-  conferma(async()=>{
-    await api.del('/api/fasi/'+id);
-    state.fasi=state.fasi.filter(f=>f.id!==id);
-    renderPipeline();
-    showSave();
-  });
+  if(state.fasi.length <= 1){ alert('Deve restare almeno una fase nella pipeline.'); return; }
+  if(!confirm(`Eliminare la fase "${fase?fase.label:''}"? L'operazione non si puo\' annullare.`)) return;
+  const r = await api.del('/api/fasi/'+id);
+  if(r && r.error){ alert('Errore: '+r.error); return; }
+  state.fasi = state.fasi.filter(f=>String(f.id)!==String(id));
+  renderPipeline();
+  showSave();
 }
 
 // ── ASSICURAZIONI ─────────────────────────────────────────────────────────
