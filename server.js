@@ -276,6 +276,19 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      CREATE TABLE IF NOT EXISTS agenti_conoscenza (
+        id SERIAL PRIMARY KEY,
+        agente TEXT NOT NULL DEFAULT 'tutti',
+        argomento TEXT,
+        contenuto TEXT NOT NULL,
+        fonte TEXT DEFAULT 'insegnato',
+        utente TEXT,
+        usi INTEGER DEFAULT 0,
+        attiva BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS steven_memoria (
         id SERIAL PRIMARY KEY,
         tipo TEXT NOT NULL,
@@ -3593,6 +3606,93 @@ Rispondi sempre in italiano.`;
   }
 }
 
+// ══════════════════════════════════════════════════════════════════════════
+// CONOSCENZA DEGLI AGENTI — cresce man mano che vengono usati
+// ══════════════════════════════════════════════════════════════════════════
+
+async function salvaConoscenza(agente, argomento, contenuto, utente) {
+  try {
+    const dup = await pool.query(
+      `SELECT id FROM agenti_conoscenza WHERE attiva=TRUE AND lower(contenuto)=lower($1) LIMIT 1`,
+      [contenuto]);
+    if (dup.rows.length) {
+      await pool.query(`UPDATE agenti_conoscenza SET updated_at=NOW() WHERE id=$1`, [dup.rows[0].id]);
+      return;
+    }
+    await pool.query(
+      `INSERT INTO agenti_conoscenza (agente, argomento, contenuto, fonte, utente)
+       VALUES ($1,$2,$3,'insegnato',$4)`,
+      [agente || 'tutti', argomento || null, contenuto, utente || null]);
+    console.log(`[CONOSCENZA] ${agente}: "${String(contenuto).slice(0,80)}"`);
+  } catch (e) { console.error('[CONOSCENZA] errore:', e.message); }
+}
+
+async function leggiConoscenza(agente) {
+  try {
+    const r = await pool.query(
+      `SELECT argomento, contenuto FROM agenti_conoscenza
+       WHERE attiva=TRUE AND (agente=$1 OR agente='tutti')
+       ORDER BY updated_at DESC LIMIT 40`, [agente]);
+    if (!r.rows.length) return '';
+    return `\n\n## COSE CHE HAI IMPARATO SU MULINO VITALITI (memoria permanente)
+${r.rows.map(x => `- ${x.argomento ? '[' + x.argomento + '] ' : ''}${x.contenuto}`).join('\n')}
+Queste note te le ha insegnate il team: consideralE vere e tienine conto sempre.`;
+  } catch (e) { return ''; }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// RICERCA NEL GESTIONALE — gli agenti interrogano i dati veri
+// ══════════════════════════════════════════════════════════════════════════
+
+async function ricercaGestionale(tipo, q) {
+  const like = '%' + String(q || '').trim() + '%';
+  try {
+    if (tipo === 'cliente' || tipo === 'fornitore') {
+      const r = await pool.query(
+        `SELECT id, nome, ref, tel, email, citta, ind_legale, piva, note
+         FROM clienti WHERE tipo=$1 AND (nome ILIKE $2 OR ref ILIKE $2 OR citta ILIKE $2) LIMIT 5`,
+        [tipo === 'fornitore' ? 'fornitore' : 'cliente', like]);
+      if (!r.rows.length) return `Nessun ${tipo} trovato per "${q}".`;
+      const out = [];
+      for (const c of r.rows) {
+        const o = await pool.query(
+          `SELECT COUNT(*) n, SUM(importo) tot, MAX(data) ultimo FROM ordini WHERE cliente_id=$1`, [c.id]);
+        const s = o.rows[0] || {};
+        out.push(`${c.nome}${c.ref ? ' (ref: ' + c.ref + ')' : ''} | tel: ${c.tel || 'non registrato'} | email: ${c.email || 'non registrata'} | ${c.citta || ''}${c.piva ? ' | P.IVA ' + c.piva : ''}
+   ordini: ${s.n || 0}${Number(s.tot) ? ' per €' + Number(s.tot).toFixed(0) : ''}${s.ultimo ? ' | ultimo: ' + new Date(s.ultimo).toLocaleDateString('it-IT') : ''}${c.note ? '\n   note: ' + c.note : ''}`);
+      }
+      return out.join('\n');
+    }
+    if (tipo === 'ordini') {
+      const r = await pool.query(
+        `SELECT o.data, o.importo, o.stato, o.prodotto, o.qty, c.nome
+         FROM ordini o LEFT JOIN clienti c ON c.id=o.cliente_id
+         WHERE c.nome ILIKE $1 OR o.cliente ILIKE $1 ORDER BY o.data DESC LIMIT 12`, [like]);
+      if (!r.rows.length) return `Nessun ordine trovato per "${q}".`;
+      return r.rows.map(o => `${new Date(o.data).toLocaleDateString('it-IT')} | ${o.nome || ''} | ${o.prodotto || ''}${o.qty ? ' ' + o.qty + 'kg' : ''} | €${Number(o.importo).toFixed(0)} | ${o.stato}`).join('\n');
+    }
+    if (tipo === 'movimenti') {
+      const r = await pool.query(
+        `SELECT data, tipo, importo, cat, descrizione FROM movimenti
+         WHERE descrizione ILIKE $1 OR cat ILIKE $1 ORDER BY data DESC LIMIT 12`, [like]);
+      if (!r.rows.length) return `Nessun movimento trovato per "${q}".`;
+      return r.rows.map(m => `${new Date(m.data).toLocaleDateString('it-IT')} | ${m.tipo} | €${Number(m.importo).toFixed(2)} | ${m.cat || ''} | ${m.descrizione || ''}`).join('\n');
+    }
+    if (tipo === 'inattivi') {
+      const gg = parseInt(q) || 45;
+      const r = await pool.query(
+        `SELECT c.nome, c.tel, c.citta, MAX(o.data) ultimo, COUNT(o.id) n, SUM(o.importo) tot
+         FROM clienti c JOIN ordini o ON o.cliente_id=c.id WHERE c.tipo='cliente'
+         GROUP BY c.id, c.nome, c.tel, c.citta
+         HAVING MAX(o.data) < NOW() - ($1 || ' days')::interval
+         ORDER BY SUM(o.importo) DESC LIMIT 15`, [String(gg)]);
+      if (!r.rows.length) return `Nessun cliente fermo da piu' di ${gg} giorni.`;
+      return r.rows.map(c => `${c.nome} | ultimo ordine ${new Date(c.ultimo).toLocaleDateString('it-IT')} | ${c.n} ordini per €${Number(c.tot).toFixed(0)} | tel: ${c.tel || 'n/d'}`).join('\n');
+    }
+    return `Tipo ricerca "${tipo}" non riconosciuto. Usa: cliente, fornitore, ordini, movimenti, inattivi.`;
+  } catch (e) { return 'Errore nella ricerca: ' + e.message; }
+}
+
 // ── RICERCA SCHEDE CLIENTI PER LA CHAT AI ─────────────────────────────────
 // Estrae i possibili nomi dal messaggio e allega le schede complete dal CRM,
 // cosi' gli agenti hanno telefono/email/indirizzo sotto gli occhi.
@@ -3637,13 +3737,38 @@ async function cercaSchedeClienti(messages) {
 }
 
 // ── Seleziona il contesto giusto in base all'agente ───────────────────────
+const ISTRUZIONI_STRUMENTI = `
+
+## STRUMENTI: HAI ACCESSO DIRETTO AL GESTIONALE
+Non dire MAI che non hai accesso ai dati aziendali: puoi consultarli tu stesso.
+Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
+
+[CERCA:tipo="cliente",q="Panificio Valente"]     → scheda completa: telefono, email, referente, P.IVA, storico
+[CERCA:tipo="fornitore",q="nome"]                 → stessa cosa per i fornitori
+[CERCA:tipo="ordini",q="Torre Rosaria"]           → ultimi ordini di quel cliente
+[CERCA:tipo="movimenti",q="carburante"]           → movimenti contabili
+[CERCA:tipo="inattivi",q="45"]                    → clienti fermi da piu' di N giorni
+
+Puoi usarne fino a 3 per risposta. Ricevuti i risultati, rispondi con i dati reali.
+Se un campo risulta "non registrato", dillo e suggerisci di completare la scheda nel CRM.
+
+## MEMORIA: IMPARI MENTRE LAVORI
+Quando il team ti insegna qualcosa di stabile sull'azienda (abitudini di un cliente,
+regole interne, preferenze, prezzi ricorrenti, come funziona una procedura), salvalo:
+
+[IMPARA:argomento="Torre Rosaria",nota="ordina ogni 8 giorni, preferisce consegna il martedi'"]
+
+Salva solo fatti duraturi e utili in futuro, mai dettagli di una singola conversazione.
+Quando salvi qualcosa dillo brevemente all'utente ("me lo segno").`;
+
 async function costruisciContesto(agente, messages) {
   let base;
   if (agente === 'simona') base = await costruisciContestoSimona();
   else if (agente === 'mirko') base = await costruisciContestoMirko();
   else base = await costruisciContestoGestionale(); // default: Steven
   const schede = await cercaSchedeClienti(messages);
-  return base + schede;
+  const imparato = await leggiConoscenza(agente);
+  return base + schede + imparato + ISTRUZIONI_STRUMENTI;
 }
 
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
@@ -3802,11 +3927,55 @@ app.post('/api/chat', async (req, res) => {
       } catch(e) { /* usa la risposta originale */ } finally { clearTimeout(t2); }
     }
 
+    // ── [IMPARA:...] — salva conoscenza permanente ──────────────────────
+    const daImparare = [...testoFinale.matchAll(/\[IMPARA:argomento="([^"]*)",nota="([^"]*)"\]/g)];
+    for (const m of daImparare) {
+      await salvaConoscenza(agente, m[1], m[2], req.body.utente || null);
+    }
+
+    // ── [CERCA:...] — interroga il gestionale e richiama il modello ─────
+    const daCercare = [...testoFinale.matchAll(/\[CERCA:tipo="([^"]*)",q="([^"]*)"\]/g)].slice(0, 3);
+    if (daCercare.length) {
+      const esiti = [];
+      for (const m of daCercare) {
+        const esito = await ricercaGestionale(m[1], m[2]);
+        console.log(`[${agente.toUpperCase()} CERCA] ${m[1]}="${m[2]}" -> ${esito.slice(0,90)}`);
+        esiti.push(`### ${m[1]} "${m[2]}"\n${esito}`);
+      }
+      const c3 = new AbortController();
+      const t3 = setTimeout(() => c3.abort(), 20000);
+      try {
+        const r3 = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'x-api-key': process.env.ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+          body: JSON.stringify({
+            model: 'claude-haiku-4-5-20251001',
+            max_tokens: 800,
+            system: systemPrompt,
+            messages: [
+              ...req.body.messages,
+              { role: 'assistant', content: testoFinale },
+              { role: 'user', content: `Risultati dal gestionale:\n\n${esiti.join('\n\n')}\n\nRispondi ora usando questi dati reali. Non ripetere i comandi [CERCA:].` }
+            ]
+          }),
+          signal: c3.signal
+        });
+        if (r3.ok) {
+          const d3 = await r3.json();
+          const t = (d3.content || []).filter(b => b.type === 'text').map(b => b.text).join('');
+          if (t.trim()) testoFinale = t;
+        }
+      } catch (e) { console.error('[CERCA] richiamo fallito:', e.message); }
+      finally { clearTimeout(t3); }
+    }
+
     // Rimuovi tutti i blocchi azione dalla risposta visibile
     const testoVisibile = testoFinale
       .replace(/\[TASK:[^\]]+\]/g, '')
       .replace(/\[CLIENTE:[^\]]+\]/g, '')
       .replace(/\[MEMORIA:[^\]]+\]/g, '')
+      .replace(/\[CERCA:[^\]]+\]/g, '')
+      .replace(/\[IMPARA:[^\]]+\]/g, '')
       .replace(/\[DB:op="[^"]*",params=\{[\s\S]*?\}\]/g, '')
       .replace(/\[EMAIL:destinatario="[^"]*",oggetto="[^"]*",corpo="[\s\S]*?"\]/g, '')
       .trim();
@@ -5134,6 +5303,30 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
 });
 
 // Fallback: serve index.html per tutte le route non-API
+// ── CONOSCENZA AGENTI (memoria insegnata) ─────────────────────────────────
+app.get('/api/conoscenza', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, agente, argomento, contenuto, utente, created_at
+       FROM agenti_conoscenza WHERE attiva=TRUE ORDER BY updated_at DESC LIMIT 200`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/conoscenza', async (req, res) => {
+  const { agente, argomento, contenuto, utente } = req.body || {};
+  if (!contenuto) return res.json({ error: 'Contenuto mancante' });
+  await salvaConoscenza(agente || 'tutti', argomento, contenuto, utente);
+  res.json({ ok: true });
+});
+
+app.delete('/api/conoscenza/:id', async (req, res) => {
+  try {
+    await pool.query(`UPDATE agenti_conoscenza SET attiva=FALSE WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
 // Riceve gli errori JavaScript dal browser e li scrive nei log Railway.
 let _clientErrCount = 0;
