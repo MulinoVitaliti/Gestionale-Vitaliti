@@ -226,7 +226,7 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini')renderOrdini();
   if(id==='contabilita')renderContab();
-  if(id==='dashboard'){ renderDash(); vcCaricaDashboard(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
+  if(id==='dashboard'){ renderDash(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
 
   if(id==='email')checkGmailStatus();
   if(id==='fatture')initPaginaFatture();
