@@ -276,6 +276,11 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS agenti_conoscenza ADD COLUMN IF NOT EXISTS appresa_da TEXT;
+      ALTER TABLE IF EXISTS agenti_conoscenza ADD COLUMN IF NOT EXISTS ambito TEXT DEFAULT 'generale';
+      UPDATE agenti_conoscenza SET agente='tutti' WHERE agente <> 'tutti';
+      UPDATE agenti_conoscenza SET ambito='generale' WHERE ambito IS NULL;
+
       CREATE TABLE IF NOT EXISTS agenti_conoscenza (
         id SERIAL PRIMARY KEY,
         agente TEXT NOT NULL DEFAULT 'tutti',
@@ -3629,7 +3634,9 @@ Rispondi sempre in italiano.`;
 // CONOSCENZA DEGLI AGENTI — cresce man mano che vengono usati
 // ══════════════════════════════════════════════════════════════════════════
 
-async function salvaConoscenza(agente, argomento, contenuto, utente) {
+const AMBITO_DI = { steven: 'backoffice', simona: 'marketing', mirko: 'commerciale' };
+
+async function salvaConoscenza(agente, argomento, contenuto, utente, ambito) {
   try {
     const dup = await pool.query(
       `SELECT id FROM agenti_conoscenza WHERE attiva=TRUE AND lower(contenuto)=lower($1) LIMIT 1`,
@@ -3638,24 +3645,33 @@ async function salvaConoscenza(agente, argomento, contenuto, utente) {
       await pool.query(`UPDATE agenti_conoscenza SET updated_at=NOW() WHERE id=$1`, [dup.rows[0].id]);
       return;
     }
+    // La conoscenza e' SEMPRE condivisa: vale per tutti gli agenti e per tutti gli utenti.
+    // Il campo 'appresa_da' serve solo per sapere chi l'ha imparata per primo.
+    // Ambito = area di competenza della nota. Se non specificato, quello dell'agente.
+    // 'generale' = informazione aziendale che riguarda tutti.
+    const amb = ambito || AMBITO_DI[agente] || 'generale';
     await pool.query(
-      `INSERT INTO agenti_conoscenza (agente, argomento, contenuto, fonte, utente)
-       VALUES ($1,$2,$3,'insegnato',$4)`,
-      [agente || 'tutti', argomento || null, contenuto, utente || null]);
-    console.log(`[CONOSCENZA] ${agente}: "${String(contenuto).slice(0,80)}"`);
+      `INSERT INTO agenti_conoscenza (agente, argomento, contenuto, fonte, utente, appresa_da, ambito)
+       VALUES ('tutti',$1,$2,'insegnato',$3,$4,$5)`,
+      [argomento || null, contenuto, utente || null, agente || null, amb]);
+    console.log(`[CONOSCENZA ${amb}] appresa da ${agente || '?'}: "${String(contenuto).slice(0,80)}"`);
   } catch (e) { console.error('[CONOSCENZA] errore:', e.message); }
 }
 
 async function leggiConoscenza(agente) {
   try {
+    // Ogni agente riceve: le note del PROPRIO ambito (in dettaglio) + quelle generali.
+    // Il filtro non dipende MAI da chi ha fatto login: la preparazione e' identica
+    // per Giovanni, Angela o chiunque altro usi lo stesso assistente.
+    const mio = AMBITO_DI[agente] || 'generale';
     const r = await pool.query(
-      `SELECT argomento, contenuto FROM agenti_conoscenza
-       WHERE attiva=TRUE AND (agente=$1 OR agente='tutti')
-       ORDER BY updated_at DESC LIMIT 40`, [agente]);
+      `SELECT argomento, contenuto, ambito FROM agenti_conoscenza
+       WHERE attiva=TRUE AND ambito IN ($1,'generale')
+       ORDER BY (ambito=$1) DESC, updated_at DESC LIMIT 60`, [mio]);
     if (!r.rows.length) return '';
-    return `\n\n## COSE CHE HAI IMPARATO SU MULINO VITALITI (memoria permanente)
+    return `\n\n## QUELLO CHE SAI SU MULINO VITALITI (memoria permanente, uguale per chiunque ti parli)
 ${r.rows.map(x => `- ${x.argomento ? '[' + x.argomento + '] ' : ''}${x.contenuto}`).join('\n')}
-Queste note te le ha insegnate il team: consideralE vere e tienine conto sempre.`;
+Te l'ha insegnato il team: consideralo vero e tienine conto sempre.`;
   } catch (e) { return ''; }
 }
 
@@ -3775,10 +3791,33 @@ Se un campo risulta "non registrato", dillo e suggerisci di completare la scheda
 Quando il team ti insegna qualcosa di stabile sull'azienda (abitudini di un cliente,
 regole interne, preferenze, prezzi ricorrenti, come funziona una procedura), salvalo:
 
-[IMPARA:argomento="Torre Rosaria",nota="ordina ogni 8 giorni, preferisce consegna il martedi'"]
+[IMPARA:argomento="Torre Rosaria",nota="ordina ogni 8 giorni, preferisce consegna il martedi'",ambito="commerciale"]
+
+L'ambito dice a chi serve la nota — scegli con onesta':
+  "commerciale" (Mirko) · "marketing" (Simona) · "backoffice" (Steven)
+  "generale" = riguarda tutta l'azienda (orari, sede, prodotti, prezzi ufficiali, regole comuni)
+Se non lo indichi, la nota finisce nel TUO ambito. Le note generali le vedono tutti;
+quelle di un ambito le vede l'assistente di quel mestiere.
 
 Salva solo fatti duraturi e utili in futuro, mai dettagli di una singola conversazione.
 Quando salvi qualcosa dillo brevemente all'utente ("me lo segno").
+Quello che salvi diventa patrimonio comune: lo sapranno anche gli altri assistenti
+e tutte le persone dell'azienda che li usano. Scrivi quindi note comprensibili a
+chiunque, non riferite alla singola conversazione.
+
+## RESTA NEL TUO RUOLO
+La conoscenza e' condivisa, i ruoli no. In Mulino Vitaliti:
+- STEVEN: back office e gestione operativa (ordini, documenti, organizzazione interna)
+- SIMONA: marketing e comunicazione (social, contenuti, promozione, immagine)
+- MIRKO: commerciale (clienti, vendite, trattative, riordini, listini)
+Rispondi tu quando la domanda rientra nel tuo ruolo.
+Se riguarda il campo di un collega, non improvvisare: rispondi in una riga che di
+quell'argomento si occupa lui e che conviene chiederlo a lui (es: "per i social
+si occupa Simona, chiedilo a lei"). Nient'altro: non aprire pagine, non passare
+la conversazione, non fingere di girargli la domanda. Sei tu a rispondere,
+l'utente decide se andare dal collega.
+I dati concreti del gestionale (contatti, ordini, importi) puoi sempre darli:
+la divisione riguarda i consigli di mestiere, non l'accesso alle informazioni.
 
 ## REGOLA FONDAMENTALE: NON DIRE MAI DI AVER FATTO QUALCOSA CHE NON HAI FATTO
 Puoi modificare il gestionale SOLO tramite i comandi [DB:op="..."] elencati sopra.
@@ -3956,9 +3995,9 @@ app.post('/api/chat', async (req, res) => {
     }
 
     // ── [IMPARA:...] — salva conoscenza permanente ──────────────────────
-    const daImparare = [...testoFinale.matchAll(/\[IMPARA:argomento="([^"]*)",nota="([^"]*)"\]/g)];
+    const daImparare = [...testoFinale.matchAll(/\[IMPARA:argomento="([^"]*)",nota="([^"]*)"(?:,ambito="([^"]*)")?\]/g)];
     for (const m of daImparare) {
-      await salvaConoscenza(agente, m[1], m[2], req.body.utente || null);
+      await salvaConoscenza(agente, m[1], m[2], req.body.utente || null, m[3] || null);
     }
 
     // ── [CERCA:...] — interroga il gestionale e richiama il modello ─────
@@ -5335,16 +5374,16 @@ app.delete('/api/assicurazioni/:id', async (req, res) => {
 app.get('/api/conoscenza', async (req, res) => {
   try {
     const r = await pool.query(
-      `SELECT id, agente, argomento, contenuto, utente, created_at
+      `SELECT id, agente, argomento, contenuto, utente, ambito, appresa_da, created_at
        FROM agenti_conoscenza WHERE attiva=TRUE ORDER BY updated_at DESC LIMIT 200`);
     res.json(r.rows);
   } catch (e) { res.json({ error: e.message }); }
 });
 
 app.post('/api/conoscenza', async (req, res) => {
-  const { agente, argomento, contenuto, utente } = req.body || {};
+  const { agente, argomento, contenuto, utente, ambito } = req.body || {};
   if (!contenuto) return res.json({ error: 'Contenuto mancante' });
-  await salvaConoscenza(agente || 'tutti', argomento, contenuto, utente);
+  await salvaConoscenza(agente || null, argomento, contenuto, utente, ambito || 'generale');
   res.json({ ok: true });
 });
 
