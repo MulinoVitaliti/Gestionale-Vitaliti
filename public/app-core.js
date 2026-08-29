@@ -238,7 +238,7 @@ function showPage(id){
   }
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); caricaStatoWhatsApp(); }
-  if(id==='ai'){ if(typeof applicaFiltroFigura==='function')applicaFiltroFigura(); aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
+  if(id==='ai'){ if(typeof applicaFiltroFigura==='function')applicaFiltroFigura(); aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); if(typeof caricaConoscenza==='function')caricaConoscenza(); }
 }
 function openModal(id){
   if(id==='modal-ordine'){
