@@ -3042,6 +3042,24 @@ const STEVEN_DB_OPERAZIONI = {
     return r.rows[0];
   },
 
+  // Crea un ordine vero nel gestionale (stato bozza: va confermato a mano)
+  'crea_ordine': async (params) => {
+    const { cliente, prodotto, qty, importo, data, data_consegna, note, canale } = params;
+    if (!cliente) throw new Error('Serve il nome del cliente');
+    if (!prodotto) throw new Error('Serve il prodotto');
+    const c = await pool.query(`SELECT id, nome FROM clienti WHERE nome ILIKE $1 LIMIT 1`, ['%'+cliente+'%']);
+    if (!c.rows.length) throw new Error(`Cliente "${cliente}" non trovato in anagrafica: crealo prima con crea_contatto`);
+    const cl = c.rows[0];
+    const r = await pool.query(
+      `INSERT INTO ordini (cliente, cliente_id, prodotto, qty, importo, data, data_consegna, stato, canale, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,'bozza',$8,$9) RETURNING id, cliente, prodotto, qty, importo, data, stato`,
+      [cl.nome, cl.id, prodotto, qty||null, importo||null,
+       data || new Date().toISOString().slice(0,10), data_consegna||null,
+       canale||'assistente AI', note||null]
+    );
+    return { ...r.rows[0], avviso: 'Ordine creato in stato BOZZA: va aperto e confermato dalla pagina Ordini.' };
+  },
+
   // Leggi lista contatti con filtri
   'lista_contatti': async (params) => {
     const { tipo, tag, citta, limit = 20 } = params;
@@ -3457,6 +3475,7 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
   - crea_contatto: {nome:"...",tel:"...",email:"...",citta:"...",piva:"..."} — crea nuovo cliente
   - lista_contatti: {tipo:"cliente",tag:"rischio",citta:"...",limit:20} — lista con filtri
   - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
+  - crea_ordine: {cliente:"Nome cliente",prodotto:"Semola rimacinata",qty:500,importo:485.00,data:"YYYY-MM-DD",note:"..."} — crea un ordine in BOZZA
   - ordini_cliente: {id:123} — storico ordini di un cliente
   - insoluti: {} — tutte le fatture non pagate
   - analizza_tasks: {} — trova task duplicati e conta quante copie ci sono
@@ -3759,7 +3778,16 @@ regole interne, preferenze, prezzi ricorrenti, come funziona una procedura), sal
 [IMPARA:argomento="Torre Rosaria",nota="ordina ogni 8 giorni, preferisce consegna il martedi'"]
 
 Salva solo fatti duraturi e utili in futuro, mai dettagli di una singola conversazione.
-Quando salvi qualcosa dillo brevemente all'utente ("me lo segno").`;
+Quando salvi qualcosa dillo brevemente all'utente ("me lo segno").
+
+## REGOLA FONDAMENTALE: NON DIRE MAI DI AVER FATTO QUALCOSA CHE NON HAI FATTO
+Puoi modificare il gestionale SOLO tramite i comandi [DB:op="..."] elencati sopra.
+Se non hai scritto il comando, l'operazione NON e' avvenuta: non dire "fatto",
+"inserito", "creato" o "aggiornato".
+Se ti chiedono qualcosa che nessun comando disponibile permette di fare, dillo
+chiaramente ("non posso farlo da qui, si fa dalla pagina X") invece di far finta.
+Per creare un ordine usa [DB:op="crea_ordine",params={...}]: nasce in stato BOZZA
+e va confermato a mano dalla pagina Ordini — dillo sempre all'utente.`;
 
 async function costruisciContesto(agente, messages) {
   let base;
