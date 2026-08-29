@@ -1093,3 +1093,44 @@ async function dacInvia(){
 }
 window.initDashAgenteChat = initDashAgenteChat;
 window.dacInvia = dacInvia;
+
+
+// ── PANNELLO CONOSCENZA AGENTI ───────────────────────────────────────────
+async function caricaConoscenza(){
+  const box = document.getElementById('con-lista'); if(!box) return;
+  box.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 0">Caricamento...</div>';
+  try{
+    const dati = await api.get('/api/conoscenza');
+    if(!Array.isArray(dati) || !dati.length){
+      box.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 0">Ancora nessuna nota. Insegna qualcosa qui sopra, oppure dillo direttamente in chat: gli assistenti salvano da soli quello che conta.</div>';
+      return;
+    }
+    box.innerHTML = dati.map(n=>`
+      <div style="display:flex;align-items:flex-start;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <div style="flex:1">
+          ${n.argomento?`<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:600;margin-right:6px">${n.argomento}</span>`:''}
+          <span style="font-size:13px">${(n.contenuto||'').replace(/</g,'&lt;')}</span>
+          <div style="font-size:10px;color:var(--text-3);margin-top:3px">${n.agente==='tutti'?'tutti gli assistenti':n.agente} · ${new Date(n.created_at).toLocaleDateString('it-IT')}</div>
+        </div>
+        <button class="btn btn-sm btn-danger" onclick="eliminaConoscenza(${n.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+      </div>`).join('');
+  }catch(e){ box.innerHTML = '<div style="color:var(--text-3);font-size:12px">Errore nel caricamento.</div>'; }
+}
+
+async function aggiungiConoscenza(){
+  const arg = document.getElementById('con-argomento');
+  const nota = document.getElementById('con-nota');
+  if(!nota.value.trim()) return;
+  await api.post('/api/conoscenza', {agente:'tutti', argomento:arg.value.trim()||null, contenuto:nota.value.trim(), utente:(currentUser&&currentUser.username)||null});
+  arg.value=''; nota.value='';
+  showSave(); caricaConoscenza();
+}
+
+async function eliminaConoscenza(id){
+  if(!confirm('Eliminare questa nota? Gli assistenti non ne terranno piu\' conto.')) return;
+  await fetch('/api/conoscenza/'+id, {method:'DELETE'});
+  caricaConoscenza();
+}
+window.caricaConoscenza = caricaConoscenza;
+window.aggiungiConoscenza = aggiungiConoscenza;
+window.eliminaConoscenza = eliminaConoscenza;
