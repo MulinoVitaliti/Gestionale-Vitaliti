@@ -2038,7 +2038,6 @@ async function salvaVCImpostazioni() {
       });
     }
     mostraToast('✅ Impostazioni Virtual Company salvate');
-    vcCaricaDashboard(); // aggiorna widget dashboard
   } catch(e) { mostraToast('Errore: '+e.message, 'error'); }
 }
 
@@ -2207,9 +2206,14 @@ function apriEditUtente(id){
   document.getElementById('eu-id').value = u.id;
   document.getElementById('eu-nome').value = u.nome||'';
   document.getElementById('eu-user').value = u.username||'';
-  document.getElementById('eu-email').value = u.email||'';
   document.getElementById('eu-role').value = u.ruolo||'commerciale';
+  document.getElementById('eu-figura-vc').value = u.figura_vc||'';
   document.getElementById('eu-pass').value = '';
+  const perms = u.permessi || {};
+  PERM_SEZIONI.forEach(p => {
+    const el = document.getElementById('eu-perm-' + p);
+    if(el) el.checked = (u.ruolo === 'admin') ? true : perms[p] === true;
+  });
   openModal('modal-edit-utente');
 }
 
@@ -2217,22 +2221,28 @@ async function salvaEditUtente(){
   const id = document.getElementById('eu-id').value;
   const nome = document.getElementById('eu-nome').value.trim();
   const username = document.getElementById('eu-user').value.trim().toLowerCase();
-  const email = document.getElementById('eu-email').value.trim();
   const ruolo = document.getElementById('eu-role').value;
+  const figura_vc = document.getElementById('eu-figura-vc').value || null;
   const password = document.getElementById('eu-pass').value;
   if(!nome || !username) return alert('Nome e username sono obbligatori.');
   if(password && password.length < 6) return alert('La password deve avere almeno 6 caratteri.');
-  const body = { nome, username, email, ruolo };
+  const permessi = {};
+  PERM_SEZIONI.forEach(p => {
+    const el = document.getElementById('eu-perm-' + p);
+    if(el) permessi[p] = el.checked;
+  });
+  const body = { nome, username, ruolo, figura_vc, permessi };
   if(password) body.password = password;
   const r = await api.patch('/api/utenti/'+id, body);
   if(r.error) return alert(r.error);
   closeModal('modal-edit-utente');
   showSave();
   renderUtenti();
-  // se ho modificato me stesso, aggiorno l'intestazione
   if(currentUser && String(currentUser.id)===String(id)){
     currentUser.nome=nome; currentUser.username=username; currentUser.ruolo=ruolo;
+    currentUser.figura_vc=figura_vc;
     applyPermissions();
+    if(typeof initDashAgenteChat==='function') initDashAgenteChat();
   }
 }
 window.apriEditUtente = apriEditUtente;
