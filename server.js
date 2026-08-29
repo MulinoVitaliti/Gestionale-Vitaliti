@@ -644,6 +644,8 @@ app.patch('/api/utenti/:id', async (req, res) => {
       if (email !== undefined)    { campi.push(`email=$${i++}`); valori.push(email); }
       if (ruolo)                  { campi.push(`ruolo=$${i++}`); valori.push(ruolo); }
       if (password)               { campi.push(`password=$${i++}`); valori.push(hashPassword(password)); }
+      if (figura_vc !== undefined) { campi.push(`figura_vc=$${i++}`); valori.push(figura_vc || null); }
+      if (permessi !== undefined)  { campi.push(`permessi=$${i++}`); valori.push(JSON.stringify(permessi || {})); }
       valori.push(req.params.id);
       await pool.query(`UPDATE utenti SET ${campi.join(',')} WHERE id=$${i}`, valori);
       return res.json({ ok: true });
@@ -3591,11 +3593,57 @@ Rispondi sempre in italiano.`;
   }
 }
 
+// ── RICERCA SCHEDE CLIENTI PER LA CHAT AI ─────────────────────────────────
+// Estrae i possibili nomi dal messaggio e allega le schede complete dal CRM,
+// cosi' gli agenti hanno telefono/email/indirizzo sotto gli occhi.
+const STOPWORDS_CHAT = new Set(['sono','come','cosa','quale','quali','oggi','domani','numero','telefono','email','mail','cellulare','contatto','contatti','cliente','clienti','chiama','chiamare','chiamata','scrivi','scrivere','invia','inviare','manda','mandare','fammi','dammi','dimmi','trova','trovare','cerca','cercare','serve','servono','vorrei','voglio','della','dello','delle','degli','quello','questa','questo','anche','ancora','allora','quindi','perche','quanto','quanta','ordine','ordini','fattura','fatture','ultimo','ultima','prezzo','prezzi','offerta','preparare','prepara']);
+
+async function cercaSchedeClienti(messages) {
+  try {
+    const ultimi = (messages || []).filter(m => m.role === 'user').slice(-2);
+    const testo = ultimi.map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+    if (!testo.trim()) return '';
+    const parole = testo.toLowerCase().replace(/[^a-zàèéìòù0-9\s]/g, ' ').split(/\s+/)
+      .filter(w => w.length >= 4 && !STOPWORDS_CHAT.has(w));
+    if (!parole.length) return '';
+
+    // candidati: coppie di parole consecutive (piu' precise) poi singole
+    const candidati = [];
+    for (let i = 0; i < parole.length - 1; i++) candidati.push(parole[i] + ' ' + parole[i+1]);
+    candidati.push(...parole);
+
+    const trovati = new Map();
+    for (const cand of candidati) {
+      if (trovati.size >= 5) break;
+      const r = await pool.query(
+        `SELECT id, nome, ref, tel, email, citta, ind_legale
+         FROM clienti WHERE nome ILIKE $1 LIMIT 3`, ['%' + cand + '%']);
+      for (const c of r.rows) if (!trovati.has(c.id)) trovati.set(c.id, c);
+    }
+    if (!trovati.size) return '';
+
+    const schede = [];
+    for (const c of trovati.values()) {
+      const ord = await pool.query(
+        `SELECT data, importo, stato FROM ordini WHERE cliente_id=$1 ORDER BY data DESC LIMIT 1`, [c.id]);
+      const u = ord.rows[0];
+      schede.push(`- ${c.nome}${c.ref ? ' (referente: ' + c.ref + ')' : ''}
+  Telefono: ${c.tel || 'non registrato'} | Email: ${c.email || 'non registrata'}
+  Citta': ${c.citta || 'n/d'}${c.ind_legale ? ' | Indirizzo: ' + c.ind_legale : ''}
+  Ultimo ordine: ${u ? new Date(u.data).toLocaleDateString('it-IT') + ' · €' + Number(u.importo).toFixed(0) + ' · ' + u.stato : 'nessuno'}`);
+    }
+    return `\n\n## SCHEDE CLIENTI DAL CRM (dati reali del gestionale — usali direttamente)\n${schede.join('\n')}\nHAI accesso a questi dati del CRM: se il telefono o l'email sono indicati sopra, fornisci il dato senza esitare. Se un dato risulta "non registrato", di' che nel gestionale manca e suggerisci di completare la scheda.`;
+  } catch (e) { return ''; }
+}
+
 // ── Seleziona il contesto giusto in base all'agente ───────────────────────
-async function costruisciContesto(agente) {
-  if (agente === 'simona') return costruisciContestoSimona();
-  if (agente === 'mirko') return costruisciContestoMirko();
-  return costruisciContestoGestionale(); // default: Steven
+async function costruisciContesto(agente, messages) {
+  let base;
+  if (agente === 'simona') base = await costruisciContestoSimona();
+  else if (agente === 'mirko') base = await costruisciContestoMirko();
+  else base = await costruisciContestoGestionale(); // default: Steven
+  const schede = await cercaSchedeClienti(messages);
+  return base + schede;
 }
 
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
@@ -3608,7 +3656,7 @@ app.post('/api/chat', async (req, res) => {
       return res.json({ reply: 'Errore: chiave API Anthropic non configurata.' });
     }
 
-    const systemPrompt = await costruisciContesto(agente);
+    const systemPrompt = await costruisciContesto(agente, req.body.messages);
     console.log(`[${agente.toUpperCase()} Chat] Contesto pronto (${Date.now()-start}ms)`);
 
     const controller = new AbortController();
