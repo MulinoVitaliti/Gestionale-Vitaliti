@@ -202,7 +202,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
-  const navEl = document.getElementById('nav-'+id);
+  const navEl = document.getElementById('nav-'+(id==='followup'?'ordini':id));
   if(navEl) navEl.classList.add('active');
   if(id==='attivita')renderPageAttivita();
   if(id==='task'){
@@ -224,7 +224,7 @@ function showPage(id){
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline'){ initPipelinePage(); }
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
-  if(id==='ordini')renderOrdini();
+  if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); }
   if(id==='contabilita')renderContab();
   if(id==='dashboard'){ renderDash(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
 
