@@ -210,6 +210,19 @@ async function recuperaSpedizioniFollowup(){
 }
 window.recuperaSpedizioniFollowup = recuperaSpedizioniFollowup;
 
+// Pallino arancione sul bottone in Ordini quando ci sono email da approvare
+async function aggiornaBadgeFollowup(){
+  const b = document.getElementById('btn-fup-badge');
+  if(!b) return;
+  try{
+    const r = await api.get('/api/followup/riepilogo');
+    const n = Number(r && r.da_approvare) || 0;
+    b.textContent = n;
+    b.style.display = n ? 'inline-block' : 'none';
+  }catch(e){ b.style.display='none'; }
+}
+window.aggiornaBadgeFollowup = aggiornaBadgeFollowup;
+
 window.caricaFollowup = caricaFollowup;
 window.filtraFollowup = filtraFollowup;
 window.apriFollowup = apriFollowup;
