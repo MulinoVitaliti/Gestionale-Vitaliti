@@ -373,6 +373,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('spedizioni')" id="nav-spedizioni"><i class="ti ti-truck-delivery"></i><span>Spedizioni</span></div>
+      <div class="nav-item" onclick="showPage('followup')" id="nav-followup"><i class="ti ti-route"></i><span>Monitoraggio ordini</span></div>
       <div class="nav-item" onclick="showPage('contatti')" id="nav-contatti"><i class="ti ti-address-book"></i><span>Contatti</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
@@ -989,6 +990,30 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
 
     <!-- SPEDIZIONI -->
+    <div class="page" id="page-followup">
+      <div class="page-header">
+        <div class="page-title">Monitoraggio ordini spediti</div>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="recuperaSpedizioniFollowup()" title="Crea i percorsi per le spedizioni corriere gia' registrate"><i class="ti ti-history"></i>Recupera spedizioni</button>
+          <button class="btn btn-sm" onclick="apriModelliFollowup()"><i class="ti ti-mail-cog"></i>Modelli email</button>
+          <button class="btn btn-sm" onclick="caricaFollowup()"><i class="ti ti-refresh"></i>Aggiorna</button>
+        </div>
+      </div>
+
+      <div style="font-size:12px;color:var(--text-3);margin:-8px 0 14px">Seguiamo solo le <strong>spedizioni via corriere</strong> registrate nella sezione Spedizioni. Le consegne locali fatte col nostro furgone non entrano in questo elenco.</div>
+
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px" id="fup-riepilogo"></div>
+
+      <div style="display:flex;gap:6px;margin-bottom:12px" id="fup-pills">
+        <button class="pill active" onclick="filtraFollowup('in_corso',this)">In corso</button>
+        <button class="pill" onclick="filtraFollowup('completato',this)">Completati</button>
+        <button class="pill" onclick="filtraFollowup('fermato',this)">Fermati</button>
+        <button class="pill" onclick="filtraFollowup('tutti',this)">Tutti</button>
+      </div>
+
+      <div class="card"><div id="fup-lista" style="padding:4px 0"></div></div>
+    </div>
+
     <div class="page" id="page-spedizioni">
       <div class="page-header">
         <div class="page-title">Spedizioni</div>
@@ -1877,6 +1902,24 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-followup-dettaglio">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-route" style="color:var(--brand)"></i><span id="fupd-titolo">Percorso ordine</span></div>
+      <button class="btn btn-icon" onclick="closeModal('modal-followup-dettaglio')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" id="fupd-body"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-followup-modelli">
+  <div class="modal" style="max-width:680px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-mail-cog" style="color:var(--brand)"></i>Modelli delle email</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-followup-modelli')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" id="fupm-body"></div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-conoscenza">
   <div class="modal" style="max-width:620px">
     <div class="modal-header">
@@ -1886,7 +1929,13 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="modal-body">
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Note salvate durante le conversazioni con Steven, Simona e Mirko. Restano valide finche' non le elimini.</div>
       <div style="display:flex;gap:8px;margin-bottom:12px">
-        <input id="con-argomento" type="text" placeholder="Argomento (es. Torre Rosaria)" style="width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <input id="con-argomento" type="text" placeholder="Argomento (es. Torre Rosaria)" style="width:150px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
+        <select id="con-ambito" style="width:140px;padding:8px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px" title="Chi deve saperlo">
+          <option value="generale">Tutti (generale)</option>
+          <option value="commerciale">Mirko — commerciale</option>
+          <option value="marketing">Simona — marketing</option>
+          <option value="backoffice">Steven — back office</option>
+        </select>
         <input id="con-nota" type="text" placeholder="Cosa devono sapere..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter')aggiungiConoscenza()">
         <button class="btn btn-primary btn-sm" onclick="aggiungiConoscenza()"><i class="ti ti-plus"></i>Insegna</button>
       </div>
@@ -2311,6 +2360,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="app-virtual-company.js"></script>
 <script src="app-simona.js"></script>
 <script src="app-mirko.js"></script>
+<script src="app-followup.js"></script>
 <script src="app-ui.js"></script>
 
 </body>
