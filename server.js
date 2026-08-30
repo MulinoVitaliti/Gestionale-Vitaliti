@@ -3687,7 +3687,19 @@ async function ricercaGestionale(tipo, q) {
         `SELECT id, nome, ref, tel, email, citta, ind_legale, piva, note
          FROM clienti WHERE tipo=$1 AND (nome ILIKE $2 OR ref ILIKE $2 OR citta ILIKE $2) LIMIT 5`,
         [tipo === 'fornitore' ? 'fornitore' : 'cliente', like]);
-      if (!r.rows.length) return `Nessun ${tipo} trovato per "${q}".`;
+      if (!r.rows.length) {
+        // Non e' in anagrafica: cerco nello storico di Fatture in Cloud
+        const f = await pool.query(
+          `SELECT nome, telefono, email, indirizzo, citta, provincia, vat_number,
+                  num_fatture, num_ddt, importo_totale_fatturato,
+                  ultimo_documento_tipo, ultimo_documento_data, ultimo_documento_numero
+           FROM fic_clienti_storico WHERE nome ILIKE $1 LIMIT 4`, [like]);
+        if (!f.rows.length) return `Nessun ${tipo} trovato per "${q}", ne' in anagrafica ne' nello storico fatture.`;
+        return f.rows.map(c => `${c.nome} [SOLO NELLO STORICO FATTURE, non ancora in anagrafica CRM]
+   tel: ${c.telefono || 'non registrato'} | email: ${c.email || 'non registrata'} | ${[c.indirizzo, c.citta, c.provincia].filter(Boolean).join(', ')}${c.vat_number ? ' | P.IVA ' + c.vat_number : ''}
+   documenti: ${c.num_fatture || 0} fatture, ${c.num_ddt || 0} DDT per €${Number(c.importo_totale_fatturato || 0).toFixed(0)}${c.ultimo_documento_data ? ' | ultimo: ' + c.ultimo_documento_tipo + ' ' + (c.ultimo_documento_numero || '') + ' del ' + new Date(c.ultimo_documento_data).toLocaleDateString('it-IT') : ''}
+   NOTA: per creare un ordine va prima aggiunto in anagrafica con crea_contatto.`).join('\n');
+      }
       const out = [];
       for (const c of r.rows) {
         const o = await pool.query(
@@ -3697,6 +3709,15 @@ async function ricercaGestionale(tipo, q) {
    ordini: ${s.n || 0}${Number(s.tot) ? ' per €' + Number(s.tot).toFixed(0) : ''}${s.ultimo ? ' | ultimo: ' + new Date(s.ultimo).toLocaleDateString('it-IT') : ''}${c.note ? '\n   note: ' + c.note : ''}`);
       }
       return out.join('\n');
+    }
+    if (tipo === 'fatture' || tipo === 'ddt') {
+      const f = await pool.query(
+        `SELECT nome, telefono, email, num_fatture, num_ddt, importo_totale_fatturato,
+                ultimo_documento_tipo, ultimo_documento_data, ultimo_documento_numero
+         FROM fic_clienti_storico WHERE nome ILIKE $1
+         ORDER BY importo_totale_fatturato DESC LIMIT 8`, [like]);
+      if (!f.rows.length) return `Nessun documento trovato per "${q}" nello storico Fatture in Cloud.`;
+      return f.rows.map(c => `${c.nome} | ${c.num_fatture || 0} fatture, ${c.num_ddt || 0} DDT | totale €${Number(c.importo_totale_fatturato || 0).toFixed(0)}${c.ultimo_documento_data ? ' | ultimo ' + c.ultimo_documento_tipo + ' ' + (c.ultimo_documento_numero || '') + ' del ' + new Date(c.ultimo_documento_data).toLocaleDateString('it-IT') : ''} | tel: ${c.telefono || 'n/d'}`).join('\n');
     }
     if (tipo === 'ordini') {
       const r = await pool.query(
@@ -3782,7 +3803,12 @@ Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
 [CERCA:tipo="fornitore",q="nome"]                 → stessa cosa per i fornitori
 [CERCA:tipo="ordini",q="Torre Rosaria"]           → ultimi ordini di quel cliente
 [CERCA:tipo="movimenti",q="carburante"]           → movimenti contabili
+[CERCA:tipo="fatture",q="Panificio Valente"]       → storico fatture e DDT di quel cliente (dati Fatture in Cloud)
 [CERCA:tipo="inattivi",q="45"]                    → clienti fermi da piu' di N giorni
+
+La ricerca "cliente" guarda prima l'anagrafica CRM e, se non trova nulla, anche lo
+storico di Fatture in Cloud: quindi hai accesso anche ai clienti che hanno solo
+fatture/DDT e non sono ancora in anagrafica.
 
 Puoi usarne fino a 3 per risposta. Ricevuti i risultati, rispondi con i dati reali.
 Se un campo risulta "non registrato", dillo e suggerisci di completare la scheda nel CRM.
@@ -3818,6 +3844,25 @@ la conversazione, non fingere di girargli la domanda. Sei tu a rispondere,
 l'utente decide se andare dal collega.
 I dati concreti del gestionale (contatti, ordini, importi) puoi sempre darli:
 la divisione riguarda i consigli di mestiere, non l'accesso alle informazioni.
+
+ATTENZIONE: tu, Steven, Simona e Mirko avete ESATTAMENTE gli stessi strumenti e
+gli stessi accessi ai dati. Non dire mai che un collega "vede cose che tu non vedi"
+o che l'utente deve chiedere a lui per ottenere un dato: non e' vero. Se un dato
+non lo trovi, dillo e proponi di aggiungerlo, non rimpallare a un altro assistente.
+Non chiedere all'utente di copiarti dati che puoi cercare da solo con [CERCA:...]:
+prima cerca, poi eventualmente chiedi.
+
+## COME SCRIVERE LE RISPOSTE
+Mostra il RISULTATO, non il ragionamento. Chi legge deve trovare la risposta, non
+i tuoi pensieri mentre la cerchi.
+- Non scrivere frasi come "ora cerco...", "mi serve il dato X", "faccio la ricerca",
+  "un attimo che controllo": fai la ricerca e basta, poi rispondi con quello che hai trovato.
+- Non chiedere un dato e poi nella stessa risposta dire che l'hai trovato: decidi.
+  Se lo trovi, dai la risposta; se non lo trovi, chiedi e fermati li'.
+- Vai al punto: prima la risposta, poi eventuali dettagli. Frasi brevi.
+- Puoi usare **grassetto** per i dati importanti (nomi, cifre, date) e elenchi
+  puntati per piu' voci. Niente titoli grandi, niente tabelle complicate.
+- Metti sempre lo spazio dopo il punto e dopo i due punti.
 
 ## REGOLA FONDAMENTALE: NON DIRE MAI DI AVER FATTO QUALCOSA CHE NON HAI FATTO
 Puoi modificare il gestionale SOLO tramite i comandi [DB:op="..."] elencati sopra.
