@@ -1,3 +1,26 @@
+
+// ── FORMATTAZIONE MESSAGGI ASSISTENTI ────────────────────────────────────
+// Converte il markdown che scrivono gli agenti in HTML leggibile.
+// Vale per Steven, Simona, Mirko e per la mini-chat in dashboard.
+function fmtMsgAI(testo){
+  let t = String(testo || '');
+  // sicurezza: niente HTML dall'esterno
+  t = t.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  // spazio mancante dopo punteggiatura ("gestionale.Mi serve" → "gestionale. Mi serve")
+  t = t.replace(/([a-zà-ù0-9\)])([.!?:,;])([A-ZÀ-Ù])/g, '$1$2 $3');
+  // grassetto, corsivo, codice
+  t = t.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>');
+  t = t.replace(/(^|[^*])\*([^*\n]+)\*(?!\*)/g, '$1<em>$2</em>');
+  t = t.replace(/\x60([^\x60]+)\x60/g, '<code style="background:var(--surface);padding:1px 5px;border-radius:4px;font-size:12px">$1</code>');
+  // titoli markdown → riga in grassetto
+  t = t.replace(/^#{1,4}\s*(.+)$/gm, '<strong>$1</strong>');
+  // elenchi puntati
+  t = t.replace(/^\s*[-•]\s+(.+)$/gm, '• $1');
+  // a capo
+  t = t.replace(/\n{3,}/g, '\n\n').replace(/\n/g, '<br>');
+  return t;
+}
+window.fmtMsgAI = fmtMsgAI;
 // app-virtual-company.js — Chat engine condiviso e Virtual Company
 
 // ── STATO E CONTROLLO AGENTE ──────────────────────────────────────────────
@@ -133,7 +156,7 @@ async function caricaCronologiaChat(agente) {
           <div class="msg-avatar user">GV</div>
           <div class="msg-bubble user">
             <div style="font-size:10px;color:rgba(255,255,255,0.6);margin-bottom:3px">${data}</div>
-            ${m.contenuto.replace(/\n/g,'<br>')}
+            ${fmtMsgAI(m.contenuto)}
           </div>
         </div>`;
       } else {
@@ -141,7 +164,7 @@ async function caricaCronologiaChat(agente) {
           <div class="msg-avatar ai" style="background:${ag.colore}"><strong style="font-size:11px">${ag.iniziale}</strong></div>
           <div class="msg-bubble ai">
             <div style="font-size:10px;color:var(--text-3);margin-bottom:3px">${data}</div>
-            ${m.contenuto.replace(/\n/g,'<br>')}
+            ${fmtMsgAI(m.contenuto)}
           </div>
         </div>`;
       }
@@ -509,7 +532,7 @@ async function stevenCaricaFile(input) {
     const reply = data.reply || data.errore || 'Non riesco ad analizzare il file.';
     const aDiv = document.createElement('div'); aDiv.className = 'msg-ai';
     aDiv.innerHTML = `${_makeAgenteAvatar()}
-      <div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
+      <div class="msg-bubble ai">${fmtMsgAI(reply)}</div>`;
     msgs.appendChild(aDiv);
 
     // Mostra risultati DB se ci sono stati
@@ -568,7 +591,7 @@ function sendChat(){
       // Salva risposta nella cronologia sessione
       _aggiungiAllaConversazione(_agenteAttivo, 'assistant', reply);
       const aDiv=document.createElement('div'); aDiv.className='msg-ai';
-      aDiv.innerHTML=`${_makeAgenteAvatar()}<div class="msg-bubble ai">${reply.replace(/\n/g,'<br>')}</div>`;
+      aDiv.innerHTML=`${_makeAgenteAvatar()}<div class="msg-bubble ai">${fmtMsgAI(reply)}</div>`;
       msgs.appendChild(aDiv);
 
       const az = data.azioni || {};
@@ -1063,7 +1086,7 @@ function _dacAppend(ruolo, testo, senzaStoria){
   } else {
     d.style.cssText='align-self:flex-start;background:var(--surface);border:1px solid var(--border);padding:7px 11px;border-radius:12px 12px 12px 3px;max-width:85%;word-wrap:break-word';
   }
-  d.innerHTML = String(testo||'').replace(/</g,'&lt;').replace(/\n/g,'<br>');
+  d.innerHTML = fmtMsgAI(testo);
   msgs.appendChild(d); msgs.scrollTop = msgs.scrollHeight;
   if(!senzaStoria){
     _dacHistory.push({role: ruolo==='user'?'user':'assistant', content: testo});
@@ -1096,6 +1119,8 @@ window.dacInvia = dacInvia;
 
 
 // ── PANNELLO CONOSCENZA AGENTI ───────────────────────────────────────────
+const AMBITO_LABEL = {generale:'Tutti gli assistenti', commerciale:'Mirko (commerciale)', marketing:'Simona (marketing)', backoffice:'Steven (back office)'};
+
 async function caricaConoscenza(){
   const box = document.getElementById('con-lista'); if(!box) return;
   box.innerHTML = '<div style="color:var(--text-3);font-size:12px;padding:8px 0">Caricamento...</div>';
@@ -1110,7 +1135,7 @@ async function caricaConoscenza(){
         <div style="flex:1">
           ${n.argomento?`<span style="display:inline-block;background:var(--surface);border:1px solid var(--border);border-radius:5px;padding:1px 7px;font-size:10px;font-weight:600;margin-right:6px">${n.argomento}</span>`:''}
           <span style="font-size:13px">${(n.contenuto||'').replace(/</g,'&lt;')}</span>
-          <div style="font-size:10px;color:var(--text-3);margin-top:3px">${n.agente==='tutti'?'tutti gli assistenti':n.agente} · ${new Date(n.created_at).toLocaleDateString('it-IT')}</div>
+          <div style="font-size:10px;color:var(--text-3);margin-top:3px">${AMBITO_LABEL[n.ambito]||'Tutti'} · ${new Date(n.created_at).toLocaleDateString('it-IT')}</div>
         </div>
         <button class="btn btn-sm btn-danger" onclick="eliminaConoscenza(${n.id})" title="Elimina"><i class="ti ti-trash"></i></button>
       </div>`).join('');
@@ -1121,7 +1146,8 @@ async function aggiungiConoscenza(){
   const arg = document.getElementById('con-argomento');
   const nota = document.getElementById('con-nota');
   if(!nota.value.trim()) return;
-  await api.post('/api/conoscenza', {agente:'tutti', argomento:arg.value.trim()||null, contenuto:nota.value.trim(), utente:(currentUser&&currentUser.username)||null});
+  const amb = document.getElementById('con-ambito');
+  await api.post('/api/conoscenza', {argomento:arg.value.trim()||null, contenuto:nota.value.trim(), ambito:(amb?amb.value:'generale'), utente:(currentUser&&currentUser.username)||null});
   arg.value=''; nota.value='';
   showSave(); caricaConoscenza();
 }
