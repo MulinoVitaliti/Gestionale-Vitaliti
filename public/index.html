@@ -373,7 +373,6 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="nav-item" onclick="showPage('email')" id="nav-email"><i class="ti ti-mail"></i><span>Email</span></div>
       <div class="nav-item" onclick="showPage('whatsapp')" id="nav-whatsapp" style="display:none"><i class="ti ti-brand-whatsapp" style="color:#25D366"></i><span>WhatsApp</span></div>
       <div class="nav-item" onclick="showPage('spedizioni')" id="nav-spedizioni"><i class="ti ti-truck-delivery"></i><span>Spedizioni</span></div>
-      <div class="nav-item" onclick="showPage('followup')" id="nav-followup"><i class="ti ti-route"></i><span>Monitoraggio ordini</span></div>
       <div class="nav-item" onclick="showPage('contatti')" id="nav-contatti"><i class="ti ti-address-book"></i><span>Contatti</span></div>
     </div>
     <div class="s-section" onclick="toggleSection('sec-finanza')"><span>Finanza 🔒</span><i class="ti ti-chevron-down s-arrow"></i></div>
@@ -723,7 +722,10 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="page" id="page-ordini">
       <div class="page-header">
         <div class="page-title">Ordini</div>
-        <button class="btn btn-primary" onclick="apriNuovoOrdine()"><i class="ti ti-plus"></i>Nuovo ordine</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="showPage('followup')" id="btn-vai-followup"><i class="ti ti-route"></i>Monitoraggio spedizioni<span id="btn-fup-badge" style="display:none;background:var(--orange);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px"></span></button>
+          <button class="btn btn-primary" onclick="apriNuovoOrdine()"><i class="ti ti-plus"></i>Nuovo ordine</button>
+        </div>
       </div>
       <div class="pills" style="margin-bottom:14px">
         <div class="pill active" onclick="filterOrdini('tutti',this)">Tutti</div>
@@ -992,7 +994,10 @@ window.addEventListener('unhandledrejection', function(e) {
     <!-- SPEDIZIONI -->
     <div class="page" id="page-followup">
       <div class="page-header">
-        <div class="page-title">Monitoraggio ordini spediti</div>
+        <div class="page-title" style="display:flex;align-items:center;gap:10px">
+          <button class="btn btn-icon" onclick="showPage('ordini')" title="Torna agli ordini"><i class="ti ti-arrow-left"></i></button>
+          Monitoraggio spedizioni
+        </div>
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm" onclick="recuperaSpedizioniFollowup()" title="Crea i percorsi per le spedizioni corriere gia' registrate"><i class="ti ti-history"></i>Recupera spedizioni</button>
           <button class="btn btn-sm" onclick="apriModelliFollowup()"><i class="ti ti-mail-cog"></i>Modelli email</button>
