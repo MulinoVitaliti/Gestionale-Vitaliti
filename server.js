@@ -281,6 +281,60 @@ async function initDB() {
       UPDATE agenti_conoscenza SET agente='tutti' WHERE agente <> 'tutti';
       UPDATE agenti_conoscenza SET ambito='generale' WHERE ambito IS NULL;
 
+      -- Percorso post-spedizione: una riga per spedizione seguita
+      CREATE TABLE IF NOT EXISTS followup_spedizioni (
+        id SERIAL PRIMARY KEY,
+        cliente_id INTEGER REFERENCES clienti(id) ON DELETE SET NULL,
+        cliente_nome TEXT NOT NULL,
+        email_dest TEXT,
+        ddt_numero TEXT,
+        ddt_data DATE,
+        ddt_id TEXT,
+        importo NUMERIC,
+        tracking TEXT,
+        corriere TEXT,
+        stato TEXT DEFAULT 'in_corso',        -- in_corso | completato | fermato
+        motivo_stop TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Le tappe del percorso (partenza, verifica, riordino)
+      CREATE TABLE IF NOT EXISTS followup_tappe (
+        id SERIAL PRIMARY KEY,
+        followup_id INTEGER REFERENCES followup_spedizioni(id) ON DELETE CASCADE,
+        tipo TEXT NOT NULL,                   -- partenza | verifica | riordino
+        programmata_per DATE,
+        stato TEXT DEFAULT 'programmata',     -- programmata | in_attesa_ok | inviata | saltata | annullata
+        oggetto TEXT,
+        corpo TEXT,
+        inviata_il TIMESTAMP,
+        inviata_da TEXT,
+        errore TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Diario di bordo: tutto quello che succede all'ordine
+      CREATE TABLE IF NOT EXISTS followup_eventi (
+        id SERIAL PRIMARY KEY,
+        followup_id INTEGER REFERENCES followup_spedizioni(id) ON DELETE CASCADE,
+        evento TEXT NOT NULL,
+        dettaglio TEXT,
+        utente TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Modelli email modificabili + impostazioni tempi
+      CREATE TABLE IF NOT EXISTS followup_modelli (
+        tipo TEXT PRIMARY KEY,                -- partenza | verifica | riordino
+        oggetto TEXT NOT NULL,
+        corpo TEXT NOT NULL,
+        giorni INTEGER DEFAULT 0,
+        automatica BOOLEAN DEFAULT FALSE,
+        attiva BOOLEAN DEFAULT TRUE,
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS agenti_conoscenza (
         id SERIAL PRIMARY KEY,
         agente TEXT NOT NULL DEFAULT 'tutti',
@@ -3631,6 +3685,217 @@ Rispondi sempre in italiano.`;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// PERCORSO POST-SPEDIZIONE — avviso partenza, verifica, riordino
+// Mittente: spedizioni.mulinovitaliti@gmail.com (account Gmail "spedizioni")
+// ══════════════════════════════════════════════════════════════════════════
+
+const FUP_MODELLI_DEFAULT = [
+  { tipo: 'partenza', giorni: 0, automatica: true,
+    oggetto: 'La sua merce e\' partita — Mulino Vitaliti',
+    corpo: `Gentile {{cliente}},
+
+le confermiamo che la merce relativa al documento {{ddt}} del {{data_ddt}} e' partita dal nostro mulino.
+
+{{tracking_riga}}
+
+Per qualsiasi necessita' puo' rispondere a questa email.
+
+Un cordiale saluto,
+Mulino Vitaliti — Belpasso (CT)
+Semola rimacinata di grano duro dal 1930` },
+  { tipo: 'verifica', giorni: 7, automatica: false,
+    oggetto: 'Come si sta trovando con la nostra semola?',
+    corpo: `Gentile {{cliente}},
+
+sono passati alcuni giorni dalla consegna del {{data_ddt}} e volevamo sapere come si sta trovando con la nostra semola.
+
+Se c'e' qualcosa che possiamo migliorare — sulla resa, sulla consegna, sull'imballaggio — ci farebbe piacere saperlo: rispondere a questa email e' sufficiente.
+
+Grazie e buon lavoro,
+Mulino Vitaliti — Belpasso (CT)` },
+  { tipo: 'riordino', giorni: 30, automatica: false,
+    oggetto: 'Le serve altra farina?',
+    corpo: `Gentile {{cliente}},
+
+e' passato circa un mese dall'ultima fornitura del {{data_ddt}}.
+
+Se sta per finire le scorte possiamo prepararle un nuovo carico: ci basta sapere quantita' e giorno di consegna preferito.
+
+Restiamo a disposizione,
+Mulino Vitaliti — Belpasso (CT)` },
+];
+
+async function fupInitModelli() {
+  for (const m of FUP_MODELLI_DEFAULT) {
+    await pool.query(
+      `INSERT INTO followup_modelli (tipo, oggetto, corpo, giorni, automatica)
+       VALUES ($1,$2,$3,$4,$5) ON CONFLICT (tipo) DO NOTHING`,
+      [m.tipo, m.oggetto, m.corpo, m.giorni, m.automatica]);
+  }
+}
+
+async function fupEvento(followupId, evento, dettaglio, utente) {
+  try {
+    await pool.query(
+      `INSERT INTO followup_eventi (followup_id, evento, dettaglio, utente) VALUES ($1,$2,$3,$4)`,
+      [followupId, evento, dettaglio || null, utente || null]);
+  } catch (e) { console.error('[FUP evento]', e.message); }
+}
+
+// Crea il percorso a partire da un DDT (chiamata dalla sincronizzazione FIC)
+async function fupCreaDaDDT({ cliente_nome, cliente_id, ddt_numero, ddt_data, ddt_id, importo, email, tracking, corriere }) {
+  try {
+    const gia = await pool.query(
+      `SELECT id FROM followup_spedizioni WHERE ddt_numero=$1 AND cliente_nome=$2 LIMIT 1`,
+      [ddt_numero, cliente_nome]);
+    if (gia.rows.length) return gia.rows[0].id;
+
+    // email: da anagrafica se non passata
+    let dest = email;
+    let cid = cliente_id || null;
+    if (!dest || !cid) {
+      const c = await pool.query(
+        `SELECT id, email FROM clienti WHERE nome ILIKE $1 LIMIT 1`, ['%' + cliente_nome + '%']);
+      if (c.rows.length) { cid = cid || c.rows[0].id; dest = dest || c.rows[0].email; }
+    }
+
+    const imp = importo || null;
+    const r = await pool.query(
+      `INSERT INTO followup_spedizioni (cliente_id, cliente_nome, email_dest, ddt_numero, ddt_data, ddt_id, importo, tracking, corriere)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [cid, cliente_nome, dest || null, ddt_numero || null, ddt_data || new Date(), ddt_id || null, imp,
+       tracking || null, corriere || null]);
+    const fid = r.rows[0].id;
+
+    const modelli = await pool.query(`SELECT tipo, giorni FROM followup_modelli WHERE attiva=TRUE`);
+    const base = new Date(ddt_data || Date.now());
+    for (const m of modelli.rows) {
+      const quando = new Date(base);
+      quando.setDate(quando.getDate() + (m.giorni || 0));
+      await pool.query(
+        `INSERT INTO followup_tappe (followup_id, tipo, programmata_per) VALUES ($1,$2,$3)`,
+        [fid, m.tipo, quando.toISOString().slice(0, 10)]);
+    }
+    await fupEvento(fid, 'creato', `Spedizione via ${corriere || 'corriere'}${ddt_numero ? ' — DDT ' + ddt_numero : ''}${tracking ? ' — tracking ' + tracking : ''}`);
+    if (!dest) await fupEvento(fid, 'attenzione', 'Nessuna email in anagrafica: le comunicazioni non partiranno finche\' non viene aggiunta');
+    console.log(`[FUP] percorso creato per ${cliente_nome} (spedizione ${corriere || ''} DDT ${ddt_numero || '-'})`);
+    return fid;
+  } catch (e) { console.error('[FUP crea]', e.message); return null; }
+}
+
+// Compila i segnaposto del modello
+function fupCompila(testo, f) {
+  const dataDdt = f.ddt_data ? new Date(f.ddt_data).toLocaleDateString('it-IT') : '';
+  const trackingRiga = f.tracking
+    ? `Numero di spedizione: ${f.tracking}${f.corriere ? ' (' + f.corriere + ')' : ''}`
+    : 'Le comunicheremo il numero di spedizione appena disponibile.';
+  return String(testo || '')
+    .replace(/\{\{cliente\}\}/g, f.cliente_nome || '')
+    .replace(/\{\{ddt\}\}/g, f.ddt_numero || '')
+    .replace(/\{\{data_ddt\}\}/g, dataDdt)
+    .replace(/\{\{tracking\}\}/g, f.tracking || '')
+    .replace(/\{\{tracking_riga\}\}/g, trackingRiga)
+    .replace(/\{\{importo\}\}/g, f.importo ? '€ ' + Number(f.importo).toFixed(2) : '');
+}
+
+// Invia una tappa usando l'account Gmail spedizioni
+async function fupInviaTappa(tappaId, utente) {
+  const t = await pool.query(
+    `SELECT t.*, f.cliente_nome, f.email_dest, f.ddt_numero, f.ddt_data, f.importo, f.tracking, f.corriere, f.stato AS stato_percorso
+     FROM followup_tappe t JOIN followup_spedizioni f ON f.id=t.followup_id WHERE t.id=$1`, [tappaId]);
+  if (!t.rows.length) return { ok: false, errore: 'Tappa non trovata' };
+  const r = t.rows[0];
+  if (r.stato === 'inviata') return { ok: false, errore: 'Gia\' inviata' };
+  if (r.stato_percorso !== 'in_corso') return { ok: false, errore: 'Percorso non attivo' };
+  if (!r.email_dest) {
+    await pool.query(`UPDATE followup_tappe SET errore=$1 WHERE id=$2`, ['Nessuna email destinatario', tappaId]);
+    return { ok: false, errore: 'Il cliente non ha un indirizzo email in anagrafica' };
+  }
+  if (!gmailSpedizioniTokens) return { ok: false, errore: 'Account Gmail spedizioni non collegato' };
+
+  const mod = await pool.query(`SELECT oggetto, corpo FROM followup_modelli WHERE tipo=$1`, [r.tipo]);
+  const oggetto = r.oggetto || fupCompila(mod.rows[0]?.oggetto, r);
+  const corpo = r.corpo || fupCompila(mod.rows[0]?.corpo, r);
+
+  try {
+    oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+    const msg = [
+      `To: ${r.email_dest}`,
+      `Subject: ${encodeEmailSubject(oggetto)}`,
+      'Content-Type: text/plain; charset=utf-8',
+      '', corpo
+    ].join('\n');
+    const encoded = Buffer.from(msg).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
+    await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
+
+    await pool.query(
+      `UPDATE followup_tappe SET stato='inviata', inviata_il=NOW(), inviata_da=$1, oggetto=$2, corpo=$3, errore=NULL WHERE id=$4`,
+      [utente || 'automatico', oggetto, corpo, tappaId]);
+    await fupEvento(r.followup_id, 'email_inviata', `${r.tipo} → ${r.email_dest}`, utente || 'automatico');
+
+    const restanti = await pool.query(
+      `SELECT COUNT(*) n FROM followup_tappe WHERE followup_id=$1 AND stato IN ('programmata','in_attesa_ok')`,
+      [r.followup_id]);
+    if (Number(restanti.rows[0].n) === 0) {
+      await pool.query(`UPDATE followup_spedizioni SET stato='completato', updated_at=NOW() WHERE id=$1`, [r.followup_id]);
+      await fupEvento(r.followup_id, 'completato', 'Tutte le comunicazioni inviate');
+    }
+    return { ok: true };
+  } catch (e) {
+    await pool.query(`UPDATE followup_tappe SET errore=$1 WHERE id=$2`, [String(e.message).slice(0, 200), tappaId]);
+    await fupEvento(r.followup_id, 'errore_invio', `${r.tipo}: ${e.message}`);
+    return { ok: false, errore: e.message };
+  }
+}
+
+// Ferma il percorso (es. il cliente ha riordinato o ha risposto)
+async function fupFerma(followupId, motivo, utente) {
+  await pool.query(
+    `UPDATE followup_spedizioni SET stato='fermato', motivo_stop=$1, updated_at=NOW() WHERE id=$2`,
+    [motivo, followupId]);
+  await pool.query(
+    `UPDATE followup_tappe SET stato='annullata' WHERE followup_id=$1 AND stato IN ('programmata','in_attesa_ok')`,
+    [followupId]);
+  await fupEvento(followupId, 'fermato', motivo, utente);
+}
+
+// Controllo periodico: prepara e invia quello che e' in scadenza
+async function fupControlloGiornaliero() {
+  try {
+    const oggi = new Date();
+    const g = oggi.getDay();
+    if (g === 0 || g === 6) return; // niente email nel weekend
+
+    // 1. Ferma i percorsi dei clienti che nel frattempo hanno riordinato
+    const riordini = await pool.query(
+      `SELECT DISTINCT f.id, f.cliente_id, f.ddt_data FROM followup_spedizioni f
+       WHERE f.stato='in_corso' AND f.cliente_id IS NOT NULL
+         AND EXISTS (SELECT 1 FROM ordini o WHERE o.cliente_id=f.cliente_id AND o.data > f.ddt_data)`);
+    for (const r of riordini.rows) {
+      await fupFerma(r.id, 'Il cliente ha gia\' fatto un nuovo ordine', 'automatico');
+    }
+
+    // 2. Tappe in scadenza
+    const dovute = await pool.query(
+      `SELECT t.id, t.tipo, m.automatica FROM followup_tappe t
+       JOIN followup_spedizioni f ON f.id=t.followup_id
+       JOIN followup_modelli m ON m.tipo=t.tipo
+       WHERE t.stato='programmata' AND t.programmata_per <= CURRENT_DATE
+         AND f.stato='in_corso' AND m.attiva=TRUE
+       ORDER BY t.programmata_per LIMIT 40`);
+    for (const t of dovute.rows) {
+      if (t.automatica) {
+        await fupInviaTappa(t.id, 'automatico');
+      } else {
+        await pool.query(`UPDATE followup_tappe SET stato='in_attesa_ok' WHERE id=$1`, [t.id]);
+      }
+    }
+    if (dovute.rows.length) console.log(`[FUP] controllo: ${dovute.rows.length} tappe elaborate`);
+  } catch (e) { console.error('[FUP controllo]', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // CONOSCENZA DEGLI AGENTI — cresce man mano che vengono usati
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -4230,6 +4495,14 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 });
 
 // Carica token dal DB all'avvio
+// Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
+setTimeout(() => {
+  fupInitModelli()
+    .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
+    .catch(e => console.error('[FUP init]', e.message));
+}, 8000);
+setInterval(() => { fupControlloGiornaliero(); }, 60 * 60 * 1000); // ogni ora
+
 async function loadGmailTokens() {
   try {
     await pool.query(`CREATE TABLE IF NOT EXISTS impostazioni (chiave TEXT PRIMARY KEY, valore TEXT)`);
@@ -4460,6 +4733,7 @@ async function registraClienteStorico(documenti, tipoDocumento) {
     const e = doc.entity;
     if (!e || !e.name) continue;
     const importo = parseFloat(doc.amount_gross) || 0;
+
     try {
       const esistente = await pool.query(
         'SELECT id, num_fatture, num_ddt, importo_totale_fatturato FROM fic_clienti_storico WHERE nome=$1 AND COALESCE(vat_number,\'\')=COALESCE($2,\'\')',
@@ -5038,6 +5312,18 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
          ON CONFLICT (gmail_msg_id) DO NOTHING`,
         [m.id, dati.numero_ddt, dati.numero_tracking, dati.affiliato, dati.destinatario, dati.indirizzo_consegna, dati.data_consegna_prevista, dati.pin_consegna, dateHeader ? new Date(dateHeader) : null]
       );
+
+      // Solo le spedizioni via corriere avviano il percorso post-spedizione:
+      // le consegne locali fatte col nostro furgone NON passano da qui.
+      if (dati.destinatario) {
+        fupCreaDaDDT({
+          cliente_nome: dati.destinatario,
+          ddt_numero: dati.numero_ddt || null,
+          ddt_data: dateHeader ? new Date(dateHeader) : new Date(),
+          tracking: dati.numero_tracking || null,
+          corriere: dati.affiliato || 'One Express'
+        }).catch(err => console.error('[FUP da spedizione]', err.message));
+      }
       nuove++;
     }
     res.json({ trovate: list.data.messages.length, nuove });
@@ -5436,6 +5722,143 @@ app.delete('/api/conoscenza/:id', async (req, res) => {
   try {
     await pool.query(`UPDATE agenti_conoscenza SET attiva=FALSE WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// ── PERCORSO POST-SPEDIZIONE ──────────────────────────────────────────────
+app.get('/api/followup', async (req, res) => {
+  try {
+    const stato = req.query.stato;
+    const cond = stato && stato !== 'tutti' ? `WHERE f.stato=$1` : '';
+    const r = await pool.query(
+      `SELECT f.*,
+              (SELECT COUNT(*) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato='inviata') AS inviate,
+              (SELECT COUNT(*) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato='in_attesa_ok') AS da_approvare,
+              (SELECT MIN(t.programmata_per) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato IN ('programmata','in_attesa_ok')) AS prossima_data,
+              (SELECT t.tipo FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato IN ('programmata','in_attesa_ok') ORDER BY t.programmata_per LIMIT 1) AS prossima_tappa
+       FROM followup_spedizioni f ${cond} ORDER BY f.ddt_data DESC NULLS LAST, f.id DESC LIMIT 200`,
+      stato && stato !== 'tutti' ? [stato] : []);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/followup/riepilogo', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT
+        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso') AS in_corso,
+        (SELECT COUNT(*) FROM followup_tappe t JOIN followup_spedizioni f ON f.id=t.followup_id
+          WHERE t.stato='in_attesa_ok' AND f.stato='in_corso') AS da_approvare,
+        (SELECT COUNT(*) FROM followup_tappe t JOIN followup_spedizioni f ON f.id=t.followup_id
+          WHERE t.tipo='riordino' AND t.stato IN ('programmata','in_attesa_ok') AND f.stato='in_corso'
+            AND t.programmata_per <= CURRENT_DATE + 7) AS riordini_vicini,
+        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso' AND (email_dest IS NULL OR email_dest='')) AS senza_email`);
+    res.json(r.rows[0]);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/followup/:id', async (req, res) => {
+  try {
+    const f = await pool.query(`SELECT * FROM followup_spedizioni WHERE id=$1`, [req.params.id]);
+    if (!f.rows.length) return res.json({ error: 'Non trovato' });
+    const tappe = await pool.query(
+      `SELECT * FROM followup_tappe WHERE followup_id=$1 ORDER BY programmata_per`, [req.params.id]);
+    const eventi = await pool.query(
+      `SELECT * FROM followup_eventi WHERE followup_id=$1 ORDER BY created_at DESC LIMIT 50`, [req.params.id]);
+    // anteprima compilata per le tappe non ancora inviate
+    const modelli = await pool.query(`SELECT tipo, oggetto, corpo FROM followup_modelli`);
+    const mapMod = {}; modelli.rows.forEach(m => mapMod[m.tipo] = m);
+    const tappeOut = tappe.rows.map(t => ({
+      ...t,
+      oggetto_preview: t.oggetto || fupCompila(mapMod[t.tipo]?.oggetto, f.rows[0]),
+      corpo_preview: t.corpo || fupCompila(mapMod[t.tipo]?.corpo, f.rows[0])
+    }));
+    res.json({ spedizione: f.rows[0], tappe: tappeOut, eventi: eventi.rows });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/followup/tappa/:id/invia', async (req, res) => {
+  if (req.body?.oggetto || req.body?.corpo) {
+    await pool.query(`UPDATE followup_tappe SET oggetto=COALESCE($1,oggetto), corpo=COALESCE($2,corpo) WHERE id=$3`,
+      [req.body.oggetto || null, req.body.corpo || null, req.params.id]);
+  }
+  const r = await fupInviaTappa(req.params.id, req.body?.utente || null);
+  res.json(r.ok ? { ok: true } : { error: r.errore });
+});
+
+app.post('/api/followup/tappa/:id/salta', async (req, res) => {
+  try {
+    const t = await pool.query(`SELECT followup_id, tipo FROM followup_tappe WHERE id=$1`, [req.params.id]);
+    await pool.query(`UPDATE followup_tappe SET stato='saltata' WHERE id=$1`, [req.params.id]);
+    if (t.rows.length) await fupEvento(t.rows[0].followup_id, 'tappa_saltata', t.rows[0].tipo, req.body?.utente);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/followup/:id/ferma', async (req, res) => {
+  try {
+    await fupFerma(req.params.id, req.body?.motivo || 'Fermato manualmente', req.body?.utente);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.patch('/api/followup/:id', async (req, res) => {
+  const { email_dest, tracking, corriere } = req.body || {};
+  try {
+    await pool.query(
+      `UPDATE followup_spedizioni SET email_dest=COALESCE($1,email_dest), tracking=COALESCE($2,tracking),
+       corriere=COALESCE($3,corriere), updated_at=NOW() WHERE id=$4`,
+      [email_dest || null, tracking || null, corriere || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/followup-modelli', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM followup_modelli ORDER BY giorni`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.patch('/api/followup-modelli/:tipo', async (req, res) => {
+  const { oggetto, corpo, giorni, automatica, attiva } = req.body || {};
+  try {
+    await pool.query(
+      `UPDATE followup_modelli SET oggetto=COALESCE($1,oggetto), corpo=COALESCE($2,corpo),
+       giorni=COALESCE($3,giorni), automatica=COALESCE($4,automatica), attiva=COALESCE($5,attiva),
+       updated_at=NOW() WHERE tipo=$6`,
+      [oggetto || null, corpo || null, giorni ?? null, automatica ?? null, attiva ?? null, req.params.tipo]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Controllo manuale (utile per provare senza aspettare il timer)
+app.post('/api/followup/controllo', async (req, res) => {
+  await fupControlloGiornaliero();
+  res.json({ ok: true });
+});
+
+// Crea i percorsi per le spedizioni corriere gia' registrate (una tantum)
+app.post('/api/followup/recupera-spedizioni', async (req, res) => {
+  const giorni = parseInt(req.body?.giorni) || 30;
+  try {
+    const s = await pool.query(
+      `SELECT numero_ddt, numero_tracking, affiliato, destinatario, data_email
+       FROM spedizioni WHERE destinatario IS NOT NULL
+         AND COALESCE(data_email, created_at) > NOW() - ($1 || ' days')::interval
+       ORDER BY data_email DESC`, [String(giorni)]);
+    let creati = 0;
+    for (const r of s.rows) {
+      const id = await fupCreaDaDDT({
+        cliente_nome: r.destinatario,
+        ddt_numero: r.numero_ddt,
+        ddt_data: r.data_email,
+        tracking: r.numero_tracking,
+        corriere: r.affiliato || 'One Express'
+      });
+      if (id) creati++;
+    }
+    res.json({ ok: true, esaminate: s.rows.length, creati });
   } catch (e) { res.json({ error: e.message }); }
 });
 
