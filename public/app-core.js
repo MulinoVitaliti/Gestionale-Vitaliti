@@ -3,14 +3,14 @@
 
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true},
-  commerciale: {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true},
-  contabile:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':true,contatti:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false},
-  magazzino:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':false,contatti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true},
+  admin:       {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true,followup:true},
+  commerciale: {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true,followup:true},
+  contabile:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':true,contatti:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false,followup:false},
+  magazzino:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':false,contatti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true,followup:true},
 };
 const ROLE_COLORS = {admin:'var(--brand)',commerciale:'var(--blue)',contabile:'var(--green)',magazzino:'var(--orange)'};
 const ROLE_ICONS  = {admin:'👑',commerciale:'💼',contabile:'📊',magazzino:'📦'};
-const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',contatti:'Contatti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni'};
+const PERM_LABELS = {dashboard:'Dashboard',pipeline:'Pipeline',contatti:'Contatti',ordini:'Ordini',contabilita:'Contabilità',email:'Email',automazioni:'Automazioni',ai:'AI',utenti:'Utenti',attivita:'Attività',statistiche:'Statistiche',impostazioni:'Impostazioni',task:'Task',whatsapp:'WhatsApp',fatture:'Fatture in Cloud',spedizioni:'Spedizioni',followup:'Monitoraggio ordini'};
 
 let currentUser = null;
 // usersDB rimosso: gli utenti vivono SOLO nel database lato server (sicurezza)
@@ -190,7 +190,7 @@ function applyPermissions(){
   document.getElementById('s-name').textContent=currentUser.nome.split(' ')[0];
   document.getElementById('s-role').textContent=currentUser.ruolo;
   document.getElementById('dash-user-badge').innerHTML=`<span class="badge badge-${currentUser.ruolo}">${ROLE_ICONS[currentUser.ruolo]} ${currentUser.ruolo}</span>`;
-  ['pipeline','lead-detail','cliente-detail','contatti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni'].forEach(p=>{
+  ['pipeline','lead-detail','cliente-detail','contatti','ordini','contabilita','email','whatsapp','automazioni','ai','utenti','attivita','statistiche','impostazioni','task','fatture','spedizioni','followup'].forEach(p=>{
     const nav=document.getElementById('nav-'+p); if(nav) nav.classList.toggle('disabled',!perms[p]);
   });
 }
@@ -236,6 +236,7 @@ function showPage(id){
     switchSpedizioniTab('spedizioni', document.querySelector('#sped-tabs .pill'));
     initPaginaSpedizioni(); 
   }
+  if(id==='followup')caricaFollowup();
   if(id==='utenti')renderUtenti();
   if(id==='impostazioni'){ renderUtenti(); caricaConflitti(); aggiornaStatoGmail(); caricaStatoWhatsApp(); }
   if(id==='ai'){ if(typeof applicaFiltroFigura==='function')applicaFiltroFigura(); aggiornaStatoAgente(); caricaCronologiaChat(_agenteAttivo || 'steven'); }
