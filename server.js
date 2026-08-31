@@ -276,6 +276,9 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
       ALTER TABLE IF EXISTS agenti_conoscenza ADD COLUMN IF NOT EXISTS appresa_da TEXT;
       ALTER TABLE IF EXISTS agenti_conoscenza ADD COLUMN IF NOT EXISTS ambito TEXT DEFAULT 'generale';
       UPDATE agenti_conoscenza SET agente='tutti' WHERE agente <> 'tutti';
@@ -294,6 +297,9 @@ async function initDB() {
         tracking TEXT,
         corriere TEXT,
         stato TEXT DEFAULT 'in_corso',        -- in_corso | completato | fermato
+        stato_consegna TEXT DEFAULT 'in_viaggio', -- in_viaggio | in_consegna | consegnata | giacenza | problema
+        consegnata_il DATE,
+        note_consegna TEXT,
         motivo_stop TEXT,
         created_at TIMESTAMP DEFAULT NOW(),
         updated_at TIMESTAMP DEFAULT NOW()
@@ -2263,6 +2269,15 @@ async function agenteSegnaClintiARischio(risultati) {
 
 // ── 2. Crea task automatici di follow-up ─────────────────────────────────
 async function agenteTaskFollowUp(risultati) {
+  // Tappo di sicurezza: se ci sono gia' molti task automatici aperti non se ne creano altri
+  try {
+    const aperti = await pool.query(
+      `SELECT COUNT(*) n FROM tasks WHERE assegnata_da='Agente AI' AND stato IN ('da_fare','in_corso')`);
+    if (Number(aperti.rows[0].n) >= 30) {
+      console.log('[Agente] Tetto task automatici raggiunto (30 aperti): nessun nuovo task creato');
+      return;
+    }
+  } catch (e) {}
   try {
     // a) Task per insoluti oltre 30 giorni senza task aperto
     const insoluti = await pool.query(`
@@ -2624,6 +2639,50 @@ app.post('/api/backoffice/alert/:id/letto', async (req, res) => {
   try {
     await pool.query(`UPDATE backoffice_alert SET letto=true WHERE id=$1`, [req.params.id]);
     res.json({ success: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/backoffice/alert/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM backoffice_alert WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/backoffice/alert', async (req, res) => {
+  try {
+    const r = await pool.query(`DELETE FROM backoffice_alert WHERE letto=false OR letto=true`);
+    res.json({ ok: true, eliminati: r.rowCount });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+// Elenco clienti segnati a rischio + rimozione dell'etichetta
+app.get('/api/clienti-rischio', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, nome, citta, tel, tag FROM clienti
+       WHERE tag LIKE '%rischio%' AND tipo='cliente' ORDER BY nome`);
+    res.json(r.rows);
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/clienti-rischio/:id', async (req, res) => {
+  try {
+    const c = await pool.query(`SELECT tag FROM clienti WHERE id=$1`, [req.params.id]);
+    if (!c.rows.length) return res.json({ error: 'Cliente non trovato' });
+    const nuovi = String(c.rows[0].tag || '')
+      .split(',').map(t => t.trim()).filter(t => t && !/rischio/i.test(t)).join(', ');
+    await pool.query(`UPDATE clienti SET tag=$1 WHERE id=$2`, [nuovi || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (err) { res.json({ error: err.message }); }
+});
+
+app.delete('/api/clienti-rischio', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `UPDATE clienti SET tag = NULLIF(regexp_replace(regexp_replace(COALESCE(tag,''), '[^,]*rischio[^,]*', '', 'gi'), '^[,\\s]+|[,\\s]+$', '', 'g'), '')
+       WHERE tag LIKE '%rischio%' AND tipo='cliente'`);
+    res.json({ ok: true, ripuliti: r.rowCount });
   } catch (err) { res.json({ error: err.message }); }
 });
 
@@ -5218,6 +5277,54 @@ function estraiDatiSpedizioneOneExpress(testoEmail) {
   return { numero_ddt, numero_tracking, affiliato, destinatario, indirizzo_consegna, data_consegna_prevista, pin_consegna };
 }
 
+
+// Riconosce lo stato della spedizione dalle email successive del corriere
+function riconosciStatoSpedizione(testo, oggetto) {
+  const t = ((oggetto || '') + ' ' + (testo || '')).toLowerCase();
+  if (/\bconsegnat[ao]\b|consegna effettuata|merce consegnata|avvenuta consegna/.test(t)) return 'consegnata';
+  if (/in giacenza|giacenza|deposito temporaneo|mancato recapito|destinatario assente/.test(t)) return 'giacenza';
+  if (/in consegna|consegna in corso|in distribuzione|uscita per la consegna/.test(t)) return 'in_consegna';
+  if (/anomalia|problema|danneggiat|smarrit|reso al mittente|rientro/.test(t)) return 'problema';
+  return null;
+}
+
+// Aggiorna la spedizione seguita in base a un'email di stato
+async function fupAggiornaStato(riferimento, nuovoStato, testoNota) {
+  if (!riferimento || !nuovoStato) return false;
+  try {
+    const r = await pool.query(
+      `SELECT id, cliente_nome, stato_consegna FROM followup_spedizioni
+       WHERE tracking=$1 OR ddt_numero=$1 ORDER BY id DESC LIMIT 1`, [riferimento]);
+    if (!r.rows.length) return false;
+    const f = r.rows[0];
+    if (f.stato_consegna === nuovoStato) return false;
+
+    const consegnata = nuovoStato === 'consegnata';
+    await pool.query(
+      `UPDATE followup_spedizioni SET stato_consegna=$1, note_consegna=$2,
+       consegnata_il=CASE WHEN $3 THEN CURRENT_DATE ELSE consegnata_il END, updated_at=NOW()
+       WHERE id=$4`,
+      [nuovoStato, (testoNota || '').slice(0, 300) || null, consegnata, f.id]);
+    await fupEvento(f.id, 'stato_spedizione', `${nuovoStato.replace('_', ' ')}${testoNota ? ' — ' + testoNota.slice(0, 120) : ''}`, 'corriere');
+
+    // Alla consegna riparte il conteggio: verifica e riordino si ricalcolano da oggi
+    if (consegnata) {
+      const modelli = await pool.query(
+        `SELECT tipo, giorni FROM followup_modelli WHERE attiva=TRUE AND tipo <> 'partenza'`);
+      for (const m of modelli.rows) {
+        const quando = new Date();
+        quando.setDate(quando.getDate() + (m.giorni || 0));
+        await pool.query(
+          `UPDATE followup_tappe SET programmata_per=$1 WHERE followup_id=$2 AND tipo=$3 AND stato='programmata'`,
+          [quando.toISOString().slice(0, 10), f.id, m.tipo]);
+      }
+      await fupEvento(f.id, 'ricalcolo', 'Verifica e riordino ricalcolati dalla data di consegna');
+    }
+    console.log(`[FUP stato] ${f.cliente_nome}: ${nuovoStato}`);
+    return true;
+  } catch (e) { console.error('[FUP stato]', e.message); return false; }
+}
+
 app.get('/api/spedizioni/debug-inbox', async (req, res) => {
   if (!gmailSpedizioniTokens) return res.json({ error: 'Casella spedizioni non connessa' });
   try {
@@ -5322,7 +5429,26 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
       }
       nuove++;
     }
-    res.json({ trovate: list.data.messages.length, nuove });
+
+    // Seconda passata: email che aggiornano lo stato delle spedizioni gia' registrate
+    let aggiornate = 0;
+    for (const m of list.data.messages) {
+      try {
+        const msg = await withRetry(() => gmail.users.messages.get({ userId: 'me', id: m.id, format: 'full' }));
+        const headers = msg.data.payload.headers || [];
+        const oggetto = (headers.find(h => h.name === 'Subject') || {}).value || '';
+        const testo = estraiCorpoEmail(msg.data.payload) || msg.data.snippet || '';
+        const stato = riconosciStatoSpedizione(testo, oggetto);
+        if (!stato) continue;
+        // cerco un riferimento: tracking o numero DDT citato nell'email
+        const rif = (testo.match(/(?:tracci?amento|spedizione|lettera di vettura|ldv)[:\s]*([A-Z0-9]{6,})/i) || [])[1]
+                 || (testo.match(/(?:ddt|documento)[:\s]*n?\.?\s*(\d{2,})/i) || [])[1];
+        if (!rif) continue;
+        if (await fupAggiornaStato(rif, stato, oggetto)) aggiornate++;
+      } catch (e) { /* email non leggibile: si prosegue */ }
+    }
+
+    res.json({ trovate: list.data.messages.length, nuove, stati_aggiornati: aggiornate });
   } catch (err) {
     console.error('Errore sincronizzazione spedizioni:', err);
     res.json({ error: err.message });
@@ -5799,12 +5925,19 @@ app.post('/api/followup/:id/ferma', async (req, res) => {
 });
 
 app.patch('/api/followup/:id', async (req, res) => {
-  const { email_dest, tracking, corriere } = req.body || {};
+  const { email_dest, tracking, corriere, stato_consegna } = req.body || {};
   try {
     await pool.query(
       `UPDATE followup_spedizioni SET email_dest=COALESCE($1,email_dest), tracking=COALESCE($2,tracking),
        corriere=COALESCE($3,corriere), updated_at=NOW() WHERE id=$4`,
       [email_dest || null, tracking || null, corriere || null, req.params.id]);
+    if (stato_consegna) {
+      await pool.query(
+        `UPDATE followup_spedizioni SET stato_consegna=$1,
+         consegnata_il=CASE WHEN $2 THEN CURRENT_DATE ELSE consegnata_il END WHERE id=$3`,
+        [stato_consegna, stato_consegna === 'consegnata', req.params.id]);
+      await fupEvento(req.params.id, 'stato_spedizione', stato_consegna.replace('_', ' ') + ' (segnato a mano)', req.body?.utente);
+    }
     res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
 });
