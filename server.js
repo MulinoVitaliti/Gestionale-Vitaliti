@@ -3692,37 +3692,23 @@ Rispondi sempre in italiano.`;
 const FUP_MODELLI_DEFAULT = [
   { tipo: 'partenza', giorni: 0, automatica: true,
     oggetto: 'La sua merce e\' partita — Mulino Vitaliti',
-    corpo: `Gentile {{cliente}},
-
-le confermiamo che la merce relativa al documento {{ddt}} del {{data_ddt}} e' partita dal nostro mulino.
-
-{{tracking_riga}}
-
-Per qualsiasi necessita' puo' rispondere a questa email.
-
-Un cordiale saluto,
-Mulino Vitaliti — Belpasso (CT)
-Semola rimacinata di grano duro dal 1930` },
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>le confermiamo che la merce relativa al documento <strong>{{ddt}}</strong> del {{data_ddt}} e' partita dal nostro mulino.</p>
+<p>{{tracking_riga}}</p>
+<p>Per qualsiasi necessita' puo' rispondere a questa email.</p>
+<p>Un cordiale saluto,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br><em>Semola rimacinata di grano duro dal 1930</em></p>` },
   { tipo: 'verifica', giorni: 7, automatica: false,
     oggetto: 'Come si sta trovando con la nostra semola?',
-    corpo: `Gentile {{cliente}},
-
-sono passati alcuni giorni dalla consegna del {{data_ddt}} e volevamo sapere come si sta trovando con la nostra semola.
-
-Se c'e' qualcosa che possiamo migliorare — sulla resa, sulla consegna, sull'imballaggio — ci farebbe piacere saperlo: rispondere a questa email e' sufficiente.
-
-Grazie e buon lavoro,
-Mulino Vitaliti — Belpasso (CT)` },
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>sono passati alcuni giorni dalla consegna del {{data_ddt}} e volevamo sapere come si sta trovando con la nostra semola.</p>
+<p>Se c'e' qualcosa che possiamo migliorare — sulla resa, sulla consegna, sull'imballaggio — ci farebbe piacere saperlo: le basta rispondere a questa email.</p>
+<p>Grazie e buon lavoro,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p>` },
   { tipo: 'riordino', giorni: 30, automatica: false,
     oggetto: 'Le serve altra farina?',
-    corpo: `Gentile {{cliente}},
-
-e' passato circa un mese dall'ultima fornitura del {{data_ddt}}.
-
-Se sta per finire le scorte possiamo prepararle un nuovo carico: ci basta sapere quantita' e giorno di consegna preferito.
-
-Restiamo a disposizione,
-Mulino Vitaliti — Belpasso (CT)` },
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>e' passato circa un mese dall'ultima fornitura del {{data_ddt}}.</p>
+<p>Se sta per finire le scorte possiamo prepararle un nuovo carico: ci basta sapere <strong>quantita'</strong> e <strong>giorno di consegna</strong> preferito.</p>
+<p>Restiamo a disposizione,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p>` },
 ];
 
 async function fupInitModelli() {
@@ -3820,11 +3806,17 @@ async function fupInviaTappa(tappaId, utente) {
   try {
     oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
+    // Se il corpo contiene tag HTML lo mando come email formattata, altrimenti testo semplice
+    const isHtml = /<(p|br|div|strong|b|em|i|u|ul|ol|li|a|span|h[1-4])\b/i.test(corpo);
+    const corpoFinale = isHtml
+      ? `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">${corpo}</div>`
+      : corpo;
     const msg = [
       `To: ${r.email_dest}`,
       `Subject: ${encodeEmailSubject(oggetto)}`,
-      'Content-Type: text/plain; charset=utf-8',
-      '', corpo
+      `Content-Type: text/${isHtml ? 'html' : 'plain'}; charset=utf-8`,
+      'MIME-Version: 1.0',
+      '', corpoFinale
     ].join('\n');
     const encoded = Buffer.from(msg).toString('base64').replace(/\+/g, '-').replace(/\//g, '_');
     await withRetry(() => gmail.users.messages.send({ userId: 'me', requestBody: { raw: encoded } }));
