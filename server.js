@@ -3843,9 +3843,13 @@ async function fupInviaTappa(tappaId, utente) {
     }
     return { ok: true };
   } catch (e) {
-    await pool.query(`UPDATE followup_tappe SET errore=$1 WHERE id=$2`, [String(e.message).slice(0, 200), tappaId]);
-    await fupEvento(r.followup_id, 'errore_invio', `${r.tipo}: ${e.message}`);
-    return { ok: false, errore: e.message };
+    let msg = e.message;
+    if (/insufficient permission/i.test(msg)) {
+      msg = "L'account Gmail spedizioni e' collegato in sola lettura. Vai in Impostazioni, scollega e ricollega l'account spedizioni autorizzando anche l'invio.";
+    }
+    await pool.query(`UPDATE followup_tappe SET errore=$1 WHERE id=$2`, [String(msg).slice(0, 250), tappaId]);
+    await fupEvento(r.followup_id, 'errore_invio', `${r.tipo}: ${msg}`);
+    return { ok: false, errore: msg };
   }
 }
 
@@ -4466,7 +4470,7 @@ app.get('/auth/spedizioni/login', (req, res) => {
   const url = oauth2ClientSpedizioni.generateAuthUrl({
     access_type: 'offline',
     prompt: 'consent',
-    scope: ['https://www.googleapis.com/auth/gmail.readonly']
+    scope: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']
   });
   res.redirect(url);
 });
