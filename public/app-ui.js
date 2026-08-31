@@ -1358,6 +1358,8 @@ function renderDashTask(){
       <div style="font-size:16px;flex-shrink:0">${pri.icon}</div>
       <div class="dash-task-title ${checked?'struck':''}" id="dtt-${t.id}">${t.titolo}</div>
       ${t.scadenza?`<span style="font-size:10px;color:var(--text-3);flex-shrink:0">${new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'})}</span>`:''}
+      <button onclick="event.stopPropagation();rimuoviDalFocus(${t.id})" title="Togli dal focus di oggi (il task resta nella pagina Task)" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-3);flex-shrink:0"><i class="ti ti-x" style="font-size:13px"></i></button>
+      <button onclick="event.stopPropagation();eliminaTaskDaDash(${t.id})" title="Elimina il task definitivamente" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--red);flex-shrink:0"><i class="ti ti-trash" style="font-size:13px"></i></button>
     </div>`;
   }).join('') + (pending.filter(t=>!_dailyTaskIds.includes(t.id)).length>0 && _dailyTaskIds.length<3 ? `
     <div style="margin-top:4px">
@@ -1427,6 +1429,30 @@ async function dropTask(e, nuovoStato){
   _dragTaskId = null;
 }
 
+// Toglie il task dalle "3 sfide" di oggi senza cancellarlo
+function rimuoviDalFocus(id){
+  _dailyTaskIds = _dailyTaskIds.filter(x => x !== id);
+  saveDailyTasks();
+  renderDashTask();
+}
+
+// Elimina il task davvero, dalla dashboard
+async function eliminaTaskDaDash(id){
+  const t = (state.tasks||[]).find(x=>x.id===id);
+  if(!confirm(`Eliminare definitivamente il task "${t?t.titolo:''}"?`)) return;
+  const r = await api.del('/api/tasks/'+id);
+  if(r && r.error) return alert('Errore: '+r.error);
+  state.tasks = (state.tasks||[]).filter(x=>x.id!==id);
+  _dailyTaskIds = _dailyTaskIds.filter(x=>x!==id);
+  saveDailyTasks();
+  renderDashTask();
+  if(typeof renderTaskBoard==='function') renderTaskBoard();
+  if(typeof aggiornaTaskBadge==='function') aggiornaTaskBadge();
+  showSave();
+}
+window.rimuoviDalFocus = rimuoviDalFocus;
+window.eliminaTaskDaDash = eliminaTaskDaDash;
+
 async function eliminaTask(id){
   conferma(async()=>{
     await api.del('/api/tasks/'+id);
@@ -1458,3 +1484,40 @@ document.addEventListener('keydown', e=>{ if(e.key==='Escape'){document.querySel
     }, 60000);
   }).catch(()=>{});
 })();
+
+
+// ── PULIZIA TASK IN BLOCCO ───────────────────────────────────────────────
+const PT_ETICHETTE = {
+  agente_duplicati: 'i doppioni creati dall\'agente',
+  completati: 'tutti i task completati',
+  agente: 'TUTTI i task creati dall\'agente',
+  tutti: 'TUTTI i task presenti nel gestionale'
+};
+
+async function apriPuliziaTask(){
+  openModal('modal-pulizia-task');
+  const box = document.getElementById('pt-conteggi');
+  box.innerHTML = '<div style="grid-column:1/-1;color:var(--text-3);font-size:12px">Conteggio...</div>';
+  try{
+    const c = await api.get('/api/tasks/conteggi');
+    const card = (n, t, col) => `<div style="background:var(--surface-2);border-radius:8px;padding:10px;text-align:center">
+        <div style="font-size:19px;font-weight:700;color:${col}">${n||0}</div>
+        <div style="font-size:10px;color:var(--text-3)">${t}</div></div>`;
+    box.innerHTML = card(c.totali,'totali','var(--text)') + card(c.da_agente,'dall\'agente','var(--brand)') +
+                    card(c.duplicati,'doppioni','var(--orange)') + card(c.completati,'completati','var(--green)');
+  }catch(e){ box.innerHTML=''; }
+}
+
+async function puliziaTask(modo){
+  if(!confirm(`Eliminare ${PT_ETICHETTE[modo]}?\n\nL'operazione non si può annullare.`)) return;
+  const r = await api.post('/api/tasks/elimina-blocco', {modo});
+  if(r.error) return alert('Errore: ' + r.error);
+  alert(`Eliminati ${r.eliminati} task.`);
+  try{ const t = await api.get('/api/tasks'); if(!t.error) state.tasks = t; }catch(e){}
+  if(typeof renderTaskBoard==='function') renderTaskBoard();
+  if(typeof renderDashTask==='function') renderDashTask();
+  if(typeof aggiornaTaskBadge==='function') aggiornaTaskBadge();
+  apriPuliziaTask();
+}
+window.apriPuliziaTask = apriPuliziaTask;
+window.puliziaTask = puliziaTask;
