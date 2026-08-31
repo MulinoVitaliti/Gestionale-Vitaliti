@@ -1981,6 +1981,42 @@ app.put('/api/tasks/:id', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+app.get('/api/tasks/conteggi', async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT COUNT(*) AS totali,
+             COUNT(*) FILTER (WHERE stato='fatto') AS completati,
+             COUNT(*) FILTER (WHERE assegnata_da='Agente AI') AS da_agente,
+             COUNT(*) - COUNT(DISTINCT titolo) AS duplicati
+      FROM tasks`);
+    res.json(r.rows[0]);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/tasks/elimina-blocco', async (req, res) => {
+  const { modo, assegnata_a } = req.body || {};
+  try {
+    let sql, par = [];
+    if (modo === 'completati') {
+      sql = `DELETE FROM tasks WHERE stato='fatto'`;
+    } else if (modo === 'agente') {
+      sql = `DELETE FROM tasks WHERE assegnata_da='Agente AI'`;
+    } else if (modo === 'agente_duplicati') {
+      sql = `DELETE FROM tasks WHERE assegnata_da='Agente AI' AND id NOT IN (
+               SELECT MAX(id) FROM tasks WHERE assegnata_da='Agente AI' GROUP BY titolo)`;
+    } else if (modo === 'utente' && assegnata_a) {
+      sql = `DELETE FROM tasks WHERE assegnata_a=$1`; par = [assegnata_a];
+    } else if (modo === 'tutti') {
+      sql = `DELETE FROM tasks`;
+    } else {
+      return res.json({ error: 'Modo non valido' });
+    }
+    const r = await pool.query(sql, par);
+    console.log(`[TASK] eliminazione in blocco "${modo}": ${r.rowCount} task rimossi`);
+    res.json({ ok: true, eliminati: r.rowCount });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 app.delete('/api/tasks/:id', async (req, res) => {
   try {
     await pool.query('DELETE FROM tasks WHERE id=$1', [req.params.id]);
@@ -2291,8 +2327,8 @@ async function agenteTaskFollowUp(risultati) {
     for (const m of insoluti.rows) {
       const ref = `sollecito:mov:${m.id}`;
       const esiste = await pool.query(
-        `SELECT id FROM tasks WHERE titolo LIKE $1 AND stato IN ('da_fare','in_corso')`,
-        [`%mov:${m.id}%`]
+        `SELECT id FROM tasks WHERE titolo LIKE $1`,
+        [`%[mov:${m.id}]%`]
       );
       if (esiste.rows.length) continue;
 
@@ -2302,7 +2338,7 @@ async function agenteTaskFollowUp(risultati) {
         `INSERT INTO tasks (titolo, priorita, scadenza, stato, assegnata_a, assegnata_da)
          VALUES ($1,$2,$3,'da_fare','Giovanni','Agente AI')`,
         [
-          `Sollecita pagamento: ${m.descrizione || 'mov:' + m.id} — €${Number(m.importo).toFixed(2)} (${m.giorni}gg)`,
+          `Sollecita pagamento: ${m.descrizione || ''} — €${Number(m.importo).toFixed(2)} (${m.giorni}gg) [mov:${m.id}]`,
           Number(m.giorni) > 60 ? 'alta' : 'media',
           scadenza.toISOString().slice(0, 10)
         ]
@@ -2317,7 +2353,7 @@ async function agenteTaskFollowUp(risultati) {
     `);
     for (const c of aRischio.rows) {
       const esiste = await pool.query(
-        `SELECT id FROM tasks WHERE titolo LIKE $1 AND stato IN ('da_fare','in_corso')`,
+        `SELECT id FROM tasks WHERE titolo LIKE $1 AND (stato IN ('da_fare','in_corso') OR created_at > NOW() - INTERVAL '30 days')`,
         [`%Ricontatta ${c.nome}%`]
       );
       if (esiste.rows.length) continue;
