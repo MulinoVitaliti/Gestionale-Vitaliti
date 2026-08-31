@@ -17,6 +17,14 @@ const FUP_STATO_TAPPA = {
   annullata:    { testo: 'Annullata',     colore: 'var(--text-3)' }
 };
 
+// Anteprima: se il modello e' HTML lo mostro formattato, se e' testo semplice metto gli a capo
+function fupAnteprima(corpo){
+  const c = String(corpo || '');
+  return /<(p|br|div|strong|b|em|i|u|ul|ol|li|a|span)\b/i.test(c)
+    ? c
+    : c.replace(/</g,'&lt;').replace(/\n/g,'<br>');
+}
+
 function fupData(d){ return d ? new Date(d).toLocaleDateString('it-IT') : '—'; }
 
 async function caricaFollowup(){
@@ -117,7 +125,7 @@ async function apriFollowup(id){
             <span style="font-size:11px;color:var(--text-3);margin-left:auto">${quando}</span>
           </div>
           <div style="font-size:12px;color:var(--text-2);margin-bottom:6px"><strong>${t.oggetto_preview || ''}</strong></div>
-          <div style="font-size:12px;color:var(--text-3);white-space:pre-wrap;max-height:110px;overflow:auto;background:var(--surface-2);border-radius:6px;padding:8px">${(t.corpo_preview||'').replace(/</g,'&lt;')}</div>
+          <div style="font-size:12px;color:var(--text-2);max-height:150px;overflow:auto;background:var(--surface-2);border-radius:6px;padding:10px;line-height:1.55">${fupAnteprima(t.corpo_preview)}</div>
           ${t.errore ? `<div style="font-size:11px;color:var(--red);margin-top:6px">⚠️ ${t.errore}</div>` : ''}
           <div style="display:flex;gap:6px;margin-top:8px">${azioni}</div>
         </div>`;
@@ -183,16 +191,64 @@ async function apriModelliFollowup(){
         <label style="font-size:11px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="fm-a-${m.tipo}" ${m.automatica?'checked':''}> invia da sola</label>
         <label style="font-size:11px;display:flex;align-items:center;gap:4px"><input type="checkbox" id="fm-at-${m.tipo}" ${m.attiva?'checked':''}> attiva</label>
       </div>
-      <input id="fm-o-${m.tipo}" value="${(m.oggetto||'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;margin-bottom:6px">
-      <textarea id="fm-c-${m.tipo}" rows="7" style="width:100%;padding:8px 10px;border:1px solid var(--border);border-radius:7px;font-size:12px;font-family:inherit">${(m.corpo||'').replace(/</g,'&lt;')}</textarea>
-      <div style="text-align:right;margin-top:6px"><button class="btn btn-sm btn-primary" onclick="salvaModelloFollowup('${m.tipo}')"><i class="ti ti-check"></i>Salva</button></div>
+      <input id="fm-o-${m.tipo}" value="${(m.oggetto||'').replace(/"/g,'&quot;')}" style="width:100%;padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px;margin-bottom:6px" placeholder="Oggetto dell'email">
+      <div style="display:flex;gap:3px;flex-wrap:wrap;padding:5px;background:var(--surface-2);border:1px solid var(--border);border-bottom:none;border-radius:7px 7px 0 0">
+        ${fupBtnFmt(m.tipo,'bold','ti-bold','Grassetto')}
+        ${fupBtnFmt(m.tipo,'italic','ti-italic','Corsivo')}
+        ${fupBtnFmt(m.tipo,'underline','ti-underline','Sottolineato')}
+        <span style="width:1px;background:var(--border);margin:2px 4px"></span>
+        ${fupBtnFmt(m.tipo,'insertUnorderedList','ti-list','Elenco puntato')}
+        ${fupBtnFmt(m.tipo,'insertOrderedList','ti-list-numbers','Elenco numerato')}
+        <span style="width:1px;background:var(--border);margin:2px 4px"></span>
+        <button class="btn btn-sm" style="padding:3px 7px" title="Inserisci link" onmousedown="event.preventDefault()" onclick="fupLink('${m.tipo}')"><i class="ti ti-link"></i></button>
+        ${fupBtnFmt(m.tipo,'removeFormat','ti-clear-formatting','Togli formattazione')}
+        <span style="margin-left:auto;display:flex;gap:3px;align-items:center">
+          <span style="font-size:10px;color:var(--text-3)">inserisci:</span>
+          ${fupBtnTag(m.tipo,'{{cliente}}','cliente')}
+          ${fupBtnTag(m.tipo,'{{ddt}}','DDT')}
+          ${fupBtnTag(m.tipo,'{{data_ddt}}','data')}
+          ${fupBtnTag(m.tipo,'{{tracking_riga}}','tracking')}
+        </span>
+      </div>
+      <div id="fm-c-${m.tipo}" contenteditable="true" style="width:100%;min-height:150px;max-height:280px;overflow:auto;padding:10px 12px;border:1px solid var(--border);border-radius:0 0 7px 7px;font-size:13px;line-height:1.6;background:var(--surface);outline:none">${m.corpo || ''}</div>
+      <div style="display:flex;align-items:center;margin-top:6px">
+        <span style="font-size:10px;color:var(--text-3)">Il testo verra' inviato cosi' come lo vedi.</span>
+        <button class="btn btn-sm btn-primary" style="margin-left:auto" onclick="salvaModelloFollowup('${m.tipo}')"><i class="ti ti-check"></i>Salva</button>
+      </div>
     </div>`).join('');
 }
+
+function fupBtnFmt(tipo, cmd, icona, titolo){
+  return `<button class="btn btn-sm" style="padding:3px 7px" title="${titolo}" onmousedown="event.preventDefault()" onclick="fupFormatta('${tipo}','${cmd}')"><i class="ti ${icona}"></i></button>`;
+}
+function fupBtnTag(tipo, tag, etichetta){
+  return `<button class="btn btn-sm" style="padding:2px 6px;font-size:10px" title="Inserisci ${tag}" onmousedown="event.preventDefault()" onclick="fupInserisci('${tipo}','${tag}')">${etichetta}</button>`;
+}
+function fupFormatta(tipo, cmd){
+  const ed = document.getElementById('fm-c-' + tipo);
+  ed.focus();
+  document.execCommand(cmd, false, null);
+}
+function fupInserisci(tipo, testo){
+  const ed = document.getElementById('fm-c-' + tipo);
+  ed.focus();
+  document.execCommand('insertText', false, testo);
+}
+function fupLink(tipo){
+  const url = prompt('Indirizzo del link (es. https://www.mulinovitaliti.it)');
+  if(!url) return;
+  const ed = document.getElementById('fm-c-' + tipo);
+  ed.focus();
+  document.execCommand('createLink', false, url);
+}
+window.fupFormatta = fupFormatta;
+window.fupInserisci = fupInserisci;
+window.fupLink = fupLink;
 
 async function salvaModelloFollowup(tipo){
   await api.patch('/api/followup-modelli/' + tipo, {
     oggetto: document.getElementById('fm-o-'+tipo).value,
-    corpo: document.getElementById('fm-c-'+tipo).value,
+    corpo: document.getElementById('fm-c-'+tipo).innerHTML,
     giorni: parseInt(document.getElementById('fm-g-'+tipo).value) || 0,
     automatica: document.getElementById('fm-a-'+tipo).checked,
     attiva: document.getElementById('fm-at-'+tipo).checked
