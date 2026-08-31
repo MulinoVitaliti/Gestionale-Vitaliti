@@ -504,7 +504,10 @@ window.addEventListener('unhandledrejection', function(e) {
           <button class="btn btn-icon" onclick="showPage('dashboard')" title="Torna alla dashboard"><i class="ti ti-arrow-left"></i></button>
           <div class="page-title" style="margin:0">Task</div>
         </div>
-        <button class="btn btn-primary" onclick="apriModalTask()"><i class="ti ti-plus"></i>Nuova task</button>
+        <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="apriPuliziaTask()"><i class="ti ti-trash-x"></i>Pulizia</button>
+          <button class="btn btn-primary" onclick="apriModalTask()"><i class="ti ti-plus"></i>Nuova task</button>
+        </div>
       </div>
       <div class="pills" id="task-pills">
         <div class="pill active" id="pill-task-tutte" onclick="filterTask('tutte',this)">Tutte</div>
@@ -1184,7 +1187,10 @@ window.addEventListener('unhandledrejection', function(e) {
               <div style="font-size:11px;font-weight:700;color:var(--text-3);text-transform:uppercase;letter-spacing:0.5px">
                 Alert attivi (<span id="bo-count-alert">0</span>)
               </div>
-              <button class="btn btn-sm" onclick="boSegnaTuttiLetti()" style="font-size:11px">Segna tutti letti</button>
+              <div style="display:flex;gap:6px">
+                <button class="btn btn-sm" onclick="boSegnaTuttiLetti()" style="font-size:11px">Segna tutti letti</button>
+                <button class="btn btn-sm btn-danger" onclick="boEliminaTuttiAlert()" style="font-size:11px" title="Elimina definitivamente tutti gli alert"><i class="ti ti-trash"></i></button>
+              </div>
             </div>
             <div id="bo-lista-alert"></div>
           </div>
@@ -1923,6 +1929,39 @@ window.addEventListener('unhandledrejection', function(e) {
       <button class="btn btn-icon" onclick="closeModal('modal-followup-modelli')"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body" id="fupm-body"></div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-pulizia-task">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-trash-x" style="color:var(--red)"></i>Pulizia task</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-pulizia-task')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="pt-conteggi" style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px"></div>
+      <div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Le eliminazioni sono definitive. Parti dalla prima voce: di solito basta quella.</div>
+      <div style="display:flex;flex-direction:column;gap:8px">
+        <button class="btn" onclick="puliziaTask('agente_duplicati')" style="justify-content:flex-start"><i class="ti ti-copy-off"></i>Elimina i doppioni creati dall'agente <span style="font-size:11px;color:var(--text-3);margin-left:auto">tiene il più recente di ognuno</span></button>
+        <button class="btn" onclick="puliziaTask('completati')" style="justify-content:flex-start"><i class="ti ti-checks"></i>Elimina i task già completati</button>
+        <button class="btn" onclick="puliziaTask('agente')" style="justify-content:flex-start"><i class="ti ti-robot"></i>Elimina TUTTI i task creati dall'agente</button>
+        <button class="btn btn-danger" onclick="puliziaTask('tutti')" style="justify-content:flex-start"><i class="ti ti-alert-triangle"></i>Elimina TUTTI i task, nessuno escluso</button>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="modal-overlay" id="modal-clienti-rischio">
+  <div class="modal" style="max-width:520px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-flag" style="color:var(--red)"></i>Clienti segnati a rischio</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-clienti-rischio')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;align-items:center;margin-bottom:10px">
+        <div style="font-size:12px;color:var(--text-3);flex:1">L'etichetta la mette l'agente quando un cliente smette di ordinare. Toglila quando hai risolto.</div>
+        <button class="btn btn-sm btn-danger" onclick="togliRischioTutti()">Togli tutte</button>
+      </div>
+      <div id="mcr-lista" style="max-height:380px;overflow-y:auto"></div>
+    </div>
   </div>
 </div>
 <div class="modal-overlay" id="modal-conoscenza">
