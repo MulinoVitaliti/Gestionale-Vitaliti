@@ -278,6 +278,16 @@ tbody tr:hover{background:var(--surface-2)}
 .dash-task-title.struck{color:var(--text-3)}
 .confetti-container{position:fixed;top:0;left:0;width:100%;height:100%;pointer-events:none;z-index:9999}
 @media(max-width:900px){.metrics-4{grid-template-columns:repeat(2,1fr)}.form-row{grid-template-columns:1fr}.quick-actions{grid-template-columns:1fr 1fr}}
+@media(max-width:680px){
+  /* LOGIN SU TELEFONO: una colonna sola, logo piu' piccolo, niente altezza fissa */
+  .login-screen{align-items:flex-start;padding:0;overflow-y:auto}
+  .login-wrap{flex-direction:column;max-width:100%;min-height:100vh;border-radius:0;border:none;box-shadow:none}
+  .login-left{width:100%;border-right:none;border-bottom:1px solid var(--border);padding:22px 20px 16px}
+  .login-left img{max-width:150px;height:auto}
+  .login-right{padding:22px 20px 34px}
+  .login-right input,.login-right select{font-size:16px;padding:11px 12px}
+  .login-btn{padding:13px;font-size:15px}
+}
 @media(max-width:680px){.sidebar{width:50px}.s-logo-text,.s-section,.nav-item span,.s-user-name,.s-user-role,.s-version{display:none}.nav-item{justify-content:center;padding:8px;margin:2px 4px}.s-user{justify-content:center}.page{padding:12px}.metrics-4,.metrics-3{grid-template-columns:1fr 1fr}.detail-panel{width:100vw}}
 @keyframes fadeIn{from{opacity:0}to{opacity:1}}
 @keyframes slideUp{from{transform:translateY(10px);opacity:0}to{transform:translateY(0);opacity:1}}
