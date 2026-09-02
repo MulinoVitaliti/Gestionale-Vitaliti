@@ -1014,7 +1014,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div style="display:flex;gap:8px">
           <button class="btn btn-sm" onclick="recuperaSpedizioniFollowup()" title="Crea i percorsi per le spedizioni corriere gia' registrate"><i class="ti ti-history"></i>Recupera spedizioni</button>
           <button class="btn btn-sm" onclick="apriModelliFollowup()"><i class="ti ti-mail-cog"></i>Modelli email</button>
-          <button class="btn btn-sm" onclick="caricaFollowup()"><i class="ti ti-refresh"></i>Aggiorna</button>
+          <button class="btn btn-sm btn-primary" onclick="sincronizzaFollowup(this)"><i class="ti ti-refresh"></i>Leggi nuove spedizioni</button>
         </div>
       </div>
 
@@ -1174,7 +1174,7 @@ window.addEventListener('unhandledrejection', function(e) {
           <div style="width:36px;height:36px;border-radius:50%;background:#1976d2;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:800;color:#fff;flex-shrink:0">M</div>
           <div>
             <div style="font-size:13px;font-weight:700">Mirko</div>
-            <div style="font-size:11px;color:var(--text-2)">Commerciale</div>
+            <div style="font-size:11px;color:var(--text-2)">Amministrazione e analisi</div>
           </div>
           <div style="margin-left:auto;width:8px;height:8px;border-radius:50%;background:var(--green)"></div>
         </div>
@@ -1986,7 +1986,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <input id="con-argomento" type="text" placeholder="Argomento (es. Torre Rosaria)" style="width:150px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px">
         <select id="con-ambito" style="width:140px;padding:8px 6px;border:1px solid var(--border);border-radius:8px;font-size:12px" title="Chi deve saperlo">
           <option value="generale">Tutti (generale)</option>
-          <option value="commerciale">Mirko — commerciale</option>
+          <option value="amministrazione">Mirko — amministrazione</option>
           <option value="marketing">Simona — marketing</option>
           <option value="backoffice">Steven — back office</option>
         </select>
@@ -2022,7 +2022,7 @@ window.addEventListener('unhandledrejection', function(e) {
           <option value="">— Nessuna —</option>
           <option value="steven">Steven — Back Office</option>
           <option value="simona">Simona — Digital Marketing</option>
-          <option value="mirko">Mirko — Commerciale</option>
+          <option value="mirko">Mirko — Amministrazione e analisi</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Sezioni accessibili</label>
@@ -2068,7 +2068,7 @@ window.addEventListener('unhandledrejection', function(e) {
           <option value="">— Nessuna —</option>
           <option value="steven">Steven — Back Office</option>
           <option value="simona">Simona — Digital Marketing</option>
-          <option value="mirko">Mirko — Commerciale</option>
+          <option value="mirko">Mirko — Amministrazione e analisi</option>
         </select>
       </div>
       <div class="form-group"><label class="form-label">Sezioni accessibili</label>
