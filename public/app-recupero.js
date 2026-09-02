@@ -1141,6 +1141,7 @@ function renderOrdini(){
       <td><span style="font-size:11px;font-weight:700;color:${cfg.color};background:${cfg.bg};padding:2px 8px;border-radius:99px">${cfg.label}</span></td>
       <td>${ddtBadge}</td>
       <td style="white-space:nowrap">
+        <button class="btn btn-sm" onclick="apriEtichetta(${o.id})" title="Etichetta per il bancale"><i class="ti ti-printer"></i></button>
         <button class="btn btn-sm" onclick="editOrdine(${o.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
         <button class="btn btn-sm btn-danger" onclick="eliminaOrdine(${o.id})" title="Elimina"><i class="ti ti-trash"></i></button>
       </td>`;
