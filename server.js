@@ -344,6 +344,16 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Listini prezzi: prezzo di listino e prezzo minimo per localita' e scaglione
+      CREATE TABLE IF NOT EXISTS listini_prezzi (
+        id SERIAL PRIMARY KEY,
+        localita TEXT UNIQUE NOT NULL,
+        zona TEXT,
+        listino JSONB NOT NULL,
+        minimo JSONB,
+        aggiornato TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS bandi_visti (
         id SERIAL PRIMARY KEY,
         chiave TEXT,
@@ -4052,6 +4062,178 @@ async function fupControlloGiornaliero() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// LISTINI PREZZI — Offerta Savise Express 2025, validi dal 01/05/2025
+// Prezzi in €/kg IVA esclusa. Per ogni localita': listino e prezzo minimo
+// (sotto il minimo NON si vende: e' il limite di sconto ammesso).
+// Sconto massimo: -5% su 120/270/420 kg · -10% su 510 · -15% su 630/780 · -20% su 1050
+// ══════════════════════════════════════════════════════════════════════════
+
+const SCAGLIONI_KG = [120, 270, 420, 510, 630, 780, 1050];
+
+const LISTINI_DATI = [
+  ['Palermo','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Agrigento','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Caltanisetta','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Catania','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Enna','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Messina','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Ragusa','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Siracusa','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Trapani','Sicilia',[1.2, 1.15, 1.05, 1.0, 1.0, 0.95, 0.9],null],
+  ['Isole Minori','Sicilia',[1.35, 1.3, 1.25, 1.25, 1.25, 1.2, 1.15],null],
+  ['Giardini Naxos','Sicilia',[1.3, 1.25, 1.2, 1.2, 1.1, 1.1, 1.0],null],
+  ['Letojanni','Sicilia',[1.3, 1.25, 1.2, 1.2, 1.1, 1.1, 1.0],null],
+  ['Taormina','Sicilia',[1.3, 1.25, 1.2, 1.2, 1.1, 1.1, 1.0],null],
+  ['San Vito lo Capo','Sicilia',[1.3, 1.25, 1.2, 1.2, 1.1, 1.05, 1.0],null],
+  ['Scopello','Sicilia',[1.3, 1.25, 1.2, 1.2, 1.1, 1.05, 1.0],null],
+  ["Aosta","VALLE D''AOSTA",[1.45, 1.3, 1.3, 1.25, 1.25, 1.25, 1.2],[1.4, 1.25, 1.25, 1.15, 1.1, 1.1, 1.0]],
+  ["Torino","PIEMONTE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Alessandria","PIEMONTE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Asti","PIEMONTE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Biella","PIEMONTE",[1.4, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Cuneo","PIEMONTE",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Novara","PIEMONTE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Verbania","PIEMONTE",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Vercelli","PIEMONTE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Milano","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Bergamo","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Brescia","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Como","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Cremona","LOMBARDIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Lecco","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Lodi","LOMBARDIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Mantova","LOMBARDIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Pavia","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Sondrio","LOMBARDIA",[1.4, 1.3, 1.3, 1.25, 1.25, 1.2, 1.2],[1.35, 1.25, 1.25, 1.15, 1.1, 1.05, 1.0]],
+  ["Livigno","LOMBARDIA",[1.6, 1.5, 1.45, 1.45, 1.4, 1.4, 1.35],[1.55, 1.45, 1.4, 1.35, 1.2, 1.2, 1.1]],
+  ["Varese","LOMBARDIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Padova","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Belluno","VENETO",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Rovigo","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Treviso","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Venezia","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Venezia Laguna","VENETO",[1.7, 1.55, 1.5, 1.5, 1.5, 1.5, 1.45],[1.65, 1.5, 1.45, 1.35, 1.3, 1.3, 1.2]],
+  ["Vicenza","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Verona","VENETO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Trento","TRENTINO A.A.",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Bolzano","TRENTINO A.A.",[1.35, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Udine","FRIULI V.G.",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Gorizia","FRIULI V.G.",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Pordenone","FRIULI V.G.",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Trieste","FRIULI V.G.",[1.4, 1.3, 1.25, 1.25, 1.25, 1.2, 1.15],[1.35, 1.25, 1.2, 1.15, 1.1, 1.05, 0.95]],
+  ["Genova","LIGURIA",[1.4, 1.3, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.25, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Imperia","LIGURIA",[1.4, 1.3, 1.25, 1.25, 1.25, 1.2, 1.15],[1.35, 1.25, 1.2, 1.15, 1.1, 1.05, 0.95]],
+  ["La Spezia","LIGURIA",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Savona","LIGURIA",[1.4, 1.3, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.25, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Bologna","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Ferrara","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Forli'","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Modena","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Piacenza","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Parma","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Ravenna","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Reggio Emilia","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Rimini","EMILIA ROMAGNA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Rep. San Marino","EMILIA ROMAGNA",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Firenze","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Arezzo","TOSCANA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Grosseto","TOSCANA",[1.4, 1.3, 1.25, 1.25, 1.25, 1.2, 1.15],[1.35, 1.25, 1.2, 1.15, 1.1, 1.05, 0.95]],
+  ["Isole minori","PUGLIA",[1.8, 1.65, 1.6, 1.55, 1.55, 1.55, 1.5],[1.75, 1.6, 1.55, 1.4, 1.35, 1.35, 1.25]],
+  ["Livorno","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Lucca","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Massa","TOSCANA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Pisa","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Prato","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Pistoia","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Siena","TOSCANA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.05, 0.95]],
+  ["Perugia","UMBRIA",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Terni","UMBRIA",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Roma","LAZIO",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.95]],
+  ["Frosinone","LAZIO",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.9]],
+  ["Latina","LAZIO",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.9]],
+  ["Rieti","LAZIO",[1.4, 1.25, 1.25, 1.25, 1.2, 1.2, 1.15],[1.35, 1.2, 1.2, 1.15, 1.05, 1.05, 0.95]],
+  ["Viterbo","LAZIO",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Ancona","MARCHE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Ascoli Piceno","MARCHE",[1.3, 1.2, 1.2, 1.2, 1.2, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Macerata","MARCHE",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Pesaro Urbino","MARCHE",[1.35, 1.25, 1.25, 1.2, 1.2, 1.2, 1.15],[1.3, 1.2, 1.2, 1.1, 1.05, 1.05, 0.95]],
+  ["Pescara","ABRUZZO",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["L'Aquila","ABRUZZO",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Chieti","ABRUZZO",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Teramo","ABRUZZO",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Campobasso","MOLISE",[1.35, 1.25, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Isernia","MOLISE",[1.35, 1.25, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Napoli","CAMPANIA",[1.3, 1.2, 1.15, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.1, 1.05, 1.0, 1.0, 0.9]],
+  ["Avellino","CAMPANIA",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.9]],
+  ["Benevento","CAMPANIA",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.9]],
+  ["Caserta","CAMPANIA",[1.3, 1.2, 1.15, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.1, 1.05, 1.0, 1.0, 0.9]],
+  ["Salerno","CAMPANIA",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.1],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.9]],
+  ["Bari","PUGLIA",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Brindisi","PUGLIA",[1.35, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Foggia","PUGLIA",[1.3, 1.2, 1.2, 1.15, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.05, 1.0, 1.0, 0.95]],
+  ["Lecce","PUGLIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Taranto","PUGLIA",[1.35, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Potenza","BASILICATA",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Matera","BASILICATA",[1.3, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.25, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Reggio Calabria","CALABRIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Cosenza","CALABRIA",[1.35, 1.2, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.15, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Catanzaro","CALABRIA",[1.35, 1.25, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Crotone","CALABRIA",[1.35, 1.25, 1.2, 1.2, 1.15, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.0, 1.0, 0.95]],
+  ["Vibo Valentia","CALABRIA",[1.35, 1.25, 1.2, 1.2, 1.2, 1.15, 1.15],[1.3, 1.2, 1.15, 1.1, 1.05, 1.0, 0.95]],
+  ["Cagliari","SARDEGNA",[1.5, 1.35, 1.35, 1.3, 1.3, 1.3, 1.25],[1.45, 1.3, 1.3, 1.2, 1.15, 1.15, 1.0]],
+  ["Nuoro","SARDEGNA",[1.5, 1.35, 1.35, 1.3, 1.3, 1.3, 1.25],[1.45, 1.3, 1.3, 1.2, 1.15, 1.15, 1.0]],
+  ["Oristano","SARDEGNA",[1.5, 1.35, 1.35, 1.3, 1.3, 1.3, 1.25],[1.45, 1.3, 1.3, 1.2, 1.15, 1.15, 1.0]],
+  ["Sassari","SARDEGNA",[1.5, 1.35, 1.35, 1.3, 1.3, 1.3, 1.25],[1.45, 1.3, 1.3, 1.2, 1.15, 1.15, 1.0]],
+];
+
+async function caricaListiniSeNecessario() {
+  try {
+    const c = await pool.query(`SELECT COUNT(*) n FROM listini_prezzi`);
+    if (Number(c.rows[0].n) > 0) return;
+    for (const [localita, zona, listino, minimo] of LISTINI_DATI) {
+      await pool.query(
+        `INSERT INTO listini_prezzi (localita, zona, listino, minimo)
+         VALUES ($1,$2,$3,$4) ON CONFLICT (localita) DO NOTHING`,
+        [localita, zona, JSON.stringify(listino), minimo ? JSON.stringify(minimo) : null]);
+    }
+    console.log(`✅ Listini prezzi caricati: ${LISTINI_DATI.length} localita'`);
+  } catch (e) { console.error('[LISTINI]', e.message); }
+}
+
+// Scaglione di appartenenza di una quantita'
+function scaglionePerKg(kg) {
+  const q = Number(kg) || 0;
+  let i = 0;
+  for (let k = 0; k < SCAGLIONI_KG.length; k++) if (q >= SCAGLIONI_KG[k]) i = k;
+  return i;
+}
+
+// Cerca il prezzo per una localita' e una quantita'
+async function cercaPrezzo(localita, kg) {
+  const r = await pool.query(
+    `SELECT localita, zona, listino, minimo FROM listini_prezzi
+     WHERE localita ILIKE $1 ORDER BY length(localita) LIMIT 3`, ['%' + String(localita).trim() + '%']);
+  if (!r.rows.length) return `Localita' "${localita}" non trovata nei listini. Le localita' non elencate seguono il prezzo del capoluogo di provincia.`;
+  const out = [];
+  for (const row of r.rows) {
+    const li = row.listino, mi = row.minimo;
+    if (kg) {
+      const i = scaglionePerKg(kg);
+      out.push(`${row.localita} (${row.zona}) — ${kg} kg → scaglione ${SCAGLIONI_KG[i]} kg
+   LISTINO: €${Number(li[i]).toFixed(2)}/kg` +
+        (mi ? ` · MINIMO (sconto max): €${Number(mi[i]).toFixed(2)}/kg` : ' · zona Sicilia: nessun minimo separato, il listino e\' gia\' il prezzo praticato') +
+        `\n   Totale indicativo: €${(Number(li[i]) * Number(kg)).toFixed(2)}` +
+        (mi ? ` (al minimo: €${(Number(mi[i]) * Number(kg)).toFixed(2)})` : ''));
+    } else {
+      out.push(`${row.localita} (${row.zona})
+   listino €/kg: ` + SCAGLIONI_KG.map((s, i) => `${s}kg=${Number(li[i]).toFixed(2)}`).join(' · ') +
+        (mi ? `\n   minimo  €/kg: ` + SCAGLIONI_KG.map((s, i) => `${s}kg=${Number(mi[i]).toFixed(2)}`).join(' · ') : ''));
+    }
+  }
+  return out.join('\n');
+}
+
+// ══════════════════════════════════════════════════════════════════════════
 // SORVEGLIANZA BANDI — controlla le fonti ufficiali e manda un riepilogo
 // settimanale a Giovanni. Segnala e basta: nessun giudizio di ammissibilita'.
 // ══════════════════════════════════════════════════════════════════════════
@@ -4288,6 +4470,11 @@ async function ricercaGestionale(tipo, q) {
       }
       return out.join('\n');
     }
+    if (tipo === 'prezzo' || tipo === 'listino') {
+      // q = "Torino 510" oppure solo "Torino"
+      const m = String(q).match(/^(.*?)[\s,]*(\d{2,5})?\s*(?:kg)?$/i);
+      return await cercaPrezzo((m && m[1] ? m[1] : q).trim(), m && m[2] ? Number(m[2]) : null);
+    }
     if (tipo === 'fatture' || tipo === 'ddt') {
       const f = await pool.query(
         `SELECT nome, telefono, email, num_fatture, num_ddt, importo_totale_fatturato,
@@ -4381,6 +4568,7 @@ Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
 [CERCA:tipo="fornitore",q="nome"]                 → stessa cosa per i fornitori
 [CERCA:tipo="ordini",q="Torre Rosaria"]           → ultimi ordini di quel cliente
 [CERCA:tipo="movimenti",q="carburante"]           → movimenti contabili
+[CERCA:tipo="prezzo",q="Torino 510"]               → prezzo di listino e prezzo MINIMO per quella localita' e quantita'
 [CERCA:tipo="fatture",q="Panificio Valente"]       → storico fatture e DDT di quel cliente (dati Fatture in Cloud)
 [CERCA:tipo="inattivi",q="45"]                    → clienti fermi da piu' di N giorni
 
@@ -4455,6 +4643,30 @@ Se ti chiedono qualcosa che nessun comando disponibile permette di fare, dillo
 chiaramente ("non posso farlo da qui, si fa dalla pagina X") invece di far finta.
 Per creare un ordine usa [DB:op="crea_ordine",params={...}]: nasce in stato BOZZA
 e va confermato a mano dalla pagina Ordini — dillo sempre all'utente.
+
+## PREZZI: SI USANO SOLO I LISTINI, MAI LA MEMORIA
+Non dire mai un prezzo a memoria e non calcolarlo da solo: cerca sempre con
+[CERCA:tipo="prezzo",q="<localita'> <kg>"] e riporta quello che ti risponde.
+- Il prezzo cambia per localita' e per scaglione di quantita' (120, 270, 420, 510, 630, 780, 1050 kg).
+- Ogni localita' fuori Sicilia ha DUE prezzi: il LISTINO e il MINIMO. Il minimo e' il
+  limite oltre il quale non si scende: sotto quella cifra non si vende, mai.
+- Sconto massimo ammesso: -5% fino a 420 kg, -10% a 510 kg, -15% a 630 e 780 kg, -20% a 1050 kg.
+- Le localita' non elencate seguono il prezzo del capoluogo della loro provincia.
+- I prezzi sono IVA esclusa.
+Se qualcuno chiede uno sconto sotto il minimo, rispondi che non e' praticabile e
+che la decisione spetta a Giovanni.
+
+## REGOLA COMMERCIALE: QUANTITA' MASSIMA AL PRIMO ORDINE (dal settembre 2026)
+Gli scaglioni da 780 kg e da 1050 kg NON si propongono e NON si accettano come
+PRIMO ORDINE di un cliente nuovo o non contrattualizzato: sono un rischio per
+l'azienda (insoluto importante, merce difficile da recuperare, cliente non ancora
+conosciuto).
+- Cliente nuovo o senza contratto: al massimo 630 kg.
+- 780 e 1050 kg si sbloccano dopo che il cliente ha gia' ordinato e pagato
+  regolarmente, oppure se ha firmato un contratto di fornitura.
+- Se un cliente nuovo chiede quantita' maggiori, proponi 630 kg per il primo ordine
+  spiegando che e' la nostra prassi per le prime forniture, e segnalalo a Giovanni.
+Questa regola vale per tutti: non fare eccezioni di tua iniziativa.
 
 ## DOCUMENTI FISCALI (solo Mirko)
 DDT e fatture NON si emettono mai in automatico. Se Giovanni ti chiede di farne uno,
@@ -4821,6 +5033,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
+setTimeout(() => { caricaListiniSeNecessario(); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -6310,6 +6523,31 @@ app.post('/api/bandi/azzera', async (req, res) => {
 app.post('/api/bandi/invia-riepilogo', async (req, res) => {
   try { await inviaRiepilogoBandi(); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── LISTINI PREZZI ────────────────────────────────────────────────────────
+app.get('/api/listini', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM listini_prezzi ORDER BY zona, localita`);
+    res.json({ scaglioni: SCAGLIONI_KG, righe: r.rows });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/listini/prezzo', async (req, res) => {
+  try {
+    const testo = await cercaPrezzo(req.query.localita || '', req.query.kg || null);
+    res.json({ risposta: testo });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.patch('/api/listini/:id', async (req, res) => {
+  const { listino, minimo } = req.body || {};
+  try {
+    await pool.query(
+      `UPDATE listini_prezzi SET listino=COALESCE($1,listino), minimo=COALESCE($2,minimo), aggiornato=NOW() WHERE id=$3`,
+      [listino ? JSON.stringify(listino) : null, minimo ? JSON.stringify(minimo) : null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
