@@ -2030,6 +2030,40 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-etichetta">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-printer" style="color:var(--brand)"></i>Etichetta per il bancale</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-etichetta')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="display:grid;grid-template-columns:1fr 300px;gap:16px">
+        <div>
+          <div class="form-group"><label class="form-label">Destinatario *</label>
+            <input type="text" id="et-cliente" oninput="aggiornaAnteprimaEtichetta()"></div>
+          <div class="form-group"><label class="form-label">Città (in grande) *</label>
+            <input type="text" id="et-citta" oninput="aggiornaAnteprimaEtichetta()"></div>
+          <div class="form-group"><label class="form-label">Indirizzo completo</label>
+            <input type="text" id="et-indirizzo" oninput="aggiornaAnteprimaEtichetta()"></div>
+          <div class="form-row">
+            <div class="form-group"><label class="form-label">Colli</label>
+              <input type="text" id="et-colli" oninput="aggiornaAnteprimaEtichetta()"></div>
+            <div class="form-group"><label class="form-label">Nota in evidenza</label>
+              <input type="text" id="et-note" placeholder="Es. CHIAMARE PRIMA" oninput="aggiornaAnteprimaEtichetta()"></div>
+          </div>
+          <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+            <button class="btn" onclick="closeModal('modal-etichetta')">Chiudi</button>
+            <button class="btn btn-primary" onclick="stampaEtichetta()"><i class="ti ti-printer"></i>Stampa</button>
+          </div>
+        </div>
+        <div>
+          <div style="font-size:11px;color:var(--text-3);margin-bottom:6px">ANTEPRIMA</div>
+          <div id="et-anteprima" style="border:1px solid var(--border);border-radius:8px;background:#fff;color:#111;aspect-ratio:1/1.414;overflow:hidden"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-listini">
   <div class="modal" style="max-width:840px">
     <div class="modal-header">
@@ -2492,6 +2526,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="app-mirko.js"></script>
 <script src="app-followup.js"></script>
 <script src="app-analisi.js"></script>
+<script src="app-etichetta.js"></script>
 <script src="app-ui.js"></script>
 
 </body>
