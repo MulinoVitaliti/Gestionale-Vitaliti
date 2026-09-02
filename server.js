@@ -3214,6 +3214,45 @@ const STEVEN_DB_OPERAZIONI = {
     return { ...r.rows[0], avviso: 'Ordine creato in stato BOZZA: va aperto e confermato dalla pagina Ordini.' };
   },
 
+  // Prepara un DDT o una fattura per l'approvazione di Giovanni (NON li emette)
+  'prepara_documento': async (params) => {
+    const { tipo, cliente, ordine_id, note } = params;
+    const t = (tipo || 'ddt').toLowerCase();
+    if (!['ddt', 'fattura'].includes(t)) throw new Error('Tipo documento non valido: usa "ddt" o "fattura"');
+    let ord = null;
+    if (ordine_id) {
+      const r = await pool.query(
+        `SELECT o.*, c.nome AS cliente_nome, c.piva, c.citta FROM ordini o
+         LEFT JOIN clienti c ON c.id=o.cliente_id WHERE o.id=$1`, [ordine_id]);
+      ord = r.rows[0];
+    } else if (cliente) {
+      const r = await pool.query(
+        `SELECT o.*, c.nome AS cliente_nome, c.piva, c.citta FROM ordini o
+         JOIN clienti c ON c.id=o.cliente_id
+         WHERE c.nome ILIKE $1 AND o.fic_ddt_id IS NULL ORDER BY o.data DESC LIMIT 1`, ['%'+cliente+'%']);
+      ord = r.rows[0];
+    }
+    if (!ord) throw new Error('Non ho trovato un ordine da documentare: indica ordine_id o il nome del cliente');
+    if (t === 'ddt' && ord.fic_ddt_id) throw new Error(`L'ordine ha gia' il DDT n. ${ord.fic_ddt_numero}`);
+
+    await pool.query(
+      `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
+       VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Mirko (AI)')`,
+      [`Approvare ${t.toUpperCase()}: ${ord.cliente_nome} — €${Number(ord.importo||0).toFixed(2)}`,
+       `Documento preparato da Mirko per l'ordine #${ord.id} del ${new Date(ord.data).toLocaleDateString('it-IT')}.\n` +
+       `Cliente: ${ord.cliente_nome}${ord.piva ? ' (P.IVA ' + ord.piva + ')' : ''}\n` +
+       `Prodotto: ${ord.prodotto || '-'}${ord.qty ? ' — ' + ord.qty + ' kg' : ''}\n` +
+       `Importo: €${Number(ord.importo||0).toFixed(2)}\n` +
+       (note ? `Note: ${note}\n` : '') +
+       `\nPer emetterlo: apri la pagina Ordini, entra nell'ordine #${ord.id} e conferma l'emissione del documento.`]
+    );
+    return {
+      preparato: t, ordine: ord.id, cliente: ord.cliente_nome,
+      importo: Number(ord.importo||0).toFixed(2),
+      avviso: `${t.toUpperCase()} PREPARATO ma NON emesso. Ho creato un task per Giovanni: va approvato dalla pagina Ordini.`
+    };
+  },
+
   // Leggi lista contatti con filtri
   'lista_contatti': async (params) => {
     const { tipo, tag, citta, limit = 20 } = params;
@@ -3565,6 +3604,13 @@ async function costruisciContestoGestionale() {
 
 Parli in prima persona come Steven. Sei diretto, concreto, leggermente informale ma sempre professionale. Conosci l'azienda dall'interno: ogni ordine, ogni cliente, ogni euro. Quando Giovanni ti parla, rispondi come un braccio destro fidato che lavora con lui ogni giorno — non come un assistente generico.
 
+## IL TUO RUOLO: BACK OFFICE
+Segui gli ordini DOPO che sono stati fatti. In concreto ti occupi di:
+- STATO DEGLI ORDINI: cosa e' in preparazione, cosa e' partito, cosa e' in ritardo rispetto a quanto promesso al cliente.
+- PAGAMENTI: quali fatture non sono state saldate, da quanti giorni, chi va sollecitato e con che tono.
+- RIORDINI: quali clienti avrebbero gia' dovuto riordinare in base alle loro abitudini e non l'hanno fatto, e quindi vanno richiamati.
+Non prepari DDT o fatture e non fai analisi di bilancio o di margine: quello e' il lavoro di Mirko. Tu tieni il filo di cio' che e' in corso e di chi va richiamato.
+
 Hai anche un loop autonomo che gira ogni ora: segni i clienti a rischio, crei task di follow-up, analizzi la crescita, verifichi la contabilità FIC e mandi report via email. Se ti chiedono cosa hai fatto di recente, riferirti a queste attività.
 
 ## COSA SO — MEMORIA ACCUMULATA
@@ -3630,6 +3676,7 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
   - lista_contatti: {tipo:"cliente",tag:"rischio",citta:"...",limit:20} — lista con filtri
   - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
   - crea_ordine: {cliente:"Nome cliente",prodotto:"Semola rimacinata",qty:500,importo:485.00,data:"YYYY-MM-DD",note:"..."} — crea un ordine in BOZZA
+  - prepara_documento: {tipo:"ddt"|"fattura",cliente:"Nome cliente"} oppure {tipo:"ddt",ordine_id:123} — SOLO MIRKO: prepara il documento e crea un task di approvazione per Giovanni. NON emette nulla.
   - ordini_cliente: {id:123} — storico ordini di un cliente
   - insoluti: {} — tutte le fatture non pagate
   - analizza_tasks: {} — trova task duplicati e conta quante copie ci sono
@@ -3650,7 +3697,7 @@ Quando non trovo la risposta nei dati del gestionale — prezzi di mercato, norm
     return ctx;
   } catch (e) {
     console.error('[Steven] Errore contesto:', e.message);
-    return `Sei Steven, l'agente AI personale di Giovanni Vitaliti di Mulino Vitaliti. Rispondi sempre in italiano, in modo diretto e concreto.`;
+    return `Sei Steven, il back office di Mulino Vitaliti: segui ordini in corso, ritardi di pagamento e clienti da richiamare per il riordino. Rispondi sempre in italiano, in modo diretto e concreto.`;
   }
 }
 
@@ -3748,9 +3795,13 @@ async function costruisciContestoMirko() {
     const aRischio = clienti.rows.filter(c => c.tag && c.tag.includes('rischio'));
     const topClienti = clienti.rows.filter(c => c.fatturato > 0).slice(0,5);
 
-    return `Sei Mirko, il responsabile commerciale della Virtual Company di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
+    return `Sei Mirko, il responsabile amministrazione e analisi della Virtual Company di Mulino Vitaliti — mulino di semola fondato nel 1930 a Belpasso (CT), Sicilia. Oggi è ${oggi}, ore ${ora}.
 
-Sei specializzato in sviluppo commerciale B2B, gestione pipeline vendite, negoziazione, acquisizione nuovi clienti nel settore panificazione e ristorazione, e gestione del portafoglio clienti.
+Sei la testa analitica e amministrativa dell'azienda. Ti occupi di:
+- PREPARARE DDT E FATTURE: li predisponi e li sottoponi SEMPRE a Giovanni per l'approvazione. Non emetti mai nulla di tua iniziativa.
+- ANALISI DEI NUMERI: fatturato, margini, andamento dei clienti, prezzi applicati, scostamenti, concentrazione del fatturato, confronti tra periodi.
+- CONTROLLO: verifichi che i dati tornino (importi, quantita', aliquote) e segnali le anomalie.
+Non ti occupi di rincorrere ordini in corso, consegne o solleciti di pagamento: quello e' il lavoro di Steven.
 
 Parli in modo diretto, orientato ai risultati. Pensi in termini di fatturato, conversione, retention.
 
@@ -3775,7 +3826,7 @@ Quando hai bisogno di dati esterni — prezzi grano duro, fiere di settore, norm
 
 Rispondi sempre in italiano.`;
   } catch(e) {
-    return `Sei Mirko, responsabile commerciale di Mulino Vitaliti. Specializzato in vendite B2B agroalimentare. Rispondi in italiano.`;
+    return `Sei Mirko, responsabile amministrazione e analisi di Mulino Vitaliti. Prepari DDT e fatture (sempre con approvazione di Giovanni) e analizzi i numeri dell'azienda. Rispondi in italiano.`;
   }
 }
 
@@ -3990,7 +4041,7 @@ async function fupControlloGiornaliero() {
 // CONOSCENZA DEGLI AGENTI — cresce man mano che vengono usati
 // ══════════════════════════════════════════════════════════════════════════
 
-const AMBITO_DI = { steven: 'backoffice', simona: 'marketing', mirko: 'commerciale' };
+const AMBITO_DI = { steven: 'backoffice', simona: 'marketing', mirko: 'amministrazione' };
 
 async function salvaConoscenza(agente, argomento, contenuto, utente, ambito) {
   try {
@@ -4189,9 +4240,14 @@ chiunque, non riferite alla singola conversazione.
 
 ## RESTA NEL TUO RUOLO
 La conoscenza e' condivisa, i ruoli no. In Mulino Vitaliti:
-- STEVEN: back office e gestione operativa (ordini, documenti, organizzazione interna)
+- STEVEN: BACK OFFICE. Segue gli ordini gia' fatti dal momento della conferma in poi:
+  stato di avanzamento, consegne, ritardi di pagamento e solleciti, clienti che
+  dovrebbero riordinare e non l'hanno ancora fatto. E' quello che tiene il filo
+  di cosa e' in corso e di chi va richiamato.
+- MIRKO: AMMINISTRAZIONE E ANALISI. Prepara DDT e fatture (sempre con l'approvazione
+  di Giovanni prima di emetterli), controlla numeri e margini, analizza fatturato,
+  andamento clienti, prezzi e scostamenti. E' la testa analitica dell'azienda.
 - SIMONA: marketing e comunicazione (social, contenuti, promozione, immagine)
-- MIRKO: commerciale (clienti, vendite, trattative, riordini, listini)
 Rispondi tu quando la domanda rientra nel tuo ruolo.
 Se riguarda il campo di un collega, non improvvisare: rispondi in una riga che di
 quell'argomento si occupa lui e che conviene chiederlo a lui (es: "per i social
@@ -4227,7 +4283,14 @@ Se non hai scritto il comando, l'operazione NON e' avvenuta: non dire "fatto",
 Se ti chiedono qualcosa che nessun comando disponibile permette di fare, dillo
 chiaramente ("non posso farlo da qui, si fa dalla pagina X") invece di far finta.
 Per creare un ordine usa [DB:op="crea_ordine",params={...}]: nasce in stato BOZZA
-e va confermato a mano dalla pagina Ordini — dillo sempre all'utente.`;
+e va confermato a mano dalla pagina Ordini — dillo sempre all'utente.
+
+## DOCUMENTI FISCALI (solo Mirko)
+DDT e fatture NON si emettono mai in automatico. Se Giovanni ti chiede di farne uno,
+usa [DB:op="prepara_documento",params={...}]: il documento viene predisposto e gli
+arriva un task di approvazione. Dopo averlo fatto dillo chiaramente: "l'ho preparato,
+ma va approvato da te prima di essere emesso". Non dire mai di aver emesso un
+documento: tu prepari, Giovanni emette.`;
 
 async function costruisciContesto(agente, messages) {
   let base;
@@ -5411,9 +5474,9 @@ app.get('/api/spedizioni/debug-parsing', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
-app.post('/api/spedizioni/sincronizza', async (req, res) => {
-  if (!gmailSpedizioniTokens) return res.json({ error: 'Casella email spedizioni non connessa. Vai su Spedizioni e collega l\'account spedizioni.mulinovitaliti@gmail.com' });
-  try {
+async function sincronizzaSpedizioniDaEmail() {
+  const res = { json: (x) => x };  // compatibilita' col codice esistente
+  {
     oauth2ClientSpedizioni.setCredentials(gmailSpedizioniTokens);
     const gmail = google.gmail({ version: 'v1', auth: oauth2ClientSpedizioni });
     // Cerca le email di One Express negli ultimi messaggi
@@ -5484,12 +5547,31 @@ app.post('/api/spedizioni/sincronizza', async (req, res) => {
       } catch (e) { /* email non leggibile: si prosegue */ }
     }
 
-    res.json({ trovate: list.data.messages.length, nuove, stati_aggiornati: aggiornate });
+    return { trovate: list.data.messages.length, nuove, stati_aggiornati: aggiornate };
+  }
+}
+
+app.post('/api/spedizioni/sincronizza', async (req, res) => {
+  if (!gmailSpedizioniTokens) return res.json({ error: 'Casella email spedizioni non connessa. Vai su Spedizioni e collega l\'account spedizioni.mulinovitaliti@gmail.com' });
+  try {
+    const r = await sincronizzaSpedizioniDaEmail();
+    res.json(r);
   } catch (err) {
     console.error('Errore sincronizzazione spedizioni:', err);
     res.json({ error: err.message });
   }
 });
+
+// Lettura automatica della casella spedizioni ogni 20 minuti
+setInterval(async () => {
+  if (!gmailSpedizioniTokens) return;
+  try {
+    const r = await sincronizzaSpedizioniDaEmail();
+    if (r && (r.nuove || r.stati_aggiornati)) {
+      console.log(`[SPEDIZIONI auto] nuove: ${r.nuove}, stati aggiornati: ${r.stati_aggiornati}`);
+    }
+  } catch (e) { console.error('[SPEDIZIONI auto]', e.message); }
+}, 20 * 60 * 1000);
 
 app.get('/api/spedizioni', async (req, res) => {
   try {
@@ -5999,8 +6081,12 @@ app.patch('/api/followup-modelli/:tipo', async (req, res) => {
 
 // Controllo manuale (utile per provare senza aspettare il timer)
 app.post('/api/followup/controllo', async (req, res) => {
+  let sync = null;
+  if (gmailSpedizioniTokens) {
+    try { sync = await sincronizzaSpedizioniDaEmail(); } catch (e) { console.error('[FUP sync]', e.message); }
+  }
   await fupControlloGiornaliero();
-  res.json({ ok: true });
+  res.json({ ok: true, sync });
 });
 
 // Crea i percorsi per le spedizioni corriere gia' registrate (una tantum)
