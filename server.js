@@ -4200,22 +4200,25 @@ async function initCosti() {
 // Ricava il costo del grano dagli acquisti realmente registrati
 // (movimenti del gestionale e fatture ricevute importate da Fatture in Cloud:
 // finiscono nella stessa tabella, quindi la fonte e' una sola).
-const PAROLE_GRANO = ['grano', 'frumento', 'cereal', 'semolato', 'duro'];
-
 async function costoGranoDaAcquisti(mesi) {
   const m = Number(mesi) || 12;
   try {
     const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
     const par = [String(m), ...PAROLE_GRANO.map(p => '%' + p + '%')];
     const r = await pool.query(
-      `SELECT COALESCE(SUM(importo),0) spesa,
-              COALESCE(SUM(qty_kg),0) kg,
-              COUNT(*) n,
-              COUNT(*) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0) senza_kg,
-              MAX(data) ultimo
+      `SELECT
+         -- spesa: se conosco il prezzo al kg uso quello (esclude righe non di grano
+         -- presenti nella stessa fattura), altrimenti ripiego sull'importo totale
+         COALESCE(SUM(CASE WHEN prezzo_kg IS NOT NULL AND qty_kg > 0
+                           THEN prezzo_kg * qty_kg ELSE importo END), 0) spesa,
+         COALESCE(SUM(qty_kg),0) kg,
+         COUNT(*) n,
+         COUNT(*) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0) senza_kg,
+         MAX(data) ultimo
        FROM movimenti
        WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval
-         AND (${cond})`, par);
+         AND (${cond})
+         AND (qty_kg > 0)`, par);
     const x = r.rows[0];
     const kg = Number(x.kg), spesa = Number(x.spesa);
     if (!kg || !spesa) {
@@ -6206,6 +6209,52 @@ app.post('/api/fatture/products/refresh', async (req, res) => {
   res.json({ prodotti: Object.keys(map).length });
 });
 
+const PAROLE_GRANO = ['grano', 'frumento', 'cereal', 'semolato', 'duro'];
+
+// Converte in kg una quantita' espressa in qualunque unita' usata dai fornitori
+// (le fatture del grano arrivano spesso in tonnellate o quintali).
+function inKg(quantita, unita) {
+  const q = Number(quantita);
+  if (!q || !isFinite(q)) return null;
+  const u = String(unita || '').toLowerCase().replace(/[.\s]/g, '');
+  if (!u) return null;
+  if (['ton','tonn','tonnellate','tonnellata','t','mg'].includes(u)) return q * 1000;
+  if (['ql','qli','quintali','quintale','q'].includes(u)) return q * 100;
+  if (['kg','kgs','chilogrammi','chili','kilogrammi'].includes(u)) return q;
+  if (['g','gr','grammi'].includes(u)) return q / 1000;
+  return null;  // pezzi, colli, sacchi: non convertibili senza sapere la pezzatura
+}
+
+// Legge le righe di un documento ricevuto ed estrae SOLO la parte di grano:
+// chilogrammi (convertiti da tonnellate/quintali) e prezzo effettivo al kg.
+// Il prezzo unitario in fattura e' espresso nella stessa unita' della quantita'
+// (es. 350 €/Ton), quindi non va mai preso per un prezzo al chilo.
+async function estraiGranoDaDocumento(docId) {
+  const vuoto = { kg: null, spesa: null, prezzo_kg: null, righe: 0 };
+  if (!ficCompanyId || !ficTokens) return vuoto;
+  try {
+    const det = await ficFetch(`/c/${ficCompanyId}/received_documents/${docId}`);
+    if (!det.ok) return vuoto;
+    const dd = await det.json();
+    const righe = dd.data?.items_list || [];
+    let kg = 0, spesa = 0, n = 0;
+    for (const r of righe) {
+      const testo = `${r.name || ''} ${r.description || ''}`.toLowerCase();
+      if (!PAROLE_GRANO.some(p => testo.includes(p))) continue;
+      const k = inKg(r.qty, r.measure);
+      if (!k) continue;
+      // spesa della riga: uso il netto se c'e', altrimenti quantita' x prezzo unitario
+      const netto = Number(r.amount_net);
+      const calcolato = Number(r.qty) * Number(r.net_price);
+      const importoRiga = isFinite(netto) && netto > 0 ? netto : (isFinite(calcolato) ? calcolato : 0);
+      if (!importoRiga) continue;
+      kg += k; spesa += importoRiga; n++;
+    }
+    if (!kg || !spesa) return vuoto;
+    return { kg, spesa, prezzo_kg: spesa / kg, righe: n };
+  } catch (e) { return vuoto; }
+}
+
 // ── SINCRONIZZAZIONE FATTURE RICEVUTE DA FIC → CONTABILITÀ USCITE ─────────
 async function eseguiSincronizzazioneFattureRicevute() {
   if (!ficCompanyId || !ficTokens) return { importati: 0, saltati: 0, errori: 0, totale: 0 };
@@ -6273,12 +6322,22 @@ async function eseguiSincronizzazioneFattureRicevute() {
         doc.numeration ? `(${doc.numeration})` : null
       ].filter(Boolean).join(' — ') || 'Fattura ricevuta';
 
+      // Quantita' in kg: serve per calcolare il costo reale della materia prima.
+      // Le righe non sono nell'elenco, vanno chieste sul singolo documento.
+      let kgTot = null, prezzoKg = null;
+      if (cat === 'Acquisto materie prime') {
+        const est = await estraiGranoDaDocumento(doc.id);
+        kgTot = est.kg;
+        prezzoKg = est.prezzo_kg;
+      }
+
       try {
         await pool.query(
-          `INSERT INTO movimenti (data, tipo, importo, cat, descrizione, fatturazione, pagato, fic_received_id)
-           VALUES ($1, 'uscita', $2, $3, $4, 'non_applicabile', $5, $6)`,
-          [doc.date || new Date().toISOString().slice(0,10), importo, cat, descrizioneCompleta, pagato, doc.id]
+          `INSERT INTO movimenti (data, tipo, importo, cat, descrizione, fatturazione, pagato, fic_received_id, qty_kg, prezzo_kg)
+           VALUES ($1, 'uscita', $2, $3, $4, 'non_applicabile', $5, $6, $7, $8)`,
+          [doc.date || new Date().toISOString().slice(0,10), importo, cat, descrizioneCompleta, pagato, doc.id, kgTot, prezzoKg]
         );
+        if (kgTot) console.log(`[FIC Ricevute] doc ${doc.id}: ${kgTot} kg di materia prima registrati`);
         importati++;
       } catch (e) {
         console.error('[FIC Ricevute] Errore inserimento doc', doc.id, ':', e.message);
@@ -7383,6 +7442,30 @@ app.get('/api/analisi/anomalie', async (req, res) => {
 });
 app.get('/api/analisi/commercialista', async (req, res) => {
   try { res.json(await pacchettoCommercialista()); } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/costi/ricalcola-kg', async (req, res) => {
+  if (!ficCompanyId || !ficTokens) return res.json({ error: 'Fatture in Cloud non collegato' });
+  try {
+    const r = await pool.query(
+      `SELECT id, fic_received_id, descrizione FROM movimenti
+       WHERE tipo='uscita' AND fic_received_id IS NOT NULL
+         AND (qty_kg IS NULL OR qty_kg = 0)
+       ORDER BY data DESC LIMIT 200`);
+    let aggiornati = 0, senzaRighe = 0;
+    for (const m of r.rows) {
+      try {
+        const est = await estraiGranoDaDocumento(m.fic_received_id);
+        if (est.kg && est.prezzo_kg) {
+          await pool.query(`UPDATE movimenti SET qty_kg=$1, prezzo_kg=$2 WHERE id=$3`,
+            [est.kg, est.prezzo_kg, m.id]);
+          aggiornati++;
+        } else senzaRighe++;
+      } catch (e) { /* documento non leggibile */ }
+    }
+    console.log(`[COSTI] ricalcolo kg: ${aggiornati} movimenti aggiornati su ${r.rows.length}`);
+    res.json({ ok: true, esaminati: r.rows.length, aggiornati, senza_righe_grano: senzaRighe });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 app.get('/api/costi/grano-reale', async (req, res) => {
