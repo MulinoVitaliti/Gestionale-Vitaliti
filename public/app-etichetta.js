@@ -23,7 +23,7 @@ function aggiornaAnteprimaEtichetta(){
     <div style="text-align:center;padding:18px 10px;font-family:'Open Sans',Arial,sans-serif">
       <img src="/logo.png" style="width:110px;height:auto;margin-bottom:14px" alt="Mulino Vitaliti">
       <div style="font-size:15px;color:#7a4a3a;margin-bottom:4px">Mittente</div>
-      <div style="font-size:12px;font-weight:600;margin-bottom:2px">MULINO VITALITI DI VITALITI ANTONIO</div>
+      <div style="font-size:12px;font-weight:600;margin-bottom:2px">MULINO VITALITI</div>
       <div style="font-size:11px;color:#666;margin-bottom:10px">Via I Retta Levante 134 — 95032 Belpasso (CT)</div>
       <div style="font-size:22px;color:#999;line-height:1">↓</div>
       <div style="font-size:15px;color:#7a4a3a;margin:8px 0 4px">Destinatario</div>
@@ -66,8 +66,8 @@ function stampaEtichetta(){
     <div class="foglio">
       <img class="logo" src="${location.origin}/logo.png" alt="Mulino Vitaliti">
       <div class="lbl">Mittente</div>
-      <div class="mitt-nome">MULINO VITALITI DI VITALITI ANTONIO</div>
-      <div class="mitt-ind">Via I Retta Levante 134 — 95032 Belpasso (CT) — tel. 095 913523</div>
+      <div class="mitt-nome">MULINO VITALITI</div>
+      <div class="mitt-ind">Via I Retta Levante 134 — 95032 Belpasso (CT)</div>
       <div class="freccia">&darr;</div>
       <div class="lbl">Destinatario</div>
       <div class="dest-nome">${cliente.toUpperCase()}</div>
