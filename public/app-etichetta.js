@@ -20,7 +20,7 @@ function aggiornaAnteprimaEtichetta(){
   const cliente = v('et-cliente'), citta = v('et-citta'), ind = v('et-indirizzo');
   const note = v('et-note'), colli = v('et-colli');
   document.getElementById('et-anteprima').innerHTML = `
-    <div style="text-align:center;padding:18px 10px">
+    <div style="text-align:center;padding:18px 10px;font-family:'Open Sans',Arial,sans-serif">
       <img src="/logo.png" style="width:110px;height:auto;margin-bottom:14px" alt="Mulino Vitaliti">
       <div style="font-size:15px;color:#7a4a3a;margin-bottom:4px">Mittente</div>
       <div style="font-size:12px;font-weight:600;margin-bottom:2px">MULINO VITALITI DI VITALITI ANTONIO</div>
@@ -43,9 +43,12 @@ function stampaEtichetta(){
 
   const html = `<!DOCTYPE html><html><head><meta charset="utf-8">
     <title>Etichetta ${cliente}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
     <style>
       @page { size: A4 portrait; margin: 14mm; }
-      body { font-family: Arial, Helvetica, sans-serif; color:#111; margin:0;
+      body { font-family: 'Open Sans', Arial, Helvetica, sans-serif; color:#111; margin:0;
              display:flex; align-items:center; justify-content:center; min-height:96vh; }
       .foglio { text-align:center; width:100%; }
       .logo { width:200px; height:auto; margin-bottom:26px; }
@@ -73,7 +76,11 @@ function stampaEtichetta(){
       ${colli ? `<div class="extra">Colli: <strong>${colli}</strong></div>` : ''}
       ${note ? `<div class="note">${note}</div>` : ''}
     </div>
-    <script>window.onload = function(){ setTimeout(function(){ window.print(); }, 350); };<\/script>
+    <script>
+      function stampa(){ setTimeout(function(){ window.print(); }, 250); }
+      if (document.fonts && document.fonts.ready) { document.fonts.ready.then(stampa); }
+      else { window.onload = stampa; }
+    <\/script>
     </body></html>`;
 
   const w = window.open('', '_blank', 'width=820,height=1000');
