@@ -372,3 +372,103 @@ function filtraListini(){
 }
 window.apriListini = apriListini;
 window.filtraListini = filtraListini;
+
+
+// ── DOCUMENTI DA APPROVARE ───────────────────────────────────────────────
+const DB_ICONA = { ok:'✅', attenzione:'⚠️', errore:'❌' };
+const DB_COLORE = { ok:'var(--green)', attenzione:'var(--orange)', errore:'var(--red)' };
+
+async function aggiornaBadgeDocumenti(){
+  const b = document.getElementById('btn-doc-badge');
+  if(!b) return;
+  try{
+    const r = await api.get('/api/documenti-bozza/conteggio');
+    const n = Number(r && r.n) || 0;
+    b.textContent = n;
+    b.style.display = n ? 'inline-block' : 'none';
+    if(Number(r.anomalie)) b.style.background = 'var(--red)';
+  }catch(e){ b.style.display='none'; }
+}
+
+async function apriDocumentiBozza(){
+  openModal('modal-documenti-bozza');
+  const box = document.getElementById('db-lista');
+  box.innerHTML = '<div style="padding:16px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  try{
+    const dati = await api.get('/api/documenti-bozza');
+    if(!Array.isArray(dati) || !dati.length){
+      box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px">Nessun documento in attesa.<br><span style="font-size:12px">Chiedi a Mirko di preparare un DDT o una fattura e comparirà qui.</span></div>';
+      return;
+    }
+    box.innerHTML = dati.map(d => {
+      const ctrl = Array.isArray(d.controlli) ? d.controlli : [];
+      const errori = ctrl.filter(c=>c.livello==='errore');
+      return `<div style="border:1px solid ${errori.length?'var(--red)':'var(--border)'};border-radius:10px;padding:13px;margin-bottom:12px">
+        <div style="display:flex;align-items:center;gap:10px;margin-bottom:8px">
+          <span style="background:var(--brand);color:#fff;border-radius:5px;padding:2px 8px;font-size:10px;font-weight:700">${(d.tipo||'').toUpperCase()}</span>
+          <strong style="font-size:14px">${d.cliente_nome}</strong>
+          <span style="font-size:12px;color:var(--text-3)">ordine #${d.ordine_id||'-'}${d.ordine_data?' del '+new Date(d.ordine_data).toLocaleDateString('it-IT'):''}</span>
+          <strong style="margin-left:auto;font-size:14px">€ ${Number(d.totale||0).toFixed(2)}</strong>
+        </div>
+        <div style="background:var(--surface-2);border-radius:7px;padding:9px 11px;margin-bottom:9px">
+          ${ctrl.map(c=>`<div style="font-size:12px;color:${DB_COLORE[c.livello]};padding:1px 0">${DB_ICONA[c.livello]} ${c.testo}</div>`).join('') || '<div style="font-size:12px;color:var(--text-3)">Nessun controllo registrato</div>'}
+        </div>
+        <div style="display:flex;gap:7px">
+          <button class="btn btn-sm btn-primary" onclick="emettiDocumento(${d.id},${errori.length})"><i class="ti ti-send"></i>Emetti su Fatture in Cloud</button>
+          <button class="btn btn-sm" onclick="ricontrollaDocumento(${d.id})"><i class="ti ti-refresh"></i>Ricontrolla</button>
+          <button class="btn btn-sm btn-danger" style="margin-left:auto" onclick="scartaDocumento(${d.id})"><i class="ti ti-x"></i>Scarta</button>
+        </div>
+        ${d.errore?`<div style="font-size:11px;color:var(--red);margin-top:7px">Ultimo errore: ${d.errore}</div>`:''}
+      </div>`;
+    }).join('');
+  }catch(e){ box.innerHTML = '<div style="padding:16px">Errore nel caricamento.</div>'; }
+}
+
+async function emettiDocumento(id, conAnomalie){
+  if(conAnomalie){
+    if(!confirm('Questo documento ha ANOMALIE BLOCCANTI.\n\nEmetterlo ugualmente? Verrà creato davvero su Fatture in Cloud.')) return;
+  } else {
+    if(!confirm('Emettere il documento su Fatture in Cloud?')) return;
+  }
+  const r = await api.post('/api/documenti-bozza/'+id+'/emetti', {forza: !!conAnomalie, utente:(currentUser&&currentUser.nome)||null});
+  if(r.error){
+    if(r.serve_conferma) alert('Anomalie:\n\n' + (r.anomalie||[]).join('\n'));
+    else alert('Non emesso: ' + r.error);
+    return;
+  }
+  let msg = 'Documento emesso' + (r.numero?' con il numero '+r.numero:'') + '.';
+  if(r.email) msg += r.email.ok ? ('\nEmail inviata a ' + r.email.destinatario) : ('\nEmail NON inviata: ' + r.email.errore);
+  alert(msg);
+  apriDocumentiBozza(); aggiornaBadgeDocumenti();
+}
+
+async function ricontrollaDocumento(id){
+  await api.post('/api/documenti-bozza/'+id+'/ricontrolla', {});
+  apriDocumentiBozza(); aggiornaBadgeDocumenti();
+}
+
+async function scartaDocumento(id){
+  if(!confirm('Scartare questa bozza? Il documento non verrà emesso.')) return;
+  await api.post('/api/documenti-bozza/'+id+'/scarta', {utente:(currentUser&&currentUser.nome)||null});
+  apriDocumentiBozza(); aggiornaBadgeDocumenti();
+}
+async function preparaFattureOra(btn){
+  const g = prompt('Fatturare i DDT piu\' vecchi di quanti giorni?', '10');
+  if(g === null) return;
+  const o = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Preparo...';
+  try{
+    const r = await api.post('/api/documenti-bozza/prepara-fatture', {giorni: parseInt(g)||10});
+    if(r.error) alert('Errore: ' + r.error);
+    else if(!r.creati) alert('Nessun DDT da fatturare al momento.');
+    else alert(`Preparate ${r.creati} fatture:\n\n` + r.elenco.map(x=>`• ${x.cliente}: ${x.ddt} DDT — €${Number(x.totale).toFixed(2)}`).join('\n'));
+    apriDocumentiBozza(); aggiornaBadgeDocumenti();
+  }catch(e){ alert('Errore: '+e.message); }
+  finally{ btn.disabled=false; btn.innerHTML=o; }
+}
+window.preparaFattureOra = preparaFattureOra;
+
+window.apriDocumentiBozza = apriDocumentiBozza;
+window.emettiDocumento = emettiDocumento;
+window.ricontrollaDocumento = ricontrollaDocumento;
+window.scartaDocumento = scartaDocumento;
+window.aggiornaBadgeDocumenti = aggiornaBadgeDocumenti;
