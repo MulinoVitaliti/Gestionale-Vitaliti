@@ -911,6 +911,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="page-header">
         <div class="page-title">Contabilità</div>
         <div style="display:flex;gap:8px">
+          <button class="btn" onclick="apriAnalisiMirko()"><i class="ti ti-chart-histogram"></i>Analisi di Mirko</button>
           <button class="btn" id="btn-sync-fatture-ricevute" onclick="sincronizzaFattureRicevute()"><i class="ti ti-cloud-download"></i>Importa spese da FIC</button>
           <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
         </div>
@@ -1993,6 +1994,27 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-analisi-mirko">
+  <div class="modal" style="max-width:820px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-chart-histogram" style="color:var(--brand)"></i>Analisi di Mirko</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-analisi-mirko')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="display:flex;gap:6px;margin-bottom:14px;flex-wrap:wrap">
+        <button class="pill active" onclick="tabAnalisi('margini',this)">Margini per cliente</button>
+        <button class="pill" onclick="tabAnalisi('cassa',this)">Previsione cassa</button>
+        <button class="pill" onclick="tabAnalisi('anomalie',this)">Anomalie</button>
+        <button class="pill" onclick="tabAnalisi('commercialista',this)">Per il commercialista</button>
+        <button class="pill" onclick="tabAnalisi('costi',this)">Costi e impegni</button>
+      </div>
+      <div id="am-contenuto" style="min-height:260px;max-height:460px;overflow:auto"></div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:12px;border-top:1px solid var(--border);padding-top:8px">
+        Stime basate sui dati del gestionale e sui costi impostati. Non sostituiscono la contabilità: per il fisco fa fede il commercialista.
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-documenti-bozza">
   <div class="modal" style="max-width:760px">
     <div class="modal-header">
@@ -2469,6 +2491,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="app-simona.js"></script>
 <script src="app-mirko.js"></script>
 <script src="app-followup.js"></script>
+<script src="app-analisi.js"></script>
 <script src="app-ui.js"></script>
 
 </body>
