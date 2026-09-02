@@ -348,6 +348,38 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Parametri di costo per il calcolo del margine (modificabili da Impostazioni)
+      CREATE TABLE IF NOT EXISTS costi_config (
+        chiave TEXT PRIMARY KEY,
+        valore NUMERIC,
+        descrizione TEXT,
+        aggiornato TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Uscite ricorrenti note (rate, F24, utenze) per la previsione di cassa
+      CREATE TABLE IF NOT EXISTS impegni_ricorrenti (
+        id SERIAL PRIMARY KEY,
+        descrizione TEXT NOT NULL,
+        importo NUMERIC NOT NULL,
+        giorno_mese INTEGER DEFAULT 1,
+        dal DATE,
+        al DATE,
+        attivo BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Domande da fare al commercialista alla prossima occasione
+      CREATE TABLE IF NOT EXISTS domande_commercialista (
+        id SERIAL PRIMARY KEY,
+        domanda TEXT NOT NULL,
+        contesto TEXT,
+        origine TEXT DEFAULT 'Mirko',
+        stato TEXT DEFAULT 'aperta',
+        risposta TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        chiusa_il TIMESTAMP
+      );
+
       -- Documenti preparati da Mirko, in attesa che Giovanni li emetta
       CREATE TABLE IF NOT EXISTS documenti_bozza (
         id SERIAL PRIMARY KEY,
@@ -3335,6 +3367,17 @@ const STEVEN_DB_OPERAZIONI = {
     };
   },
 
+  // Annota una domanda da fare al commercialista
+  'annota_domanda': async (params) => {
+    const { domanda, contesto } = params;
+    if (!domanda) throw new Error('Serve il testo della domanda');
+    const r = await pool.query(
+      `INSERT INTO domande_commercialista (domanda, contesto) VALUES ($1,$2) RETURNING id`,
+      [domanda, contesto || null]);
+    return { id: r.rows[0].id, annotata: domanda,
+      avviso: 'Domanda messa in lista: la trovi in Contabilita\' → Da chiedere al commercialista.' };
+  },
+
   // Prepara le fatture riepilogative dei DDT non ancora fatturati
   'prepara_fatture': async (params) => {
     const creati = await preparaFattureDifferite(params?.giorni);
@@ -3770,7 +3813,8 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
   - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
   - crea_ordine: {cliente:"Nome cliente",prodotto:"Semola rimacinata",qty:500,importo:485.00,data:"YYYY-MM-DD",note:"..."} — crea un ordine in BOZZA
   - prepara_documento: {tipo:"ddt"|"fattura",cliente:"Nome cliente"} oppure {tipo:"ddt",ordine_id:123} — SOLO MIRKO: prepara il documento e crea un task di approvazione per Giovanni. NON emette nulla.
-  - prepara_fatture: {giorni:14} — SOLO MIRKO: raggruppa i DDT non fatturati piu' vecchi di N giorni e prepara una fattura riepilogativa per cliente.
+  - prepara_fatture: {giorni:10} — SOLO MIRKO: raggruppa i DDT non fatturati piu' vecchi di N giorni e prepara una fattura riepilogativa per cliente.
+  - annota_domanda: {domanda:"...",contesto:"..."} — mette una domanda in lista per il commercialista.
   - ordini_cliente: {id:123} — storico ordini di un cliente
   - insoluti: {} — tutte le fatture non pagate
   - analizza_tasks: {} — trova task duplicati e conta quante copie ci sono
@@ -4130,6 +4174,236 @@ async function fupControlloGiornaliero() {
     if (dovute.rows.length) console.log(`[FUP] controllo: ${dovute.rows.length} tappe elaborate`);
   } catch (e) { console.error('[FUP controllo]', e.message); }
 }
+
+// ══════════════════════════════════════════════════════════════════════════
+// ANALISI DI MIRKO — margini, cassa, anomalie, preparazione commercialista
+// ══════════════════════════════════════════════════════════════════════════
+
+const COSTI_DEFAULT = [
+  ['costo_grano_kg', 0.42, 'Costo del grano per kg di semola prodotta (incluso calo di resa)'],
+  ['costo_imballaggio_sacco', 0.28, 'Sacco, etichetta e pallettizzazione, per sacco'],
+  ['kg_per_sacco', 25, 'Pezzatura standard usata nelle stime quando non indicata'],
+  ['costo_trasporto_kg_sicilia', 0.06, 'Costo medio di consegna in Sicilia, per kg'],
+  ['costo_trasporto_kg_italia', 0.22, 'Costo medio di spedizione fuori Sicilia, per kg'],
+  ['costi_fissi_mensili', 4500, 'Costi fissi mensili del mulino (utenze, personale, rate)'],
+];
+
+async function initCosti() {
+  for (const [k, v, d] of COSTI_DEFAULT) {
+    await pool.query(
+      `INSERT INTO costi_config (chiave, valore, descrizione) VALUES ($1,$2,$3)
+       ON CONFLICT (chiave) DO NOTHING`, [k, v, d]);
+  }
+}
+
+async function leggiCosti() {
+  const r = await pool.query(`SELECT chiave, valore FROM costi_config`);
+  const c = {};
+  for (const row of r.rows) c[row.chiave] = Number(row.valore);
+  for (const [k, v] of COSTI_DEFAULT) if (c[k] === undefined) c[k] = v;
+  return c;
+}
+
+const PROV_SICILIA = ['AG','CL','CT','EN','ME','PA','RG','SR','TP'];
+
+// ── MARGINE PER CLIENTE ───────────────────────────────────────────────────
+async function calcolaMargini(mesi) {
+  const m = Number(mesi) || 6;
+  const c = await leggiCosti();
+  const r = await pool.query(
+    `SELECT cl.id, cl.nome, cl.citta, cl.tag,
+            COUNT(o.id) n_ordini, SUM(o.importo) fatturato,
+            SUM(COALESCE(o.peso_totale, o.qty, 0)) kg
+     FROM ordini o JOIN clienti cl ON cl.id = o.cliente_id
+     WHERE o.data >= CURRENT_DATE - ($1 || ' months')::interval
+     GROUP BY cl.id, cl.nome, cl.citta, cl.tag
+     HAVING SUM(COALESCE(o.peso_totale, o.qty, 0)) > 0
+     ORDER BY SUM(o.importo) DESC LIMIT 40`, [String(m)]);
+
+  const righe = [];
+  for (const x of r.rows) {
+    const kg = Number(x.kg) || 0;
+    const fatt = Number(x.fatturato) || 0;
+    // zona: uso il listino per capire se e' Sicilia o resto d'Italia
+    const lz = await pool.query(
+      `SELECT zona FROM listini_prezzi WHERE localita ILIKE $1 LIMIT 1`, ['%' + (x.citta || '') + '%']);
+    const inSicilia = (lz.rows[0]?.zona || '').toLowerCase().includes('sicilia');
+    const trasporto = kg * (inSicilia ? c.costo_trasporto_kg_sicilia : c.costo_trasporto_kg_italia);
+    const grano = kg * c.costo_grano_kg;
+    const sacchi = kg / (c.kg_per_sacco || 25);
+    const imballaggio = sacchi * c.costo_imballaggio_sacco;
+    const costo = grano + imballaggio + trasporto;
+    const margine = fatt - costo;
+    righe.push({
+      cliente: x.nome, citta: x.citta || '', zona: inSicilia ? 'Sicilia' : 'Italia',
+      ordini: Number(x.n_ordini), kg: Math.round(kg), fatturato: fatt,
+      costo_stimato: costo, margine, margine_pct: fatt ? (margine / fatt * 100) : 0,
+      prezzo_medio_kg: kg ? fatt / kg : 0
+    });
+  }
+  righe.sort((a, b) => b.margine - a.margine);
+  return { costi_usati: c, mesi: m, righe };
+}
+
+// ── PREVISIONE DI CASSA ───────────────────────────────────────────────────
+async function previsioneCassa(giorni) {
+  const g = Number(giorni) || 60;
+  const c = await leggiCosti();
+  const oggi = new Date();
+  const fine = new Date(oggi); fine.setDate(fine.getDate() + g);
+
+  // Entrate attese: fatture non ancora incassate
+  const ent = await pool.query(
+    `SELECT COALESCE(SUM(importo),0) tot, COUNT(*) n FROM movimenti
+     WHERE tipo='entrata' AND pagato=false`);
+  // Scaduto (gia' oltre 30 giorni): incasso meno probabile
+  const scad = await pool.query(
+    `SELECT COALESCE(SUM(importo),0) tot, COUNT(*) n FROM movimenti
+     WHERE tipo='entrata' AND pagato=false AND data < CURRENT_DATE - INTERVAL '30 days'`);
+
+  // Uscite: impegni ricorrenti nel periodo
+  const imp = await pool.query(
+    `SELECT descrizione, importo, giorno_mese FROM impegni_ricorrenti
+     WHERE attivo=TRUE AND (dal IS NULL OR dal <= $1) AND (al IS NULL OR al >= CURRENT_DATE)`,
+    [fine.toISOString().slice(0, 10)]);
+  let usciteRicorrenti = 0;
+  const dettaglioUscite = [];
+  const mesiCoperti = Math.max(1, Math.ceil(g / 30));
+  for (const i of imp.rows) {
+    const tot = Number(i.importo) * mesiCoperti;
+    usciteRicorrenti += tot;
+    dettaglioUscite.push(`${i.descrizione}: €${Number(i.importo).toFixed(2)} × ${mesiCoperti} = €${tot.toFixed(2)}`);
+  }
+  // Fatture fornitori da pagare
+  const forn = await pool.query(
+    `SELECT COALESCE(SUM(importo),0) tot, COUNT(*) n FROM movimenti
+     WHERE tipo='uscita' AND pagato=false`);
+
+  const costiFissi = c.costi_fissi_mensili * mesiCoperti;
+  const entrate = Number(ent.rows[0].tot);
+  const uscite = usciteRicorrenti + Number(forn.rows[0].tot) + costiFissi;
+
+  return {
+    periodo_giorni: g,
+    entrate_attese: entrate,
+    di_cui_scadute: Number(scad.rows[0].tot),
+    n_fatture_da_incassare: Number(ent.rows[0].n),
+    uscite_previste: uscite,
+    dettaglio_uscite: dettaglioUscite,
+    fornitori_da_pagare: Number(forn.rows[0].tot),
+    costi_fissi_stimati: costiFissi,
+    saldo_previsto: entrate - uscite
+  };
+}
+
+// ── ANOMALIE ──────────────────────────────────────────────────────────────
+async function rilevaAnomalie() {
+  const out = [];
+  try {
+    // 1. Concentrazione del fatturato
+    const tot = await pool.query(
+      `SELECT COALESCE(SUM(importo),0) t FROM ordini WHERE data >= CURRENT_DATE - INTERVAL '6 months'`);
+    const primo = await pool.query(
+      `SELECT cl.nome, SUM(o.importo) s FROM ordini o JOIN clienti cl ON cl.id=o.cliente_id
+       WHERE o.data >= CURRENT_DATE - INTERVAL '6 months'
+       GROUP BY cl.nome ORDER BY s DESC LIMIT 1`);
+    if (primo.rows.length && Number(tot.rows[0].t) > 0) {
+      const q = Number(primo.rows[0].s) / Number(tot.rows[0].t) * 100;
+      if (q >= 20) out.push({ tipo: 'concentrazione', gravita: q >= 30 ? 'alta' : 'media',
+        testo: `${primo.rows[0].nome} vale il ${q.toFixed(0)}% del fatturato degli ultimi 6 mesi` });
+    }
+
+    // 2. Clienti che pagano sempre piu' tardi
+    const lenti = await pool.query(
+      `SELECT descrizione, COUNT(*) n, AVG(CURRENT_DATE - data) gg FROM movimenti
+       WHERE tipo='entrata' AND pagato=false AND data < CURRENT_DATE - INTERVAL '45 days'
+       GROUP BY descrizione ORDER BY gg DESC LIMIT 5`);
+    for (const l of lenti.rows) {
+      out.push({ tipo: 'insoluto', gravita: Number(l.gg) > 90 ? 'alta' : 'media',
+        testo: `${(l.descrizione || 'movimento').slice(0, 60)}: non incassato da ${Math.round(Number(l.gg))} giorni` });
+    }
+
+    // 3. Prezzo applicato in calo negli ultimi ordini
+    const prezzi = await pool.query(
+      `SELECT cl.nome,
+              AVG(CASE WHEN o.data >= CURRENT_DATE - INTERVAL '2 months'
+                  THEN o.importo / NULLIF(COALESCE(o.peso_totale,o.qty),0) END) recente,
+              AVG(CASE WHEN o.data < CURRENT_DATE - INTERVAL '2 months'
+                  THEN o.importo / NULLIF(COALESCE(o.peso_totale,o.qty),0) END) precedente
+       FROM ordini o JOIN clienti cl ON cl.id=o.cliente_id
+       WHERE o.data >= CURRENT_DATE - INTERVAL '8 months'
+       GROUP BY cl.nome HAVING COUNT(*) >= 4`);
+    for (const p of prezzi.rows) {
+      const r = Number(p.recente), pr = Number(p.precedente);
+      if (r && pr && r < pr * 0.93) {
+        out.push({ tipo: 'prezzo', gravita: 'media',
+          testo: `${p.nome}: prezzo medio sceso da €${pr.toFixed(3)}/kg a €${r.toFixed(3)}/kg` });
+      }
+    }
+
+    // 4. Vendite sotto il minimo di listino
+    const sotto = await pool.query(
+      `SELECT cl.nome, cl.citta, o.id, o.data, o.importo, COALESCE(o.peso_totale,o.qty) kg
+       FROM ordini o JOIN clienti cl ON cl.id=o.cliente_id
+       WHERE o.data >= CURRENT_DATE - INTERVAL '3 months' AND COALESCE(o.peso_totale,o.qty) > 0
+       ORDER BY o.data DESC LIMIT 60`);
+    for (const s of sotto.rows) {
+      const li = await pool.query(
+        `SELECT localita, minimo FROM listini_prezzi WHERE localita ILIKE $1 AND minimo IS NOT NULL LIMIT 1`,
+        ['%' + (s.citta || '') + '%']);
+      if (!li.rows.length) continue;
+      const i = scaglionePerKg(Number(s.kg));
+      const min = Number(li.rows[0].minimo[i]);
+      const applicato = Number(s.importo) / Number(s.kg);
+      if (applicato < min - 0.001) {
+        out.push({ tipo: 'sotto_minimo', gravita: 'alta',
+          testo: `Ordine #${s.id} ${s.nome}: €${applicato.toFixed(3)}/kg sotto il minimo €${min.toFixed(2)} (${li.rows[0].localita})` });
+      }
+    }
+  } catch (e) { console.error('[ANOMALIE]', e.message); }
+  return out;
+}
+
+// ── PACCHETTO PER IL COMMERCIALISTA ───────────────────────────────────────
+async function pacchettoCommercialista() {
+  const senzaCat = await pool.query(
+    `SELECT COUNT(*) n, COALESCE(SUM(importo),0) tot FROM movimenti
+     WHERE (cat IS NULL OR cat='') AND data >= CURRENT_DATE - INTERVAL '6 months'`);
+  const insoluti = await pool.query(
+    `SELECT COUNT(*) n, COALESCE(SUM(importo),0) tot FROM movimenti
+     WHERE tipo='entrata' AND pagato=false`);
+  const nonFatturati = await pool.query(
+    `SELECT COUNT(*) n, COALESCE(SUM(importo),0) tot FROM ordini
+     WHERE fic_ddt_id IS NOT NULL AND fic_fattura_id IS NULL`);
+  const esenti = await pool.query(
+    `SELECT COUNT(*) n, COALESCE(SUM(importo),0) tot FROM movimenti
+     WHERE tipo='entrata' AND COALESCE(aliquota_iva,4)=0 AND data >= CURRENT_DATE - INTERVAL '6 months'`);
+  const domande = await pool.query(
+    `SELECT domanda, contesto, created_at FROM domande_commercialista
+     WHERE stato='aperta' ORDER BY created_at`);
+  return {
+    movimenti_senza_categoria: senzaCat.rows[0],
+    incassi_aperti: insoluti.rows[0],
+    ddt_non_fatturati: nonFatturati.rows[0],
+    entrate_esenti_iva: esenti.rows[0],
+    domande_aperte: domande.rows.map(d => ({ domanda: d.domanda, contesto: d.contesto,
+      dal: new Date(d.created_at).toLocaleDateString('it-IT') }))
+  };
+}
+
+// Controllo anomalie una volta al giorno, alle 9
+setInterval(async () => {
+  if (new Date().getHours() !== 9) return;
+  const an = await rilevaAnomalie();
+  const gravi = an.filter(a => a.gravita === 'alta');
+  if (!gravi.length) return;
+  try {
+    await pool.query(
+      `INSERT INTO backoffice_alert (tipo, titolo, messaggio, riferimento)
+       VALUES ('anomalia_mirko',$1,$2,'mirko')`,
+      [`${gravi.length} anomalie rilevate da Mirko`, gravi.map(a => '• ' + a.testo).join('\n')]).catch(() => {});
+  } catch (e) {}
+}, 60 * 60 * 1000);
 
 // ══════════════════════════════════════════════════════════════════════════
 // FATTURAZIONE PERIODICA — raggruppa i DDT non ancora fatturati per cliente
@@ -4738,6 +5012,43 @@ async function ricercaGestionale(tipo, q) {
       }
       return out.join('\n');
     }
+    if (tipo === 'margini') {
+      const m = await calcolaMargini(Number(q) || 6);
+      const top = m.righe.slice(0, 12);
+      const peggiori = m.righe.slice(-5).reverse();
+      return `MARGINI STIMATI ultimi ${m.mesi} mesi (costi usati: grano €${m.costi_usati.costo_grano_kg}/kg, imballaggio €${m.costi_usati.costo_imballaggio_sacco}/sacco, trasporto €${m.costi_usati.costo_trasporto_kg_sicilia}/kg Sicilia e €${m.costi_usati.costo_trasporto_kg_italia}/kg Italia)
+MIGLIORI:
+${top.map(r => `- ${r.cliente} (${r.zona}): fatturato €${r.fatturato.toFixed(0)}, margine €${r.margine.toFixed(0)} (${r.margine_pct.toFixed(1)}%), €${r.prezzo_medio_kg.toFixed(3)}/kg su ${r.kg} kg`).join('\n')}
+DA GUARDARE (margine piu' basso):
+${peggiori.map(r => `- ${r.cliente} (${r.zona}): margine €${r.margine.toFixed(0)} (${r.margine_pct.toFixed(1)}%), €${r.prezzo_medio_kg.toFixed(3)}/kg`).join('\n')}
+NOTA: sono stime sui costi impostati in Impostazioni, non dati contabili.`;
+    }
+    if (tipo === 'cassa') {
+      const p = await previsioneCassa(Number(q) || 60);
+      return `PREVISIONE CASSA prossimi ${p.periodo_giorni} giorni
+Entrate attese: €${p.entrate_attese.toFixed(2)} da ${p.n_fatture_da_incassare} fatture da incassare (di cui €${p.di_cui_scadute.toFixed(2)} gia' scadute da oltre 30 giorni)
+Uscite previste: €${p.uscite_previste.toFixed(2)}
+  - fornitori da pagare: €${p.fornitori_da_pagare.toFixed(2)}
+  - costi fissi stimati: €${p.costi_fissi_stimati.toFixed(2)}
+${p.dettaglio_uscite.length ? '  - impegni ricorrenti:\n    ' + p.dettaglio_uscite.join('\n    ') : ''}
+SALDO PREVISTO: €${p.saldo_previsto.toFixed(2)}
+NOTA: previsione basata su quanto registrato nel gestionale, non e' un dato contabile.`;
+    }
+    if (tipo === 'anomalie') {
+      const an = await rilevaAnomalie();
+      if (!an.length) return 'Nessuna anomalia rilevata al momento.';
+      return 'ANOMALIE RILEVATE:\n' + an.map(a => `[${a.gravita.toUpperCase()}] ${a.testo}`).join('\n');
+    }
+    if (tipo === 'commercialista') {
+      const p = await pacchettoCommercialista();
+      return `PACCHETTO PER IL COMMERCIALISTA
+- Movimenti senza categoria (6 mesi): ${p.movimenti_senza_categoria.n} per €${Number(p.movimenti_senza_categoria.tot).toFixed(2)}
+- Incassi ancora aperti: ${p.incassi_aperti.n} per €${Number(p.incassi_aperti.tot).toFixed(2)}
+- DDT consegnati e non ancora fatturati: ${p.ddt_non_fatturati.n} per €${Number(p.ddt_non_fatturati.tot).toFixed(2)}
+- Entrate registrate senza IVA (6 mesi): ${p.entrate_esenti_iva.n} per €${Number(p.entrate_esenti_iva.tot).toFixed(2)}
+DOMANDE APERTE DA FARGLI:
+${p.domande_aperte.length ? p.domande_aperte.map(d => `- (dal ${d.dal}) ${d.domanda}${d.contesto ? ' — ' + d.contesto : ''}`).join('\n') : '(nessuna)'}`;
+    }
     if (tipo === 'prezzo' || tipo === 'listino') {
       // q = "Torino 510" oppure solo "Torino"
       const m = String(q).match(/^(.*?)[\s,]*(\d{2,5})?\s*(?:kg)?$/i);
@@ -4837,6 +5148,10 @@ Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
 [CERCA:tipo="ordini",q="Torre Rosaria"]           → ultimi ordini di quel cliente
 [CERCA:tipo="movimenti",q="carburante"]           → movimenti contabili
 [CERCA:tipo="prezzo",q="Torino 510"]               → prezzo di listino e prezzo MINIMO per quella localita' e quantita'
+[CERCA:tipo="margini",q="6"]                      → margine stimato per cliente sugli ultimi N mesi
+[CERCA:tipo="cassa",q="60"]                       → previsione entrate/uscite dei prossimi N giorni
+[CERCA:tipo="anomalie",q=""]                      → prezzi in calo, insoluti, concentrazione, vendite sotto il minimo
+[CERCA:tipo="commercialista",q=""]                → cosa preparare per lo studio e domande aperte
 [CERCA:tipo="fatture",q="Panificio Valente"]       → storico fatture e DDT di quel cliente (dati Fatture in Cloud)
 [CERCA:tipo="inattivi",q="45"]                    → clienti fermi da piu' di N giorni
 
@@ -4954,6 +5269,19 @@ conosciuto).
 - Se un cliente nuovo chiede quantita' maggiori, proponi 630 kg per il primo ordine
   spiegando che e' la nostra prassi per le prime forniture, e segnalalo a Giovanni.
 Questa regola vale per tutti: non fare eccezioni di tua iniziativa.
+
+## IL CONFINE COL COMMERCIALISTA (vale soprattutto per Mirko)
+Tu fai i conti dell'azienda, non il fisco. NON rispondere mai su: se una spesa e'
+deducibile, quale regime fiscale conviene, come si imposta un contratto, come si
+compila una dichiarazione, quanto si paga di imposte. Non sono cose tue e una
+risposta sbagliata costa cara.
+Quando arriva una domanda di questo tipo: dillo con franchezza, e usa
+[DB:op="annota_domanda",params={domanda:"...",contesto:"..."}] per metterla in
+lista, cosi' Giovanni se la porta in studio invece di dimenticarla.
+Quello che invece fai tu: margini, prezzi, previsione di cassa, controllo dei
+documenti prima dell'emissione, anomalie, e preparare i numeri ordinati per lo studio.
+Quando dai numeri di analisi, ricorda sempre che sono stime basate sui dati del
+gestionale e sui costi impostati, non dati contabili certificati.
 
 ## DOCUMENTI FISCALI (solo Mirko)
 DDT e fatture NON si emettono mai in automatico. Se Giovanni ti chiede di farne uno,
@@ -5320,7 +5648,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -6980,6 +7308,77 @@ app.post('/api/documenti-bozza/prepara-fatture', async (req, res) => {
 app.post('/api/documenti-bozza/:id/invia-email', async (req, res) => {
   const r = await inviaFatturaAlCliente(req.params.id);
   res.json(r.ok ? { ok: true, destinatario: r.destinatario } : { error: r.errore });
+});
+
+// ── ANALISI DI MIRKO ──────────────────────────────────────────────────────
+app.get('/api/analisi/margini', async (req, res) => {
+  try { res.json(await calcolaMargini(req.query.mesi)); } catch (e) { res.json({ error: e.message }); }
+});
+app.get('/api/analisi/cassa', async (req, res) => {
+  try { res.json(await previsioneCassa(req.query.giorni)); } catch (e) { res.json({ error: e.message }); }
+});
+app.get('/api/analisi/anomalie', async (req, res) => {
+  try { res.json(await rilevaAnomalie()); } catch (e) { res.json({ error: e.message }); }
+});
+app.get('/api/analisi/commercialista', async (req, res) => {
+  try { res.json(await pacchettoCommercialista()); } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/costi', async (req, res) => {
+  try { const r = await pool.query(`SELECT * FROM costi_config ORDER BY chiave`); res.json(r.rows); }
+  catch (e) { res.json({ error: e.message }); }
+});
+app.patch('/api/costi/:chiave', async (req, res) => {
+  try {
+    await pool.query(`UPDATE costi_config SET valore=$1, aggiornato=NOW() WHERE chiave=$2`,
+      [req.body?.valore, req.params.chiave]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/domande-commercialista', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM domande_commercialista WHERE stato=$1 ORDER BY created_at DESC`,
+      [req.query.stato || 'aperta']);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+app.post('/api/domande-commercialista', async (req, res) => {
+  const { domanda, contesto } = req.body || {};
+  if (!domanda) return res.json({ error: 'Domanda mancante' });
+  try {
+    await pool.query(`INSERT INTO domande_commercialista (domanda, contesto, origine) VALUES ($1,$2,'Giovanni')`,
+      [domanda, contesto || null]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+app.patch('/api/domande-commercialista/:id', async (req, res) => {
+  try {
+    await pool.query(
+      `UPDATE domande_commercialista SET stato=$1, risposta=COALESCE($2,risposta),
+       chiusa_il=CASE WHEN $1='chiusa' THEN NOW() ELSE chiusa_il END WHERE id=$3`,
+      [req.body?.stato || 'chiusa', req.body?.risposta || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/impegni', async (req, res) => {
+  try { const r = await pool.query(`SELECT * FROM impegni_ricorrenti ORDER BY giorno_mese`); res.json(r.rows); }
+  catch (e) { res.json({ error: e.message }); }
+});
+app.post('/api/impegni', async (req, res) => {
+  const { descrizione, importo, giorno_mese, al } = req.body || {};
+  try {
+    await pool.query(
+      `INSERT INTO impegni_ricorrenti (descrizione, importo, giorno_mese, al) VALUES ($1,$2,$3,$4)`,
+      [descrizione, importo, giorno_mese || 1, al || null]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+app.delete('/api/impegni/:id', async (req, res) => {
+  try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
+  catch (e) { res.json({ error: e.message }); }
 });
 
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
