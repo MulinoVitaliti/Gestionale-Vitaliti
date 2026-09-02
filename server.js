@@ -341,6 +341,17 @@ async function initDB() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      CREATE TABLE IF NOT EXISTS bandi_visti (
+        id SERIAL PRIMARY KEY,
+        url TEXT UNIQUE NOT NULL,
+        titolo TEXT,
+        fonte TEXT,
+        parole_trovate TEXT,
+        segnalato BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       CREATE TABLE IF NOT EXISTS agenti_conoscenza (
         id SERIAL PRIMARY KEY,
         agente TEXT NOT NULL DEFAULT 'tutti',
@@ -4038,6 +4049,126 @@ async function fupControlloGiornaliero() {
 }
 
 // ══════════════════════════════════════════════════════════════════════════
+// SORVEGLIANZA BANDI — controlla le fonti ufficiali e manda un riepilogo
+// settimanale a Giovanni. Segnala e basta: nessun giudizio di ammissibilita'.
+// ══════════════════════════════════════════════════════════════════════════
+
+const BANDI_DESTINATARIO = 'giovannivitaliti15@gmail.com';
+
+const BANDI_FONTI = [
+  { nome: 'Sviluppo Rurale Sicilia', url: 'https://svilupporurale.regione.sicilia.it/bandi-aperti/' },
+  { nome: 'Sviluppo Rurale Sicilia (news)', url: 'https://svilupporurale.regione.sicilia.it/' },
+  { nome: 'EuroInfoSicilia (PR FESR)', url: 'https://www.euroinfosicilia.it/notizie/' },
+  { nome: 'IRFIS FinSicilia', url: 'https://www.irfis.it/' },
+  { nome: 'Camera Commercio Sud Est Sicilia', url: 'https://www.cciaasudestsicilia.it/bandi-e-contributi/' },
+];
+
+// Parole che rendono un avviso potenzialmente interessante per il mulino
+const BANDI_PAROLE = [
+  'trasformazione', 'agroalimentare', 'agroindustria', 'cereali', 'molit',
+  'macchinari', 'attrezzature', 'impianti', 'investiment', 'competitivit',
+  'ammodernamento', 'innovazione', 'digitalizzazione', 'transizione',
+  'efficienza energetica', 'fotovoltaic', 'assunzion', 'occupazione',
+  'internazionalizzazione', 'fiere', 'promozione', 'export', 'pmi', 'impres'
+];
+
+// Parole che escludono un avviso (settori che non riguardano il mulino)
+const BANDI_ESCLUSI = [
+  'pesca', 'acquacoltura', 'turismo', 'alberghier', 'ricettiv', 'cinemato',
+  'audiovisiv', 'scuola', 'studenti', 'sport', 'cultura', 'teatro',
+  'forestal', 'zootecni', 'vitivinicol', 'oliv', 'miele', 'isee', 'famiglie'
+];
+
+async function controllaFontiBandi() {
+  const nuovi = [];
+  for (const fonte of BANDI_FONTI) {
+    try {
+      const ctrl = new AbortController();
+      const t = setTimeout(() => ctrl.abort(), 15000);
+      const r = await fetch(fonte.url, {
+        signal: ctrl.signal,
+        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; MulinoVitalitiBot/1.0)' }
+      });
+      clearTimeout(t);
+      if (!r.ok) { console.log(`[BANDI] ${fonte.nome}: HTTP ${r.status}`); continue; }
+      const html = await r.text();
+
+      // estraggo i link con il loro testo
+      const link = [...html.matchAll(/<a[^>]+href="([^"]+)"[^>]*>([\s\S]{0,200}?)<\/a>/gi)];
+      for (const m of link) {
+        let url = m[1];
+        const titolo = m[2].replace(/<[^>]+>/g, ' ').replace(/&[a-z]+;/gi, ' ').replace(/\s+/g, ' ').trim();
+        if (!titolo || titolo.length < 20 || titolo.length > 200) continue;
+        if (url.startsWith('/')) { const b = new URL(fonte.url); url = b.origin + url; }
+        if (!url.startsWith('http')) continue;
+
+        const t = titolo.toLowerCase();
+        if (BANDI_ESCLUSI.some(p => t.includes(p))) continue;
+        const trovate = BANDI_PAROLE.filter(p => t.includes(p));
+        if (!trovate.length) continue;
+
+        try {
+          const ins = await pool.query(
+            `INSERT INTO bandi_visti (url, titolo, fonte, parole_trovate)
+             VALUES ($1,$2,$3,$4) ON CONFLICT (url) DO NOTHING RETURNING id`,
+            [url.slice(0, 500), titolo, fonte.nome, trovate.join(', ')]);
+          if (ins.rows.length) nuovi.push({ titolo, url, fonte: fonte.nome });
+        } catch (e) { /* duplicato o url troppo lungo */ }
+      }
+    } catch (e) {
+      console.error(`[BANDI] ${fonte.nome}: ${e.message}`);
+    }
+  }
+  if (nuovi.length) console.log(`[BANDI] ${nuovi.length} nuove segnalazioni trovate`);
+  return nuovi;
+}
+
+async function inviaRiepilogoBandi() {
+  try {
+    const r = await pool.query(
+      `SELECT titolo, url, fonte, created_at FROM bandi_visti
+       WHERE segnalato = FALSE ORDER BY created_at DESC LIMIT 40`);
+    if (!r.rows.length) { console.log('[BANDI] nessuna novita\' da segnalare'); return; }
+    if (!gmailTokens) { console.log('[BANDI] Gmail non connesso: riepilogo non inviato'); return; }
+
+    const perFonte = {};
+    for (const b of r.rows) (perFonte[b.fonte] = perFonte[b.fonte] || []).push(b);
+
+    const corpo = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">
+<p>Ciao Giovanni,</p>
+<p>ecco cosa e' comparso questa settimana sulle fonti ufficiali che controllo per il mulino.
+<strong>Sono segnalazioni, non verifiche</strong>: apri il link e fai valutare da un consulente prima di muoverti.</p>
+${Object.entries(perFonte).map(([fonte, items]) => `
+<p style="margin:18px 0 6px"><strong>${fonte}</strong></p>
+<ul style="margin:0;padding-left:18px">
+${items.map(b => `<li style="margin-bottom:7px"><a href="${b.url}" style="color:#973D37">${b.titolo}</a><br>
+<span style="font-size:11px;color:#888">rilevato il ${new Date(b.created_at).toLocaleDateString('it-IT')}</span></li>`).join('')}
+</ul>`).join('')}
+<p style="margin-top:20px;font-size:12px;color:#888">Sorveglianza automatica del gestionale Mulino Vitaliti.<br>
+Fonti controllate: Sviluppo Rurale Sicilia, EuroInfoSicilia (PR FESR), IRFIS, Camera di Commercio.</p>
+</div>`;
+
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const raw = Buffer.from(
+      `To: ${BANDI_DESTINATARIO}\r\nSubject: ${encodeEmailSubject('Bandi: ' + r.rows.length + ' novita\' questa settimana')}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpo}`
+    ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+
+    await pool.query(`UPDATE bandi_visti SET segnalato = TRUE WHERE segnalato = FALSE`);
+    console.log(`[BANDI] riepilogo inviato a ${BANDI_DESTINATARIO}: ${r.rows.length} voci`);
+  } catch (e) { console.error('[BANDI riepilogo]', e.message); }
+}
+
+// Controllo delle fonti ogni giorno; email di riepilogo il lunedi' mattina
+setInterval(async () => {
+  const ora = new Date();
+  if (ora.getHours() !== 7) return;              // una volta al giorno, alle 7
+  await controllaFontiBandi();
+  if (ora.getDay() === 1) await inviaRiepilogoBandi();  // lunedi'
+}, 60 * 60 * 1000);
+
+// ══════════════════════════════════════════════════════════════════════════
 // CONOSCENZA DEGLI AGENTI — cresce man mano che vengono usati
 // ══════════════════════════════════════════════════════════════════════════
 
@@ -6111,6 +6242,27 @@ app.post('/api/followup/recupera-spedizioni', async (req, res) => {
     }
     res.json({ ok: true, esaminate: s.rows.length, creati });
   } catch (e) { res.json({ error: e.message }); }
+});
+
+// ── SORVEGLIANZA BANDI ────────────────────────────────────────────────────
+app.get('/api/bandi', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM bandi_visti ORDER BY created_at DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/bandi/controlla', async (req, res) => {
+  try {
+    const nuovi = await controllaFontiBandi();
+    res.json({ ok: true, nuovi: nuovi.length, elenco: nuovi.slice(0, 15) });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/bandi/invia-riepilogo', async (req, res) => {
+  try { await inviaRiepilogoBandi(); res.json({ ok: true }); }
+  catch (e) { res.json({ error: e.message }); }
 });
 
 // ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
