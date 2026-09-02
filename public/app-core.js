@@ -229,7 +229,7 @@ function showPage(id){
   if(id==='dashboard'){ renderDash(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
 
   if(id==='email')checkGmailStatus();
-  if(id==='fatture')initPaginaFatture();
+  if(id==='fatture'){ initPaginaFatture(); if(typeof aggiornaBadgeDocumenti==='function')aggiornaBadgeDocumenti(); }
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='spedizioni'){ 
     // Reset alla tab Spedizioni ogni volta che si apre la pagina
