@@ -736,7 +736,6 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="page-header">
         <div class="page-title">Ordini</div>
         <div style="display:flex;gap:8px">
-          <button class="btn" onclick="apriDocumentiBozza()" id="btn-doc-bozza"><i class="ti ti-file-check"></i>Documenti da approvare<span id="btn-doc-badge" style="display:none;background:var(--orange);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px"></span></button>
           <button class="btn" onclick="apriListini()"><i class="ti ti-tag"></i>Listini prezzi</button>
           <button class="btn" onclick="showPage('followup')" id="btn-vai-followup"><i class="ti ti-route"></i>Monitoraggio spedizioni<span id="btn-fup-badge" style="display:none;background:var(--orange);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px"></span></button>
           <button class="btn btn-primary" onclick="apriNuovoOrdine()"><i class="ti ti-plus"></i>Nuovo ordine</button>
@@ -826,7 +825,10 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="page" id="page-fatture">
       <div class="page-header">
         <div class="page-title">Fatture in Cloud</div>
-        <div id="fic-header-actions"></div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="btn" onclick="apriDocumentiBozza()" id="btn-doc-bozza"><i class="ti ti-file-check"></i>Documenti da approvare<span id="btn-doc-badge" style="display:none;background:var(--orange);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px"></span></button>
+          <div id="fic-header-actions"></div>
+        </div>
       </div>
 
       <!-- Non connesso -->
