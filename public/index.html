@@ -1274,6 +1274,20 @@ window.addEventListener('unhandledrejection', function(e) {
 
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
+          <div class="card-title"><i class="ti ti-radar" style="color:var(--brand)"></i>Sorveglianza bandi</div>
+        </div>
+        <div style="padding:14px 18px">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:10px">Ogni mattina il gestionale controlla le fonti ufficiali (Sviluppo Rurale Sicilia, PR FESR, IRFIS, Camera di Commercio) e il <strong>lunedì</strong> invia il riepilogo delle novità a giovannivitaliti15@gmail.com. Sono segnalazioni con link alla fonte, non valutazioni di ammissibilità.</div>
+          <div style="display:flex;gap:8px">
+            <button class="btn btn-sm" onclick="controllaBandiOra(this)"><i class="ti ti-search"></i>Controlla adesso</button>
+            <button class="btn btn-sm" onclick="inviaRiepilogoBandi(this)"><i class="ti ti-mail"></i>Invia riepilogo di prova</button>
+            <button class="btn btn-sm" onclick="vediBandiTrovati()"><i class="ti ti-list"></i>Vedi cosa ha trovato</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
           <div class="card-title"><i class="ti ti-bulb" style="color:var(--gold)"></i>Memoria degli assistenti AI</div>
         </div>
         <div style="padding:14px 18px;display:flex;align-items:center;gap:14px">
