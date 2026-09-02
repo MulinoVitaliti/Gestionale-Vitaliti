@@ -1575,6 +1575,13 @@ async function vediBandiTrovati(){
   alert(`Ultime ${Math.min(dati.length,15)} segnalazioni:\n\n` +
     dati.slice(0,15).map(b=>`• [${b.fonte}] ${b.titolo}`).join('\n'));
 }
+async function azzeraBandi(btn){
+  if(!confirm('Cancellare tutte le segnalazioni raccolte finora e ripartire da zero con il filtro nuovo?')) return;
+  const r = await api.post('/api/bandi/azzera', {});
+  alert(r.error ? ('Errore: '+r.error) : `Cancellate ${r.eliminati} segnalazioni. Ora premi "Controlla adesso".`);
+}
+window.azzeraBandi = azzeraBandi;
+
 window.controllaBandiOra = controllaBandiOra;
 window.inviaRiepilogoBandi = inviaRiepilogoBandi;
 window.vediBandiTrovati = vediBandiTrovati;
