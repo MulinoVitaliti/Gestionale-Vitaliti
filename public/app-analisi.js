@@ -118,8 +118,25 @@ async function aggiungiDomanda(){
 }
 
 async function renderCosti(box){
-  const [costi, impegni] = await Promise.all([api.get('/api/costi'), api.get('/api/impegni')]);
-  box.innerHTML = `<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Questi valori determinano il calcolo dei margini e della cassa. Aggiornali quando cambiano i costi reali.</div>` +
+  const [costi, impegni, grano] = await Promise.all([
+    api.get('/api/costi'), api.get('/api/impegni'), api.get('/api/costi/grano-reale?mesi=12')]);
+
+  const boxGrano = grano && grano.disponibile
+    ? `<div style="background:rgba(60,160,80,.12);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px">
+        <strong>Costo del grano calcolato dagli acquisti veri</strong><br>
+        ${Math.round(grano.kg).toLocaleString('it-IT')} kg comprati per ${AM_EURO(grano.spesa)} in ${grano.acquisti} fatture →
+        <strong>${Number(grano.euro_kg_grano).toFixed(3)} €/kg</strong> di grano.<br>
+        <span style="color:var(--text-3)">Il valore scritto qui sotto viene ignorato: conta questo. Ultimo acquisto ${grano.ultimo ? new Date(grano.ultimo).toLocaleDateString('it-IT') : 'n/d'}.</span>
+        ${grano.senza_kg ? `<br><span style="color:var(--orange)">⚠️ ${grano.senza_kg} acquisti non hanno i kg indicati e restano fuori dal calcolo.</span>` : ''}
+      </div>`
+    : `<div style="background:rgba(230,150,60,.12);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px">
+        <strong>Costo del grano non ricavabile dagli acquisti</strong><br>
+        ${(grano && grano.motivo) || 'Nessun dato disponibile.'}<br>
+        <span style="color:var(--text-3)">Finché è così viene usato il valore impostato a mano qui sotto. Per il calcolo reale registra le fatture del grano indicando i kg nel campo quantità.</span>
+      </div>`;
+
+  box.innerHTML = boxGrano +
+    `<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">Questi valori determinano il calcolo dei margini e della cassa. Aggiornali quando cambiano i costi reali.</div>` +
     (Array.isArray(costi) ? costi.map(c => `<div style="display:flex;align-items:center;gap:10px;padding:7px 0;border-bottom:1px solid var(--border)">
         <div style="flex:1"><div style="font-size:13px;font-weight:600">${c.chiave.replace(/_/g,' ')}</div>
           <div style="font-size:11px;color:var(--text-3)">${c.descrizione||''}</div></div>
