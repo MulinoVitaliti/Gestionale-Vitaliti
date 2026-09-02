@@ -1187,6 +1187,8 @@ function renderTaskCard(t){
         </span>
         <div style="display:flex;align-items:center;gap:6px">
           ${scadenzaFmt?`<span style="color:${isScaduta?'var(--red)':'var(--text-3)'};font-weight:${isScaduta?'700':'400'};font-size:11px">${isScaduta?'⚠ ':''}${scadenzaFmt}</span>`:''}
+          <button class="btn btn-icon btn-sm" onclick="event.stopPropagation();spostaTask(${t.id},-1)" title="Sposta a sinistra" style="padding:3px 6px"><i class="ti ti-arrow-left" style="font-size:11px"></i></button>
+          <button class="btn btn-icon btn-sm" onclick="event.stopPropagation();spostaTask(${t.id},1)" title="Sposta a destra" style="padding:3px 6px"><i class="ti ti-arrow-right" style="font-size:11px"></i></button>
           <button class="btn btn-icon btn-sm btn-danger" onclick="event.stopPropagation();eliminaTask(${t.id})" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:11px"></i></button>
         </div>
       </div>
@@ -1198,10 +1200,16 @@ function renderTaskBoard(){
   const list = taskFiltrate();
   ['da_fare','in_corso','fatto'].forEach(stato=>{
     const items = list.filter(t=>(t.stato||'da_fare')===stato);
-    document.getElementById('task-list-'+stato).innerHTML = items.length
+    const col = document.getElementById('task-list-'+stato);
+    col.innerHTML = items.length
       ? items.map(renderTaskCard).join('')
       : '<div class="empty-state" style="padding:14px 0"><p style="font-size:12px">Nessuna task</p></div>';
     document.getElementById('task-count-'+stato).textContent = items.length;
+
+    // La colonna deve poter RICEVERE le card trascinate
+    col.ondragover = (e) => { e.preventDefault(); col.style.background = 'var(--surface-2)'; };
+    col.ondragleave = () => { col.style.background = ''; };
+    col.ondrop = (e) => { e.preventDefault(); col.style.background = ''; dropTask(e, stato); };
   });
 }
 
@@ -1418,6 +1426,22 @@ let _dragTaskId = null;
 function dragTaskStart(e, id){ _dragTaskId = id; e.target.classList.add('dragging'); }
 function dragTaskEnd(e){ e.target.classList.remove('dragging'); }
 
+// Sposta il task alla colonna precedente/successiva (comodo su telefono, dove
+// il trascinamento non funziona)
+const TASK_COLONNE = ['da_fare','in_corso','fatto'];
+async function spostaTask(id, direzione){
+  const t = (state.tasks||[]).find(x=>x.id===id);
+  if(!t) return;
+  const i = TASK_COLONNE.indexOf(t.stato||'da_fare');
+  const nuovo = TASK_COLONNE[i + direzione];
+  if(!nuovo) return; // gia' al bordo
+  t.stato = nuovo;
+  renderTaskBoard();
+  if(typeof renderDashTask==='function') renderDashTask();
+  try{ await api.put('/api/tasks/'+id, {stato:nuovo}); showSave(); }catch(err){}
+}
+window.spostaTask = spostaTask;
+
 async function dropTask(e, nuovoStato){
   e.preventDefault();
   if(!_dragTaskId) return;
@@ -1521,3 +1545,36 @@ async function puliziaTask(modo){
 }
 window.apriPuliziaTask = apriPuliziaTask;
 window.puliziaTask = puliziaTask;
+
+
+// ── SORVEGLIANZA BANDI ───────────────────────────────────────────────────
+async function controllaBandiOra(btn){
+  const o = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Controllo in corso...';
+  try{
+    const r = await api.post('/api/bandi/controlla', {});
+    if(r.error) alert('Errore: ' + r.error);
+    else if(!r.nuovi) alert('Nessuna novita\' sulle fonti ufficiali.');
+    else alert(`Trovate ${r.nuovi} novita\':\n\n` + r.elenco.map(x=>'• '+x.titolo).join('\n'));
+  }catch(e){ alert('Errore: ' + e.message); }
+  finally{ btn.disabled = false; btn.innerHTML = o; }
+}
+
+async function inviaRiepilogoBandi(btn){
+  if(!confirm('Inviare adesso il riepilogo a giovannivitaliti15@gmail.com?')) return;
+  const o = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Invio...';
+  try{
+    const r = await api.post('/api/bandi/invia-riepilogo', {});
+    alert(r.error ? ('Errore: ' + r.error) : 'Riepilogo inviato (se c\'erano novita\' da segnalare).');
+  }catch(e){ alert('Errore: ' + e.message); }
+  finally{ btn.disabled = false; btn.innerHTML = o; }
+}
+
+async function vediBandiTrovati(){
+  const dati = await api.get('/api/bandi');
+  if(!Array.isArray(dati) || !dati.length) return alert('Ancora nessuna segnalazione registrata.');
+  alert(`Ultime ${Math.min(dati.length,15)} segnalazioni:\n\n` +
+    dati.slice(0,15).map(b=>`• [${b.fonte}] ${b.titolo}`).join('\n'));
+}
+window.controllaBandiOra = controllaBandiOra;
+window.inviaRiepilogoBandi = inviaRiepilogoBandi;
+window.vediBandiTrovati = vediBandiTrovati;
