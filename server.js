@@ -4180,7 +4180,8 @@ async function fupControlloGiornaliero() {
 // ══════════════════════════════════════════════════════════════════════════
 
 const COSTI_DEFAULT = [
-  ['costo_grano_kg', 0.42, 'Costo del grano per kg di semola prodotta (incluso calo di resa)'],
+  ['costo_grano_kg', 0.42, 'Costo del grano al kg — usato solo se non ricavabile dagli acquisti registrati'],
+  ['resa_molitura', 0.72, 'Kg di semola ottenuti da 1 kg di grano (0,72 = 72%)'],
   ['costo_imballaggio_sacco', 0.28, 'Sacco, etichetta e pallettizzazione, per sacco'],
   ['kg_per_sacco', 25, 'Pezzatura standard usata nelle stime quando non indicata'],
   ['costo_trasporto_kg_sicilia', 0.06, 'Costo medio di consegna in Sicilia, per kg'],
@@ -4196,11 +4197,57 @@ async function initCosti() {
   }
 }
 
+// Ricava il costo del grano dagli acquisti realmente registrati
+// (movimenti del gestionale e fatture ricevute importate da Fatture in Cloud:
+// finiscono nella stessa tabella, quindi la fonte e' una sola).
+const PAROLE_GRANO = ['grano', 'frumento', 'cereal', 'semolato', 'duro'];
+
+async function costoGranoDaAcquisti(mesi) {
+  const m = Number(mesi) || 12;
+  try {
+    const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
+    const par = [String(m), ...PAROLE_GRANO.map(p => '%' + p + '%')];
+    const r = await pool.query(
+      `SELECT COALESCE(SUM(importo),0) spesa,
+              COALESCE(SUM(qty_kg),0) kg,
+              COUNT(*) n,
+              COUNT(*) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0) senza_kg,
+              MAX(data) ultimo
+       FROM movimenti
+       WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval
+         AND (${cond})`, par);
+    const x = r.rows[0];
+    const kg = Number(x.kg), spesa = Number(x.spesa);
+    if (!kg || !spesa) {
+      return { disponibile: false, n: Number(x.n), senza_kg: Number(x.senza_kg),
+        motivo: Number(x.n)
+          ? 'Ci sono acquisti di grano registrati ma senza i kg: indica la quantita\' nel movimento per calcolare il costo reale.'
+          : 'Nessun acquisto di grano registrato negli ultimi ' + m + ' mesi.' };
+    }
+    return {
+      disponibile: true, euro_kg_grano: spesa / kg, kg, spesa,
+      acquisti: Number(x.n), senza_kg: Number(x.senza_kg),
+      ultimo: x.ultimo, mesi: m
+    };
+  } catch (e) { return { disponibile: false, motivo: e.message }; }
+}
+
 async function leggiCosti() {
   const r = await pool.query(`SELECT chiave, valore FROM costi_config`);
   const c = {};
   for (const row of r.rows) c[row.chiave] = Number(row.valore);
   for (const [k, v] of COSTI_DEFAULT) if (c[k] === undefined) c[k] = v;
+
+  // Il costo del grano viene dagli acquisti veri, se registrati con i kg.
+  // La resa converte il costo del grano in costo per kg di semola prodotta.
+  const reale = await costoGranoDaAcquisti(12);
+  const resa = c.resa_molitura > 0 ? c.resa_molitura : 0.72;
+  if (reale.disponibile) {
+    c.costo_grano_kg = reale.euro_kg_grano / resa;
+    c.costo_grano_origine = `acquisti reali: €${reale.euro_kg_grano.toFixed(3)}/kg di grano su ${Math.round(reale.kg).toLocaleString('it-IT')} kg comprati, resa ${(resa*100).toFixed(0)}%`;
+  } else {
+    c.costo_grano_origine = 'valore impostato a mano — ' + (reale.motivo || '');
+  }
   return c;
 }
 
@@ -5016,12 +5063,25 @@ async function ricercaGestionale(tipo, q) {
       const m = await calcolaMargini(Number(q) || 6);
       const top = m.righe.slice(0, 12);
       const peggiori = m.righe.slice(-5).reverse();
-      return `MARGINI STIMATI ultimi ${m.mesi} mesi (costi usati: grano €${m.costi_usati.costo_grano_kg}/kg, imballaggio €${m.costi_usati.costo_imballaggio_sacco}/sacco, trasporto €${m.costi_usati.costo_trasporto_kg_sicilia}/kg Sicilia e €${m.costi_usati.costo_trasporto_kg_italia}/kg Italia)
+      return `MARGINI STIMATI ultimi ${m.mesi} mesi
+Costo grano usato: €${Number(m.costi_usati.costo_grano_kg).toFixed(3)} per kg di semola (${m.costi_usati.costo_grano_origine})
+Altri costi: imballaggio €${m.costi_usati.costo_imballaggio_sacco}/sacco, trasporto €${m.costi_usati.costo_trasporto_kg_sicilia}/kg Sicilia e €${m.costi_usati.costo_trasporto_kg_italia}/kg Italia
 MIGLIORI:
 ${top.map(r => `- ${r.cliente} (${r.zona}): fatturato €${r.fatturato.toFixed(0)}, margine €${r.margine.toFixed(0)} (${r.margine_pct.toFixed(1)}%), €${r.prezzo_medio_kg.toFixed(3)}/kg su ${r.kg} kg`).join('\n')}
 DA GUARDARE (margine piu' basso):
 ${peggiori.map(r => `- ${r.cliente} (${r.zona}): margine €${r.margine.toFixed(0)} (${r.margine_pct.toFixed(1)}%), €${r.prezzo_medio_kg.toFixed(3)}/kg`).join('\n')}
 NOTA: sono stime sui costi impostati in Impostazioni, non dati contabili.`;
+    }
+    if (tipo === 'costo_grano') {
+      const g = await costoGranoDaAcquisti(Number(q) || 12);
+      if (!g.disponibile) return `Costo del grano non calcolabile dagli acquisti: ${g.motivo}`;
+      const c = await leggiCosti();
+      return `COSTO GRANO dagli acquisti registrati (ultimi ${g.mesi} mesi)
+- Acquistati ${Math.round(g.kg).toLocaleString('it-IT')} kg per €${g.spesa.toFixed(2)} in ${g.acquisti} fatture
+- Costo medio: €${g.euro_kg_grano.toFixed(3)} per kg di grano
+- Con resa al ${(c.resa_molitura*100).toFixed(0)}%: €${(g.euro_kg_grano / c.resa_molitura).toFixed(3)} per kg di semola prodotta
+- Ultimo acquisto: ${g.ultimo ? new Date(g.ultimo).toLocaleDateString('it-IT') : 'n/d'}` +
+        (g.senza_kg ? `\nATTENZIONE: ${g.senza_kg} acquisti sono registrati senza i kg e restano fuori dal calcolo.` : '');
     }
     if (tipo === 'cassa') {
       const p = await previsioneCassa(Number(q) || 60);
@@ -5149,6 +5209,7 @@ Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
 [CERCA:tipo="movimenti",q="carburante"]           → movimenti contabili
 [CERCA:tipo="prezzo",q="Torino 510"]               → prezzo di listino e prezzo MINIMO per quella localita' e quantita'
 [CERCA:tipo="margini",q="6"]                      → margine stimato per cliente sugli ultimi N mesi
+[CERCA:tipo="costo_grano",q="12"]                 → costo reale del grano ricavato dalle fatture di acquisto
 [CERCA:tipo="cassa",q="60"]                       → previsione entrate/uscite dei prossimi N giorni
 [CERCA:tipo="anomalie",q=""]                      → prezzi in calo, insoluti, concentrazione, vendite sotto il minimo
 [CERCA:tipo="commercialista",q=""]                → cosa preparare per lo studio e domande aperte
@@ -7322,6 +7383,10 @@ app.get('/api/analisi/anomalie', async (req, res) => {
 });
 app.get('/api/analisi/commercialista', async (req, res) => {
   try { res.json(await pacchettoCommercialista()); } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/costi/grano-reale', async (req, res) => {
+  try { res.json(await costoGranoDaAcquisti(req.query.mesi)); } catch (e) { res.json({ error: e.message }); }
 });
 
 app.get('/api/costi', async (req, res) => {
