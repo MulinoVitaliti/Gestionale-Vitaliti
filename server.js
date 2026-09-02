@@ -1705,7 +1705,17 @@ app.post('/api/ordini', async (req, res) => {
           const kgTot = (p.sacchi||p.qty||1) * (p.kgSacco||0);
           const sacchi = p.sacchi || p.bancali || 1;
           // Cerca il prodotto in FIC per nome (case-insensitive)
-          const ficProd = ficProdMap[p.nome.toLowerCase().trim()];
+          const ficProd = scegliVarianteProdotto(ficProdMap, p.nome, p.kgSacco);
+          // se il codice non corrisponde alla pezzatura, lo segnalo nei log e nelle note
+          if (ficProd && p.kgSacco) {
+            const testoCod = `${ficProd.code || ''} ${ficProd.name || ''}`;
+            const mm = testoCod.match(/(\d{1,3})\s*kg/i);
+            if (mm && Number(mm[1]) !== Number(p.kgSacco)) {
+              const avviso = `ATTENZIONE: su Fatture in Cloud non esiste "${p.nome}" da ${p.kgSacco}kg (usato codice ${ficProd.code || ficProd.name})`;
+              console.warn('[DDT] ' + avviso);
+              noteArr.push(avviso);
+            }
+          }
           const misuraFic = (ficProd?.measure || '').toLowerCase().trim();
           const isKg = misuraFic === 'kg' || misuraFic === 'kg.' || misuraFic === 'chilogrammi';
 
@@ -5744,6 +5754,27 @@ app.get('/api/fatture/clients', async (req, res) => {
 // ── PRODOTTI FIC: cache in memoria + endpoint ─────────────────────────────
 let ficProductsCache = null;
 
+// Sceglie la variante di prodotto giusta in base alla pezzatura del sacco.
+// Su Fatture in Cloud lo stesso prodotto esiste in piu' formati (10, 25, 30 kg):
+// abbinare solo per nome fa finire in DDT il codice sbagliato.
+function scegliVarianteProdotto(mappa, nome, kgSacco) {
+  const k = String(nome || '').toLowerCase().trim();
+  const varianti = (mappa._varianti && mappa._varianti[k]) || (mappa[k] ? [mappa[k]] : []);
+  if (!varianti.length) return null;
+  if (varianti.length === 1 || !kgSacco) return varianti[0];
+
+  const kg = Number(kgSacco);
+  const pezzatura = (p) => {
+    const testo = `${p.code || ''} ${p.name || ''} ${p.description || ''}`;
+    const m = testo.match(/(\d{1,3})\s*kg/i);
+    return m ? Number(m[1]) : null;
+  };
+  const esatta = varianti.find(p => pezzatura(p) === kg);
+  if (esatta) return esatta;
+  console.warn(`[FIC Products] Nessuna variante da ${kg}kg per "${nome}": uso ${varianti[0].code || varianti[0].name}`);
+  return varianti[0];
+}
+
 async function getFicProducts() {
   if (ficProductsCache && Date.now() - ficProductsCache.timestamp < 10 * 60 * 1000) {
     return ficProductsCache.map;
@@ -5761,7 +5792,11 @@ async function getFicProducts() {
     }
     const map = {};
     for (const p of allProducts) {
-      if (p.name) map[p.name.toLowerCase().trim()] = p;
+      if (!p.name) continue;
+      const k = p.name.toLowerCase().trim();
+      if (!map[k]) map[k] = p;              // compatibilita': primo prodotto col quel nome
+      (map._varianti = map._varianti || {});
+      (map._varianti[k] = map._varianti[k] || []).push(p);
     }
     ficProductsCache = { timestamp: Date.now(), map };
     console.log('[FIC Products] Cache: ' + allProducts.length + ' prodotti');
