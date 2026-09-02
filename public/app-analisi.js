@@ -127,12 +127,14 @@ async function renderCosti(box){
         ${Math.round(grano.kg).toLocaleString('it-IT')} kg comprati per ${AM_EURO(grano.spesa)} in ${grano.acquisti} fatture →
         <strong>${Number(grano.euro_kg_grano).toFixed(3)} €/kg</strong> di grano.<br>
         <span style="color:var(--text-3)">Il valore scritto qui sotto viene ignorato: conta questo. Ultimo acquisto ${grano.ultimo ? new Date(grano.ultimo).toLocaleDateString('it-IT') : 'n/d'}.</span>
-        ${grano.senza_kg ? `<br><span style="color:var(--orange)">⚠️ ${grano.senza_kg} acquisti non hanno i kg indicati e restano fuori dal calcolo.</span>` : ''}
+        ${grano.senza_kg ? `<br><span style="color:var(--orange)">⚠️ ${grano.senza_kg} acquisti non hanno i kg indicati e restano fuori dal calcolo.</span>
+        <div style="margin-top:8px"><button class="btn btn-sm" onclick="ricalcolaKgGrano(this)"><i class="ti ti-refresh"></i>Rileggi i kg dalle fatture</button></div>` : ''}
       </div>`
     : `<div style="background:rgba(230,150,60,.12);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12px">
         <strong>Costo del grano non ricavabile dagli acquisti</strong><br>
         ${(grano && grano.motivo) || 'Nessun dato disponibile.'}<br>
-        <span style="color:var(--text-3)">Finché è così viene usato il valore impostato a mano qui sotto. Per il calcolo reale registra le fatture del grano indicando i kg nel campo quantità.</span>
+        <span style="color:var(--text-3)">Finché è così viene usato il valore impostato a mano qui sotto.</span>
+        <div style="margin-top:8px"><button class="btn btn-sm" onclick="ricalcolaKgGrano(this)"><i class="ti ti-refresh"></i>Rileggi i kg dalle fatture di Fatture in Cloud</button></div>
       </div>`;
 
   box.innerHTML = boxGrano +
@@ -176,6 +178,18 @@ async function eliminaImpegno(id){
   await fetch('/api/impegni/'+id, {method:'DELETE'});
   tabAnalisi('costi');
 }
+
+async function ricalcolaKgGrano(btn){
+  const o = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Lettura fatture...';
+  try{
+    const r = await api.post('/api/costi/ricalcola-kg', {});
+    if(r.error) alert('Errore: ' + r.error);
+    else alert(`Fatture esaminate: ${r.esaminati}\nAggiornate con i kg: ${r.aggiornati}\nSenza righe di grano riconosciute: ${r.senza_righe_grano}`);
+    tabAnalisi('costi');
+  }catch(e){ alert('Errore: '+e.message); }
+  finally{ btn.disabled=false; btn.innerHTML=o; }
+}
+window.ricalcolaKgGrano = ricalcolaKgGrano;
 
 window.apriAnalisiMirko = apriAnalisiMirko;
 window.tabAnalisi = tabAnalisi;
