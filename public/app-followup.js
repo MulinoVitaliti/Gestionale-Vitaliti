@@ -328,3 +328,47 @@ window.saltaTappaFollowup = saltaTappaFollowup;
 window.fermaFollowup = fermaFollowup;
 window.apriModelliFollowup = apriModelliFollowup;
 window.salvaModelloFollowup = salvaModelloFollowup;
+
+
+// ── LISTINI PREZZI ───────────────────────────────────────────────────────
+let _listiniDati = null;
+
+async function apriListini(){
+  openModal('modal-listini');
+  const box = document.getElementById('lst-tabella');
+  box.innerHTML = '<div style="padding:16px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  try{
+    _listiniDati = await api.get('/api/listini');
+    filtraListini();
+  }catch(e){ box.innerHTML = '<div style="padding:16px">Errore nel caricamento.</div>'; }
+}
+
+function filtraListini(){
+  if(!_listiniDati || !_listiniDati.righe) return;
+  const q = (document.getElementById('lst-cerca').value||'').toLowerCase().trim();
+  const kg = parseInt(document.getElementById('lst-kg').value) || null;
+  const sc = _listiniDati.scaglioni;
+  let righe = _listiniDati.righe;
+  if(q) righe = righe.filter(r => (r.localita||'').toLowerCase().includes(q) || (r.zona||'').toLowerCase().includes(q));
+  righe = righe.slice(0, 120);
+  // colonna evidenziata se ho indicato i kg
+  let idx = -1;
+  if(kg){ for(let i=0;i<sc.length;i++) if(kg >= sc[i]) idx = i; }
+  const th = sc.map((s,i)=>`<th style="padding:5px 7px;text-align:right;font-size:11px;${i===idx?'background:var(--brand);color:#fff;border-radius:4px':''}">${s} kg</th>`).join('');
+  const boxHtml = `<table style="width:100%;border-collapse:collapse;font-size:12px">
+    <thead><tr style="border-bottom:2px solid var(--border)">
+      <th style="padding:5px 7px;text-align:left;font-size:11px">Località</th>${th}</tr></thead>
+    <tbody>` + righe.map(r => {
+      const li = r.listino, mi = r.minimo;
+      const celleL = li.map((v,i)=>`<td style="padding:4px 7px;text-align:right;${i===idx?'font-weight:700;color:var(--brand)':''}">${Number(v).toFixed(2)}</td>`).join('');
+      const rigaL = `<tr style="border-bottom:${mi?'none':'1px solid var(--border)'}">
+        <td style="padding:4px 7px"><strong>${r.localita}</strong> <span style="font-size:10px;color:var(--text-3)">${r.zona||''}</span></td>${celleL}</tr>`;
+      if(!mi) return rigaL;
+      const celleM = mi.map((v,i)=>`<td style="padding:2px 7px;text-align:right;font-size:11px;color:var(--text-3);${i===idx?'font-weight:700;color:var(--orange)':''}">${Number(v).toFixed(2)}</td>`).join('');
+      return rigaL + `<tr style="border-bottom:1px solid var(--border)">
+        <td style="padding:2px 7px 6px;font-size:10px;color:var(--text-3)">minimo</td>${celleM}</tr>`;
+    }).join('') + '</tbody></table>';
+  document.getElementById('lst-tabella').innerHTML = boxHtml;
+}
+window.apriListini = apriListini;
+window.filtraListini = filtraListini;
