@@ -276,6 +276,8 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS bandi_visti ADD COLUMN IF NOT EXISTS chiave TEXT;
+      CREATE UNIQUE INDEX IF NOT EXISTS idx_bandi_chiave ON bandi_visti (chiave) WHERE chiave IS NOT NULL;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
@@ -344,6 +346,7 @@ async function initDB() {
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
       CREATE TABLE IF NOT EXISTS bandi_visti (
         id SERIAL PRIMARY KEY,
+        chiave TEXT,
         url TEXT UNIQUE NOT NULL,
         titolo TEXT,
         fonte TEXT,
@@ -4055,29 +4058,63 @@ async function fupControlloGiornaliero() {
 
 const BANDI_DESTINATARIO = 'giovannivitaliti15@gmail.com';
 
+// Mulino Vitaliti NON e' un'azienda agricola: e' un'impresa di trasformazione
+// (industria alimentare / commercio). Le fonti puntano quindi ai bandi per
+// imprese, PMI, artigianato e commercio; del fondo agricolo interessa solo la
+// parte "trasformazione e commercializzazione", aperta anche alle imprese.
 const BANDI_FONTI = [
-  { nome: 'Sviluppo Rurale Sicilia', url: 'https://svilupporurale.regione.sicilia.it/bandi-aperti/' },
-  { nome: 'Sviluppo Rurale Sicilia (news)', url: 'https://svilupporurale.regione.sicilia.it/' },
+  { nome: 'Attivita\' Produttive Regione Siciliana', url: 'https://www.regione.sicilia.it/istituzioni/regione/strutture-regionali/assessorato-attivita-produttive' },
   { nome: 'EuroInfoSicilia (PR FESR)', url: 'https://www.euroinfosicilia.it/notizie/' },
+  { nome: 'EuroInfoSicilia (avvisi)', url: 'https://www.euroinfosicilia.it/avvisi-e-bandi/' },
   { nome: 'IRFIS FinSicilia', url: 'https://www.irfis.it/' },
+  { nome: 'IRFIS incentivi', url: 'https://www.irfis.it/category/bandi/' },
   { nome: 'Camera Commercio Sud Est Sicilia', url: 'https://www.cciaasudestsicilia.it/bandi-e-contributi/' },
+  { nome: 'Sviluppo Rurale (solo trasformazione)', url: 'https://svilupporurale.regione.sicilia.it/bandi-aperti/' },
 ];
 
 // Parole che rendono un avviso potenzialmente interessante per il mulino
 const BANDI_PAROLE = [
-  'trasformazione', 'agroalimentare', 'agroindustria', 'cereali', 'molit',
+  // chi siamo: impresa, non azienda agricola
+  'impres', 'pmi', 'piccole e medie', 'micro', 'artigian', 'commercio',
+  'industria', 'manifattur', 'agroalimentare', 'agroindustria',
+  'trasformazione', 'commercializzazione', 'cereali', 'molit', 'filiera',
+  // cosa vogliamo fare
   'macchinari', 'attrezzature', 'impianti', 'investiment', 'competitivit',
-  'ammodernamento', 'innovazione', 'digitalizzazione', 'transizione',
-  'efficienza energetica', 'fotovoltaic', 'assunzion', 'occupazione',
-  'internazionalizzazione', 'fiere', 'promozione', 'export', 'pmi', 'impres'
+  'ammodernamento', 'ampliamento', 'innovazione', 'digitalizzazione',
+  'transizione', 'efficienza energetica', 'fotovoltaic', 'energia',
+  'assunzion', 'occupazione', 'lavoro',
+  'internazionalizzazione', 'fiere', 'promozione', 'export', 'e-commerce'
 ];
 
 // Parole che escludono un avviso (settori che non riguardano il mulino)
 const BANDI_ESCLUSI = [
+  // settori che non riguardano il mulino
   'pesca', 'acquacoltura', 'turismo', 'alberghier', 'ricettiv', 'cinemato',
   'audiovisiv', 'scuola', 'studenti', 'sport', 'cultura', 'teatro',
-  'forestal', 'zootecni', 'vitivinicol', 'oliv', 'miele', 'isee', 'famiglie'
+  'forestal', 'zootecni', 'vitivinicol', 'vino', 'cantine', 'oliv', 'miele',
+  'isee', 'famiglie', 'diversificazione in attivit',
+  // misure riservate a chi coltiva: noi non siamo imprenditori agricoli
+  'aziende agricole', 'azienda agricola', 'imprenditori agricoli',
+  'giovani agricoltori', 'agricoltori', 'primo insediamento', 'domanda unica',
+  'superfici', 'colture', 'seminativ', 'pascol', 'irrigu', 'serre',
+  'benessere animale', 'biologic', 'agriturism',
+  // documenti di gestione di bandi gia' chiusi: non sono nuove opportunita'
+  'graduatoria', 'elenco delle domande', 'domande ricevibili', 'ricevibil',
+  'rettificat', 'decreto di concessione', 'istruttoria', 'revoca',
+  'non ricevibil', 'esclusi', 'ammessi a finanziamento', 'scorrimento',
+  // cronaca ed eventi
+  'vinitaly', 'convegno', 'seminario', 'webinar', 'incontro', 'presentazione nuovi'
 ];
+
+// Riduce un titolo alla sua "identita'": stesso bando = stessa chiave.
+// Serve a non ricevere dieci righe per lo stesso avviso.
+function chiaveBando(titolo) {
+  const t = String(titolo).toLowerCase();
+  const codice = t.match(/\b(srd\s?\d{2}|sri\s?\d{2}|srh\s?\d{2}|pif|azione\s?\d\.\d\.\d)\b/);
+  if (codice) return codice[1].replace(/\s+/g, '');
+  return t.replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim()
+          .split(' ').filter(w => w.length > 3).slice(0, 6).join('-');
+}
 
 async function controllaFontiBandi() {
   const nuovi = [];
@@ -4108,10 +4145,13 @@ async function controllaFontiBandi() {
         if (!trovate.length) continue;
 
         try {
+          const chiave = chiaveBando(titolo);
+          const gia = await pool.query(`SELECT id FROM bandi_visti WHERE chiave=$1 LIMIT 1`, [chiave]);
+          if (gia.rows.length) continue;  // stesso bando gia' segnalato
           const ins = await pool.query(
-            `INSERT INTO bandi_visti (url, titolo, fonte, parole_trovate)
-             VALUES ($1,$2,$3,$4) ON CONFLICT (url) DO NOTHING RETURNING id`,
-            [url.slice(0, 500), titolo, fonte.nome, trovate.join(', ')]);
+            `INSERT INTO bandi_visti (chiave, url, titolo, fonte, parole_trovate)
+             VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING RETURNING id`,
+            [chiave, url.slice(0, 500), titolo, fonte.nome, trovate.join(', ')]);
           if (ins.rows.length) nuovi.push({ titolo, url, fonte: fonte.nome });
         } catch (e) { /* duplicato o url troppo lungo */ }
       }
@@ -4127,7 +4167,7 @@ async function inviaRiepilogoBandi() {
   try {
     const r = await pool.query(
       `SELECT titolo, url, fonte, created_at FROM bandi_visti
-       WHERE segnalato = FALSE ORDER BY created_at DESC LIMIT 40`);
+       WHERE segnalato = FALSE ORDER BY created_at DESC LIMIT 12`);
     if (!r.rows.length) { console.log('[BANDI] nessuna novita\' da segnalare'); return; }
     if (!gmailTokens) { console.log('[BANDI] Gmail non connesso: riepilogo non inviato'); return; }
 
@@ -6257,6 +6297,13 @@ app.post('/api/bandi/controlla', async (req, res) => {
   try {
     const nuovi = await controllaFontiBandi();
     res.json({ ok: true, nuovi: nuovi.length, elenco: nuovi.slice(0, 15) });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/bandi/azzera', async (req, res) => {
+  try {
+    const r = await pool.query(`DELETE FROM bandi_visti`);
+    res.json({ ok: true, eliminati: r.rowCount });
   } catch (e) { res.json({ error: e.message }); }
 });
 
