@@ -276,6 +276,10 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
+      ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
+      ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS ordini_ids JSONB;
+      ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS email_inviata BOOLEAN DEFAULT FALSE;
       ALTER TABLE IF EXISTS bandi_visti ADD COLUMN IF NOT EXISTS chiave TEXT;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_bandi_chiave ON bandi_visti (chiave) WHERE chiave IS NOT NULL;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
@@ -344,6 +348,28 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Documenti preparati da Mirko, in attesa che Giovanni li emetta
+      CREATE TABLE IF NOT EXISTS documenti_bozza (
+        id SERIAL PRIMARY KEY,
+        tipo TEXT NOT NULL,                  -- ddt | fattura
+        ordine_id INTEGER REFERENCES ordini(id) ON DELETE SET NULL,
+        cliente_id INTEGER,
+        cliente_nome TEXT NOT NULL,
+        righe JSONB DEFAULT '[]',
+        totale NUMERIC,
+        peso_kg NUMERIC,
+        controlli JSONB DEFAULT '[]',        -- verifiche automatiche: ok e anomalie
+        note TEXT,
+        stato TEXT DEFAULT 'da_approvare',   -- da_approvare | emesso | scartato
+        preparato_da TEXT DEFAULT 'Mirko',
+        emesso_da TEXT,
+        fic_id INTEGER,
+        fic_numero TEXT,
+        errore TEXT,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Listini prezzi: prezzo di listino e prezzo minimo per localita' e scaglione
       CREATE TABLE IF NOT EXISTS listini_prezzi (
         id SERIAL PRIMARY KEY,
@@ -3245,35 +3271,68 @@ const STEVEN_DB_OPERAZIONI = {
     if (!['ddt', 'fattura'].includes(t)) throw new Error('Tipo documento non valido: usa "ddt" o "fattura"');
     let ord = null;
     if (ordine_id) {
-      const r = await pool.query(
-        `SELECT o.*, c.nome AS cliente_nome, c.piva, c.citta FROM ordini o
-         LEFT JOIN clienti c ON c.id=o.cliente_id WHERE o.id=$1`, [ordine_id]);
+      const r = await pool.query(`SELECT * FROM ordini WHERE id=$1`, [ordine_id]);
       ord = r.rows[0];
     } else if (cliente) {
       const r = await pool.query(
-        `SELECT o.*, c.nome AS cliente_nome, c.piva, c.citta FROM ordini o
-         JOIN clienti c ON c.id=o.cliente_id
+        `SELECT o.* FROM ordini o JOIN clienti c ON c.id=o.cliente_id
          WHERE c.nome ILIKE $1 AND o.fic_ddt_id IS NULL ORDER BY o.data DESC LIMIT 1`, ['%'+cliente+'%']);
       ord = r.rows[0];
     }
     if (!ord) throw new Error('Non ho trovato un ordine da documentare: indica ordine_id o il nome del cliente');
     if (t === 'ddt' && ord.fic_ddt_id) throw new Error(`L'ordine ha gia' il DDT n. ${ord.fic_ddt_numero}`);
 
+    const gia = await pool.query(
+      `SELECT id FROM documenti_bozza WHERE ordine_id=$1 AND tipo=$2 AND stato='da_approvare'`, [ord.id, t]);
+    if (gia.rows.length) throw new Error(`Esiste gia' una bozza di ${t.toUpperCase()} in attesa di approvazione per questo ordine`);
+
+    const cr = await pool.query(`SELECT * FROM clienti WHERE id=$1`, [ord.cliente_id]);
+    const clienteRow = cr.rows[0] || null;
+    const controlli = await controllaDocumento(ord, clienteRow);
+
+    // righe del documento
+    let righe = [];
+    try { righe = Array.isArray(ord.prodotti) ? ord.prodotti : JSON.parse(ord.prodotti || '[]'); } catch (e) { righe = []; }
+    if (!righe.length) {
+      righe = [{ nome: ord.prodotto || 'Semola rimacinata di grano duro', qty: ord.qty || 1, importo: Number(ord.importo || 0) }];
+    }
+
+    const ins = await pool.query(
+      `INSERT INTO documenti_bozza (tipo, ordine_id, cliente_id, cliente_nome, righe, totale, peso_kg, controlli, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      [t, ord.id, ord.cliente_id, ord.cliente || (clienteRow && clienteRow.nome) || 'Cliente',
+       JSON.stringify(righe), ord.importo || 0, ord.peso_totale || ord.qty || null,
+       JSON.stringify(controlli), note || null]);
+
+    const errori = controlli.filter(c => c.livello === 'errore');
+    const avvisi = controlli.filter(c => c.livello === 'attenzione');
+
     await pool.query(
       `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
-       VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Mirko (AI)')`,
-      [`Approvare ${t.toUpperCase()}: ${ord.cliente_nome} — €${Number(ord.importo||0).toFixed(2)}`,
-       `Documento preparato da Mirko per l'ordine #${ord.id} del ${new Date(ord.data).toLocaleDateString('it-IT')}.\n` +
-       `Cliente: ${ord.cliente_nome}${ord.piva ? ' (P.IVA ' + ord.piva + ')' : ''}\n` +
-       `Prodotto: ${ord.prodotto || '-'}${ord.qty ? ' — ' + ord.qty + ' kg' : ''}\n` +
-       `Importo: €${Number(ord.importo||0).toFixed(2)}\n` +
-       (note ? `Note: ${note}\n` : '') +
-       `\nPer emetterlo: apri la pagina Ordini, entra nell'ordine #${ord.id} e conferma l'emissione del documento.`]
-    );
+       VALUES ($1,$2,$3,CURRENT_DATE,'da_fare','Giovanni','Mirko (AI)')`,
+      [`Approvare ${t.toUpperCase()}: ${ord.cliente} — €${Number(ord.importo||0).toFixed(2)}${errori.length ? ' ⚠️ ' + errori.length + ' anomalie' : ''}`,
+       `Documento preparato da Mirko per l'ordine #${ord.id}.\n` +
+       controlli.map(c => `${c.livello === 'errore' ? '❌' : c.livello === 'attenzione' ? '⚠️' : '✅'} ${c.testo}`).join('\n') +
+       `\n\nApprova o scarta dalla pagina Ordini → Documenti da approvare.`,
+       errori.length ? 'alta' : 'media']);
+
     return {
-      preparato: t, ordine: ord.id, cliente: ord.cliente_nome,
+      bozza_id: ins.rows[0].id, tipo: t, ordine: ord.id, cliente: ord.cliente,
       importo: Number(ord.importo||0).toFixed(2),
-      avviso: `${t.toUpperCase()} PREPARATO ma NON emesso. Ho creato un task per Giovanni: va approvato dalla pagina Ordini.`
+      controlli_ok: controlli.filter(c=>c.livello==='ok').length,
+      anomalie: errori.map(c=>c.testo), avvisi: avvisi.map(c=>c.testo),
+      avviso: `${t.toUpperCase()} PREPARATO e in attesa di approvazione. NON e' stato emesso: Giovanni lo trova in Ordini → Documenti da approvare.`
+    };
+  },
+
+  // Prepara le fatture riepilogative dei DDT non ancora fatturati
+  'prepara_fatture': async (params) => {
+    const creati = await preparaFattureDifferite(params?.giorni);
+    if (!creati.length) return { esito: 'Nessun DDT da fatturare al momento.' };
+    return {
+      preparate: creati.length,
+      dettaglio: creati.map(c => `${c.cliente}: ${c.ddt} DDT per €${c.totale.toFixed(2)}`),
+      avviso: 'Fatture PREPARATE ma NON emesse: le approva Giovanni da Ordini → Documenti da approvare.'
     };
   },
 
@@ -3701,6 +3760,7 @@ Via I Retta Levante 134 - 95032 Belpasso (CT), Tel. 095 913523, Cell. 389 606683
   - importa_contatti: {contatti:[{nome,tel,email,citta,...},...]} — importa array di contatti
   - crea_ordine: {cliente:"Nome cliente",prodotto:"Semola rimacinata",qty:500,importo:485.00,data:"YYYY-MM-DD",note:"..."} — crea un ordine in BOZZA
   - prepara_documento: {tipo:"ddt"|"fattura",cliente:"Nome cliente"} oppure {tipo:"ddt",ordine_id:123} — SOLO MIRKO: prepara il documento e crea un task di approvazione per Giovanni. NON emette nulla.
+  - prepara_fatture: {giorni:14} — SOLO MIRKO: raggruppa i DDT non fatturati piu' vecchi di N giorni e prepara una fattura riepilogativa per cliente.
   - ordini_cliente: {id:123} — storico ordini di un cliente
   - insoluti: {} — tutte le fatture non pagate
   - analizza_tasks: {} — trova task duplicati e conta quante copie ci sono
@@ -4059,6 +4119,204 @@ async function fupControlloGiornaliero() {
     }
     if (dovute.rows.length) console.log(`[FUP] controllo: ${dovute.rows.length} tappe elaborate`);
   } catch (e) { console.error('[FUP controllo]', e.message); }
+}
+
+// ══════════════════════════════════════════════════════════════════════════
+// FATTURAZIONE PERIODICA — raggruppa i DDT non ancora fatturati per cliente
+// e prepara una fattura riepilogativa da approvare.
+// Ogni 10 giorni. Resta possibile creare le fatture a mano quando serve:
+// l'automatismo interviene solo su cio' che non e' ancora stato fatturato.
+// NOTA: per legge la fattura differita va emessa entro il 15 del mese
+// successivo alla consegna. Il ciclo di 10 giorni sta comodamente dentro.
+// ══════════════════════════════════════════════════════════════════════════
+
+const GIORNI_FATTURAZIONE = 10;
+
+async function preparaFattureDifferite(giorni) {
+  const g = Number(giorni) || GIORNI_FATTURAZIONE;
+  const creati = [];
+  try {
+    // DDT emessi, non ancora fatturati, piu' vecchi di N giorni
+    const r = await pool.query(
+      `SELECT o.cliente_id, o.cliente, COUNT(*) n, SUM(o.importo) tot, MIN(o.data) dal, MAX(o.data) al,
+              ARRAY_AGG(o.id) ids, ARRAY_AGG(o.fic_ddt_numero) ddt
+       FROM ordini o
+       WHERE o.fic_ddt_id IS NOT NULL
+         AND o.fic_fattura_id IS NULL
+         AND o.data <= CURRENT_DATE - ($1 || ' days')::interval
+         -- esclude i DDT gia' finiti in una fattura preparata o emessa
+         AND NOT EXISTS (
+           SELECT 1 FROM documenti_bozza d
+           WHERE d.tipo='fattura' AND d.stato IN ('da_approvare','emesso')
+             AND d.ordini_ids @> to_jsonb(o.id)
+         )
+       GROUP BY o.cliente_id, o.cliente
+       HAVING SUM(o.importo) > 0`, [String(g)]);
+
+    for (const row of r.rows) {
+      // gia' preparata una bozza per questo cliente?
+      const gia = await pool.query(
+        `SELECT id FROM documenti_bozza WHERE tipo='fattura' AND stato='da_approvare' AND cliente_nome=$1`,
+        [row.cliente]);
+      if (gia.rows.length) continue;
+
+      const cr = await pool.query(`SELECT * FROM clienti WHERE id=$1`, [row.cliente_id]);
+      const clienteRow = cr.rows[0] || null;
+
+      // righe: una per ogni DDT del periodo
+      const ord = await pool.query(
+        `SELECT id, data, prodotto, qty, peso_totale, importo, fic_ddt_numero
+         FROM ordini WHERE id = ANY($1::int[]) ORDER BY data`, [row.ids]);
+      const righe = ord.rows.map(o => ({
+        nome: `${o.prodotto || 'Semola rimacinata di grano duro'} — DDT ${o.fic_ddt_numero || ''} del ${new Date(o.data).toLocaleDateString('it-IT')}`,
+        qty: 1, prezzo: Number(o.importo || 0), ordine_id: o.id
+      }));
+
+      // controlli sul cliente e sul primo ordine del gruppo
+      const controlli = await controllaDocumento(
+        { ...ord.rows[0], importo: Number(row.tot), cliente_id: row.cliente_id }, clienteRow);
+      if (!clienteRow || (!clienteRow.sdi && !clienteRow.pec)) {
+        controlli.push({ livello: 'attenzione', testo: 'Senza SDI/PEC la fattura elettronica potrebbe non essere recapitata' });
+      }
+      controlli.push({ livello: 'ok', testo: `Fattura riepilogativa di ${row.n} DDT dal ${new Date(row.dal).toLocaleDateString('it-IT')} al ${new Date(row.al).toLocaleDateString('it-IT')}` });
+
+      const ins = await pool.query(
+        `INSERT INTO documenti_bozza (tipo, cliente_id, cliente_nome, righe, totale, controlli, ordini_ids, note, preparato_da)
+         VALUES ('fattura',$1,$2,$3,$4,$5,$6,$7,'Mirko (automatico)') RETURNING id`,
+        [row.cliente_id, row.cliente, JSON.stringify(righe), Number(row.tot),
+         JSON.stringify(controlli), JSON.stringify(row.ids),
+         `Riepilogo DDT: ${(row.ddt || []).filter(Boolean).join(', ')}`]);
+
+      creati.push({ cliente: row.cliente, ddt: Number(row.n), totale: Number(row.tot), bozza_id: ins.rows[0].id });
+    }
+
+    if (creati.length) {
+      await pool.query(
+        `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
+         VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Mirko (AI)')`,
+        [`${creati.length} fatture riepilogative da approvare (DDT oltre ${g} giorni)`,
+         creati.map(c => `• ${c.cliente}: ${c.ddt} DDT per €${c.totale.toFixed(2)}`).join('\n') +
+         `\n\nApprova in Ordini → Documenti da approvare.`]);
+      console.log(`[FATTURE] preparate ${creati.length} fatture riepilogative`);
+    }
+  } catch (e) { console.error('[FATTURE differite]', e.message); }
+  return creati;
+}
+
+// Invia al cliente la fattura appena emessa, con l'account Gmail principale
+async function inviaFatturaAlCliente(bozzaId) {
+  try {
+    const b = await pool.query(`SELECT * FROM documenti_bozza WHERE id=$1`, [bozzaId]);
+    if (!b.rows.length) return { ok: false, errore: 'Bozza non trovata' };
+    const bz = b.rows[0];
+    if (bz.stato !== 'emesso') return { ok: false, errore: 'La fattura non risulta emessa' };
+    const c = await pool.query(`SELECT email, nome FROM clienti WHERE id=$1`, [bz.cliente_id]);
+    const dest = c.rows[0]?.email;
+    if (!dest) return { ok: false, errore: 'Il cliente non ha email in anagrafica' };
+    if (!gmailTokens) return { ok: false, errore: 'Gmail non collegato' };
+
+    const corpo = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">
+<p>Gentile <strong>${bz.cliente_nome}</strong>,</p>
+<p>in allegato al presente messaggio trova il riepilogo della fattura <strong>n. ${bz.fic_numero || ''}</strong> emessa in data odierna, relativa alle forniture del periodo.</p>
+<p>Importo totale: <strong>€ ${Number(bz.totale || 0).toFixed(2)}</strong><br>
+${bz.note || ''}</p>
+<p>La fattura elettronica le verra' recapitata attraverso il Sistema di Interscambio.</p>
+<p>Per qualsiasi chiarimento puo' rispondere a questa email.</p>
+<p>Cordiali saluti,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br>
+<em>Semola rimacinata di grano duro dal 1930</em></p></div>`;
+
+    oauth2Client.setCredentials(gmailTokens);
+    const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+    const raw = Buffer.from(
+      `To: ${dest}\r\nSubject: ${encodeEmailSubject('Fattura n. ' + (bz.fic_numero || '') + ' - Mulino Vitaliti')}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpo}`
+    ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+    await pool.query(`UPDATE documenti_bozza SET email_inviata=TRUE WHERE id=$1`, [bozzaId]);
+    console.log(`[FATTURE] avviso inviato a ${dest} per fattura ${bz.fic_numero}`);
+    return { ok: true, destinatario: dest };
+  } catch (e) { return { ok: false, errore: e.message }; }
+}
+
+// Controllo giornaliero alle 8: prepara le fatture dei DDT scaduti
+setInterval(async () => {
+  if (new Date().getHours() !== 8) return;
+  await preparaFattureDifferite(GIORNI_FATTURAZIONE);
+}, 60 * 60 * 1000);
+
+// ══════════════════════════════════════════════════════════════════════════
+// CONTROLLO PRE-EMISSIONE — verifica un documento prima che venga emesso
+// ══════════════════════════════════════════════════════════════════════════
+
+async function controllaDocumento(ordine, clienteRow) {
+  const esiti = [];
+  const ok = (t) => esiti.push({ livello: 'ok', testo: t });
+  const att = (t) => esiti.push({ livello: 'attenzione', testo: t });
+  const err = (t) => esiti.push({ livello: 'errore', testo: t });
+
+  // 1. Dati anagrafici
+  if (!clienteRow) { err('Cliente non presente in anagrafica'); return esiti; }
+  if (!clienteRow.piva && !clienteRow.cf) err('Manca partita IVA / codice fiscale');
+  else ok('Partita IVA presente');
+  if (!(clienteRow.ind_legale || clienteRow.ind)) att('Manca l\'indirizzo in anagrafica');
+  if (!clienteRow.sdi && !clienteRow.pec) att('Manca codice SDI o PEC per la fattura elettronica');
+
+  // 2. Coerenza importo / quantita' / prezzo
+  const kg = Number(ordine.peso_totale || ordine.qty || 0);
+  const imp = Number(ordine.importo || 0);
+  if (!imp) err('Importo dell\'ordine mancante o a zero');
+  if (!kg) att('Peso o quantita\' non indicati: impossibile verificare il prezzo al kg');
+
+  // 3. Confronto col listino
+  if (kg && imp) {
+    const prezzoKg = imp / kg;
+    const citta = (clienteRow.citta || '').trim();
+    const r = await pool.query(
+      `SELECT localita, zona, listino, minimo FROM listini_prezzi
+       WHERE localita ILIKE $1 ORDER BY length(localita) LIMIT 1`, ['%' + citta + '%']);
+    if (!r.rows.length) {
+      att(`Localita' "${citta || 'non indicata'}" non trovata nei listini: prezzo non verificabile (€${prezzoKg.toFixed(3)}/kg applicato)`);
+    } else {
+      const row = r.rows[0];
+      const i = scaglionePerKg(kg);
+      const listino = Number(row.listino[i]);
+      const minimo = row.minimo ? Number(row.minimo[i]) : null;
+      if (minimo && prezzoKg < minimo - 0.001) {
+        err(`PREZZO SOTTO IL MINIMO: applicato €${prezzoKg.toFixed(3)}/kg, minimo consentito €${minimo.toFixed(2)} (${row.localita}, scaglione ${SCAGLIONI_KG[i]} kg)`);
+      } else if (prezzoKg < listino - 0.001) {
+        const sconto = ((listino - prezzoKg) / listino * 100);
+        att(`Prezzo scontato del ${sconto.toFixed(1)}%: €${prezzoKg.toFixed(3)}/kg contro listino €${listino.toFixed(2)}${minimo ? ' (minimo €' + minimo.toFixed(2) + ')' : ''}`);
+      } else {
+        ok(`Prezzo in linea col listino ${row.localita} (€${prezzoKg.toFixed(3)}/kg, listino €${listino.toFixed(2)})`);
+      }
+    }
+  }
+
+  // 4. Regola primo ordine
+  if (ordine.cliente_id) {
+    const st = await pool.query(
+      `SELECT COUNT(*) n FROM ordini WHERE cliente_id=$1 AND id <> $2`, [ordine.cliente_id, ordine.id || 0]);
+    const precedenti = Number(st.rows[0].n);
+    const tag = String(clienteRow.tag || '').toLowerCase();
+    const contrattualizzato = tag.includes('contratt');
+    if (precedenti === 0 && !contrattualizzato && kg >= 780) {
+      err(`Primo ordine di un cliente non contrattualizzato con ${kg} kg: il limite e' 630 kg`);
+    } else if (precedenti === 0) {
+      att('E\' il primo ordine di questo cliente');
+    } else {
+      ok(`Cliente gia' servito (${precedenti} ordini precedenti)`);
+    }
+  }
+
+  // 5. Insoluti aperti
+  if (ordine.cliente_id) {
+    const ins = await pool.query(
+      `SELECT COUNT(*) n, COALESCE(SUM(importo),0) tot FROM movimenti
+       WHERE tipo='entrata' AND pagato=false AND cliente_id=$1`, [ordine.cliente_id]).catch(() => null);
+    if (ins && Number(ins.rows[0].n) > 0) {
+      att(`Il cliente ha ${ins.rows[0].n} pagamenti ancora aperti per €${Number(ins.rows[0].tot).toFixed(2)}`);
+    }
+  }
+  return esiti;
 }
 
 // ══════════════════════════════════════════════════════════════════════════
@@ -4643,6 +4901,25 @@ Se ti chiedono qualcosa che nessun comando disponibile permette di fare, dillo
 chiaramente ("non posso farlo da qui, si fa dalla pagina X") invece di far finta.
 Per creare un ordine usa [DB:op="crea_ordine",params={...}]: nasce in stato BOZZA
 e va confermato a mano dalla pagina Ordini — dillo sempre all'utente.
+
+## DDT E FATTURE: LI PREPARI TU, LI EMETTE GIOVANNI (solo Mirko)
+Con [DB:op="prepara_documento",params={tipo:"ddt"|"fattura",ordine_id:123}] costruisci
+il documento completo: righe, importi, peso, dati del cliente. Il sistema esegue
+in automatico i controlli (partita IVA, SDI, prezzo contro listino e minimo,
+regola del primo ordine, insoluti aperti) e ti restituisce l'esito.
+Il documento resta in "Documenti da approvare": lo emette Giovanni con un clic.
+Nella risposta riporta SEMPRE le anomalie trovate, se ce ne sono, e ricorda che
+il documento non e' ancora stato emesso.
+
+FATTURAZIONE PERIODICA: ogni 10 giorni il sistema raggruppa da solo i DDT non
+ancora fatturati, un documento per cliente, e prepara la fattura riepilogativa.
+E' una rete di sicurezza, non sostituisce il lavoro manuale: se una fattura e' gia'
+stata fatta a mano, quei DDT risultano fatturati e l'automatismo li salta.
+Anche la fattura automatica resta in attesa dell'approvazione di Giovanni; quando
+lui la emette, al cliente parte l'avviso via email.
+Se ti chiedono di anticipare il giro, usa [DB:op="prepara_fatture",params={giorni:10}].
+Ricorda che per legge la fattura differita va emessa entro il 15 del mese successivo
+alla consegna: se vedi DDT piu' vecchi, segnalalo subito a Giovanni.
 
 ## PREZZI: SI USANO SOLO I LISTINI, MAI LA MEMORIA
 Non dire mai un prezzo a memoria e non calcolarlo da solo: cerca sempre con
@@ -6523,6 +6800,151 @@ app.post('/api/bandi/azzera', async (req, res) => {
 app.post('/api/bandi/invia-riepilogo', async (req, res) => {
   try { await inviaRiepilogoBandi(); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── DOCUMENTI IN ATTESA DI APPROVAZIONE ───────────────────────────────────
+app.get('/api/documenti-bozza', async (req, res) => {
+  try {
+    const stato = req.query.stato || 'da_approvare';
+    const r = await pool.query(
+      `SELECT d.*, o.data AS ordine_data, o.prodotto, o.qty
+       FROM documenti_bozza d LEFT JOIN ordini o ON o.id=d.ordine_id
+       WHERE d.stato=$1 ORDER BY d.created_at DESC LIMIT 100`, [stato]);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/documenti-bozza/conteggio', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*) n, COUNT(*) FILTER (WHERE controlli::text LIKE '%"errore"%') anomalie
+       FROM documenti_bozza WHERE stato='da_approvare'`);
+    res.json(r.rows[0]);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Ricontrolla una bozza (utile se nel frattempo hai corretto l'anagrafica o l'ordine)
+app.post('/api/documenti-bozza/:id/ricontrolla', async (req, res) => {
+  try {
+    const b = await pool.query(`SELECT * FROM documenti_bozza WHERE id=$1`, [req.params.id]);
+    if (!b.rows.length) return res.json({ error: 'Bozza non trovata' });
+    const o = await pool.query(`SELECT * FROM ordini WHERE id=$1`, [b.rows[0].ordine_id]);
+    const c = await pool.query(`SELECT * FROM clienti WHERE id=$1`, [b.rows[0].cliente_id]);
+    const controlli = await controllaDocumento(o.rows[0] || {}, c.rows[0] || null);
+    await pool.query(`UPDATE documenti_bozza SET controlli=$1, updated_at=NOW() WHERE id=$2`,
+      [JSON.stringify(controlli), req.params.id]);
+    res.json({ ok: true, controlli });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// EMISSIONE: qui il documento viene creato davvero su Fatture in Cloud
+app.post('/api/documenti-bozza/:id/emetti', async (req, res) => {
+  try {
+    const b = await pool.query(`SELECT * FROM documenti_bozza WHERE id=$1 AND stato='da_approvare'`, [req.params.id]);
+    if (!b.rows.length) return res.json({ error: 'Bozza non trovata o gia\' gestita' });
+    const bz = b.rows[0];
+
+    // blocco di sicurezza: con anomalie serve una conferma esplicita
+    const controlli = Array.isArray(bz.controlli) ? bz.controlli : JSON.parse(bz.controlli || '[]');
+    const errori = controlli.filter(c => c.livello === 'errore');
+    if (errori.length && !req.body?.forza) {
+      return res.json({ error: 'Ci sono anomalie bloccanti', anomalie: errori.map(c => c.testo), serve_conferma: true });
+    }
+
+    if (!ficTokens || !ficCompanyId) return res.json({ error: 'Fatture in Cloud non collegato' });
+
+    const o = await pool.query(`SELECT * FROM ordini WHERE id=$1`, [bz.ordine_id]);
+    const ord = o.rows[0] || {};
+    const c = await pool.query(`SELECT * FROM clienti WHERE id=$1`, [bz.cliente_id]);
+    const cl = c.rows[0] || {};
+
+    let righe = [];
+    try { righe = Array.isArray(bz.righe) ? bz.righe : JSON.parse(bz.righe || '[]'); } catch (e) {}
+    const items = righe.map(r => ({
+      name: r.nome || r.name || ord.prodotto || 'Semola rimacinata di grano duro',
+      qty: Number(r.qty || r.sacchi || 1),
+      measure: r.measure || 'Nr',
+      net_price: Number(r.prezzo || r.net_price || (Number(bz.totale || 0) / Math.max(1, Number(r.qty || 1)))),
+      vat: { id: 0 }
+    }));
+
+    const payload = {
+      type: bz.tipo === 'ddt' ? 'delivery_note' : 'invoice',
+      entity: { ...(cl.fic_id ? { id: cl.fic_id } : {}), name: bz.cliente_nome,
+                ...(cl.ind_legale ? { address_street: cl.ind_legale } : {}),
+                ...(cl.citta ? { address_city: cl.citta } : {}),
+                ...(cl.piva ? { vat_number: cl.piva } : {}) },
+      date: new Date().toISOString().slice(0, 10),
+      items_list: items,
+      notes: bz.note || '',
+      use_gross_price: false,
+      e_invoice: false,
+    };
+    if (bz.tipo === 'ddt') {
+      payload.delivery_note = true;
+      payload.dn_ai_causal = 'Vendita';
+      payload.dn_ai_weight = String(bz.peso_kg || '');
+      payload.dn_ai_transporter = 'Corriere';
+    }
+
+    const resp = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+      method: 'POST', body: JSON.stringify({ data: payload })
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      await pool.query(`UPDATE documenti_bozza SET errore=$1, updated_at=NOW() WHERE id=$2`, [t.slice(0, 300), bz.id]);
+      return res.json({ error: `Fatture in Cloud ha rifiutato il documento: ${t.slice(0, 200)}` });
+    }
+    const dati = await resp.json();
+    const fid = dati.data?.id, fnum = dati.data?.number;
+
+    await pool.query(
+      `UPDATE documenti_bozza SET stato='emesso', fic_id=$1, fic_numero=$2, emesso_da=$3, errore=NULL, updated_at=NOW() WHERE id=$4`,
+      [fid || null, fnum ? String(fnum) : null, req.body?.utente || 'Giovanni', bz.id]);
+    if (bz.tipo === 'ddt' && bz.ordine_id && fid) {
+      await pool.query(`UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3`, [fid, fnum, bz.ordine_id]);
+    }
+
+    // Fattura: marco come fatturati tutti i DDT che confluiscono nel documento
+    let email = null;
+    if (bz.tipo === 'fattura') {
+      let ids = [];
+      try { ids = Array.isArray(bz.ordini_ids) ? bz.ordini_ids : JSON.parse(bz.ordini_ids || '[]'); } catch (e) {}
+      if (!ids.length && bz.ordine_id) ids = [bz.ordine_id];
+      if (ids.length) {
+        await pool.query(
+          `UPDATE ordini SET fic_fattura_id=$1, fic_fattura_numero=$2 WHERE id = ANY($3::int[])`,
+          [fid || null, fnum ? String(fnum) : null, ids]);
+      }
+      // avviso al cliente, se richiesto (predefinito: si')
+      if (req.body?.invia_email !== false) {
+        email = await inviaFatturaAlCliente(bz.id);
+      }
+    }
+
+    console.log(`[DOCUMENTI] ${bz.tipo} n.${fnum} emesso per ${bz.cliente_nome}`);
+    res.json({ ok: true, numero: fnum, fic_id: fid, email });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/documenti-bozza/:id/scarta', async (req, res) => {
+  try {
+    await pool.query(`UPDATE documenti_bozza SET stato='scartato', emesso_da=$1, updated_at=NOW() WHERE id=$2`,
+      [req.body?.utente || null, req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/documenti-bozza/prepara-fatture', async (req, res) => {
+  try {
+    const creati = await preparaFattureDifferite(req.body?.giorni);
+    res.json({ ok: true, creati: creati.length, elenco: creati });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/documenti-bozza/:id/invia-email', async (req, res) => {
+  const r = await inviaFatturaAlCliente(req.params.id);
+  res.json(r.ok ? { ok: true, destinatario: r.destinatario } : { error: r.errore });
 });
 
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
