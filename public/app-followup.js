@@ -9,6 +9,14 @@ const FUP_ETICHETTE = {
   verifica: 'Come si trova',
   riordino: 'Proposta riordino'
 };
+const FUP_CONSEGNA = {
+  in_viaggio:  { testo: 'In viaggio',  colore: 'var(--blue)',   icona: 'ti-truck' },
+  in_consegna: { testo: 'In consegna', colore: 'var(--orange)', icona: 'ti-truck-delivery' },
+  consegnata:  { testo: 'Consegnata',  colore: 'var(--green)',  icona: 'ti-package-import' },
+  giacenza:    { testo: 'In giacenza', colore: 'var(--orange)', icona: 'ti-alert-triangle' },
+  problema:    { testo: 'Problema',    colore: 'var(--red)',    icona: 'ti-alert-circle' }
+};
+
 const FUP_STATO_TAPPA = {
   programmata:  { testo: 'Programmata',   colore: 'var(--text-3)' },
   in_attesa_ok: { testo: 'Da approvare',  colore: 'var(--orange)' },
@@ -57,7 +65,9 @@ async function caricaFollowup(){
           <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.cliente_nome}${allarmeEmail}</div>
           <div style="font-size:11px;color:var(--text-3)">DDT ${r.ddt_numero || '—'} del ${fupData(r.ddt_data)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
         </div>
-        <div style="width:220px;font-size:12px;color:var(--text-2)">${prossima}</div>
+        <div style="width:130px">${(() => { const c = FUP_CONSEGNA[r.stato_consegna] || FUP_CONSEGNA.in_viaggio;
+            return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${c.colore}"><i class="ti ${c.icona}"></i>${c.testo}</span>`; })()}</div>
+        <div style="width:200px;font-size:12px;color:var(--text-2)">${prossima}</div>
         <div style="width:130px;text-align:right;font-size:12px">${stato}</div>
         <i class="ti ti-chevron-right" style="color:var(--text-3)"></i>
       </div>`;
@@ -100,7 +110,11 @@ async function apriFollowup(id){
 
     const testa = `<div style="display:flex;gap:20px;flex-wrap:wrap;padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:14px;font-size:12px">
         <div><div style="color:var(--text-3);font-size:10px">DOCUMENTO</div>DDT ${s.ddt_numero || '—'} del ${fupData(s.ddt_data)}</div>
-        <div><div style="color:var(--text-3);font-size:10px">IMPORTO</div>${s.importo ? '€ ' + Number(s.importo).toFixed(2) : '—'}</div>
+        <div><div style="color:var(--text-3);font-size:10px">STATO SPEDIZIONE</div>
+          <select id="fupd-consegna" onchange="cambiaStatoConsegna(${id})" style="padding:3px 6px;border:1px solid var(--border);border-radius:6px;font-size:12px">
+            ${Object.entries(FUP_CONSEGNA).map(([k,v]) => `<option value="${k}" ${s.stato_consegna===k?'selected':''}>${v.testo}</option>`).join('')}
+          </select>${s.consegnata_il ? ` <span style="font-size:11px;color:var(--text-3)">il ${fupData(s.consegnata_il)}</span>` : ''}
+        </div>
         <div style="flex:1;min-width:200px"><div style="color:var(--text-3);font-size:10px">EMAIL DESTINATARIO</div>
           <input id="fupd-email" value="${s.email_dest || ''}" placeholder="manca — scrivila qui" style="width:100%;padding:4px 8px;border:1px solid ${s.email_dest?'var(--border)':'var(--red)'};border-radius:6px;font-size:12px">
         </div>
@@ -145,6 +159,13 @@ async function apriFollowup(id){
     body.innerHTML = '<div style="padding:20px;color:var(--red)">Errore: ' + e.message + '</div>';
   }
 }
+
+async function cambiaStatoConsegna(id){
+  const v = document.getElementById('fupd-consegna').value;
+  await api.patch('/api/followup/' + id, {stato_consegna: v, utente:(currentUser&&currentUser.username)||null});
+  showSave(); apriFollowup(id); caricaFollowup();
+}
+window.cambiaStatoConsegna = cambiaStatoConsegna;
 
 async function salvaDatiFollowup(id){
   await api.patch('/api/followup/' + id, {
@@ -278,6 +299,25 @@ async function aggiornaBadgeFollowup(){
   }catch(e){ b.style.display='none'; }
 }
 window.aggiornaBadgeFollowup = aggiornaBadgeFollowup;
+
+// Legge la casella spedizioni, importa le nuove e aggiorna gli stati
+async function sincronizzaFollowup(btn){
+  const testoOrig = btn ? btn.innerHTML : '';
+  if(btn){ btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Lettura email...'; }
+  try{
+    const r = await api.post('/api/followup/controllo', {});
+    await caricaFollowup();
+    if(r && r.sync){
+      const n = r.sync.nuove || 0, s = r.sync.stati_aggiornati || 0;
+      if(n || s) showSave();
+      else if(btn) alert('Nessuna nuova spedizione trovata nella casella email.');
+    } else if(r && r.error){
+      alert('Errore: ' + r.error);
+    }
+  }catch(e){ alert('Errore nella lettura: ' + e.message); }
+  finally{ if(btn){ btn.disabled = false; btn.innerHTML = testoOrig; } }
+}
+window.sincronizzaFollowup = sincronizzaFollowup;
 
 window.caricaFollowup = caricaFollowup;
 window.filtraFollowup = filtraFollowup;
