@@ -1570,17 +1570,27 @@ function selezionaAziendaGoogle(prefix, idx){
   const risultati = window['_googleResults_'+prefix];
   if(!risultati || !risultati[idx]) return;
   const r = risultati[idx];
-  document.getElementById(prefix+'-nome').value = r.nome || '';
-  document.getElementById(prefix+'-citta').value = r.citta || '';
-  document.getElementById(prefix+'-ind').value = r.indirizzo || '';
-  const telEl = document.getElementById(prefix+'-tel');
-  if(telEl && r.telefono) telEl.value = r.telefono;
+  // il campo indirizzo si chiama '-ind' sui clienti e '-indirizzo' sui lead
+  const set = (suffissi, valore) => {
+    if(!valore) return;
+    for(const s of suffissi){
+      const el = document.getElementById(prefix + s);
+      if(el){ el.value = valore; return; }
+    }
+  };
+  set(['-nome'], r.nome);
+  set(['-citta'], r.citta);
+  set(['-ind', '-indirizzo'], r.indirizzo);
+  set(['-tel'], r.telefono);
+  set(['-email'], r.email && !String(r.email).toLowerCase().includes('pec') ? r.email : null);
   // PEC: Google Places a volte espone email certificate nei siti web
   // Se nei dati Google c'è una email che contiene "pec" nel dominio la inseriamo automaticamente
   const pecEl = document.getElementById(prefix+'-pec');
   if(pecEl && r.email && r.email.toLowerCase().includes('pec')) pecEl.value = r.email;
-  document.getElementById(prefix+'-risultati-ricerca').innerHTML = `<div style="font-size:12px;color:var(--green);padding:6px 0"><i class="ti ti-check"></i> Dati compilati da Google${pecEl&&pecEl.value?' (inclusa PEC)':''}</div>`;
-  document.getElementById(prefix+'-ricerca-azienda').value = '';
+  const cont = document.getElementById(prefix+'-risultati-ricerca');
+  if(cont) cont.innerHTML = `<div style="font-size:12px;color:var(--green);padding:6px 0"><i class="ti ti-check"></i> Dati compilati da Google${pecEl&&pecEl.value?' (inclusa PEC)':''}</div>`;
+  const inp = document.getElementById(prefix+'-ricerca-azienda');
+  if(inp) inp.value = '';
 }
 
 function selezionaClienteOrdine(clienteId){
