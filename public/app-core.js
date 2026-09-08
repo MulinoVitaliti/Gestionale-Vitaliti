@@ -199,6 +199,7 @@ function canDo(a){return currentUser&&(PERMESSI[currentUser.ruolo]||{})[a];}
 // ── NAVIGATION ────────────────────────────────────────────────────────────
 function showPage(id){
   if(!canDo(id)){alert('Non hai i permessi per questa sezione.');return;}
+  if(typeof initDashAgenteChat==='function') initDashAgenteChat();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
@@ -226,7 +227,7 @@ function showPage(id){
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); }
   if(id==='contabilita')renderContab();
-  if(id==='dashboard'){ renderDash(); if(typeof initDashAgenteChat==='function')initDashAgenteChat(); }
+  if(id==='dashboard'){ renderDash(); }
 
   if(id==='email')checkGmailStatus();
   if(id==='fatture'){ initPaginaFatture(); if(typeof aggiornaBadgeDocumenti==='function')aggiornaBadgeDocumenti(); }
