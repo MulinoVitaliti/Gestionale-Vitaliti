@@ -319,7 +319,7 @@ async function dropLeadInFase(e, faseId, col){
     renderPipeline();
     try{
       await api.put('/api/leads/'+leadId, {
-        nome:lead.nome, contatto:lead.contatto, tel:lead.tel, tel2:lead.tel2, citta:lead.citta,
+        nome:lead.nome, contatto:lead.contatto, tel:lead.tel, tel2:lead.tel2, ind:lead.indirizzo, citta:lead.citta,
         prodotto:lead.prodotto, stato:faseId, note:lead.note, tag:lead.tag||null
       });
       showSave();
@@ -1549,6 +1549,7 @@ function apriDettaglioLead(id){
     l.contatto ? ['Referente', l.contatto] : null,
     l.tel ? ['Telefono', `<a href="tel:${l.tel}" style="color:var(--blue);text-decoration:none">${l.tel}</a>` + (l.tel2 ? ` &middot; <a href="tel:${l.tel2}" style="color:var(--blue);text-decoration:none">${l.tel2}</a>` : '')] : null,
     l.email ? ['Email', `<a href="mailto:${l.email}" style="color:var(--blue);text-decoration:none">${l.email}</a>`] : null,
+    l.indirizzo ? ['Indirizzo', l.indirizzo] : null,
     l.citta ? ['Città', l.citta] : null,
     l.prodotto ? ['Prodotto', l.prodotto] : null,
   ].filter(Boolean);
