@@ -352,6 +352,24 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Esiti delle chiamate ricevuti da crm4 (webhook)
+      CREATE TABLE IF NOT EXISTS crm4_chiamate (
+        id SERIAL PRIMARY KEY,
+        telefono TEXT,
+        nome TEXT,
+        citta TEXT,
+        email TEXT,
+        esito TEXT,
+        campagna TEXT,
+        operatore TEXT,
+        note TEXT,
+        lead_id INTEGER,
+        cliente_id INTEGER,
+        payload JSONB,
+        data_chiamata TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Parametri di costo per il calcolo del margine (modificabili da Impostazioni)
       CREATE TABLE IF NOT EXISTS costi_config (
         chiave TEXT PRIMARY KEY,
@@ -7622,6 +7640,62 @@ app.delete('/api/impegni/:id', async (req, res) => {
   catch (e) { res.json({ error: e.message }); }
 });
 
+// Clienti senza email tra le spedizioni seguite (per completarle al volo)
+app.get('/api/followup/senza-email', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT f.id, f.cliente_id, f.cliente_nome, f.ddt_numero, f.ddt_data, f.stato,
+              c.tel, c.citta
+       FROM followup_spedizioni f LEFT JOIN clienti c ON c.id = f.cliente_id
+       WHERE (f.email_dest IS NULL OR f.email_dest = '')
+       ORDER BY f.ddt_data DESC NULLS LAST LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Salva l'email sia sulla spedizione seguita sia nell'anagrafica del cliente
+app.post('/api/followup/:id/email', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email || !email.includes('@')) return res.json({ error: 'Indirizzo email non valido' });
+  try {
+    const f = await pool.query(`SELECT cliente_id FROM followup_spedizioni WHERE id=$1`, [req.params.id]);
+    await pool.query(`UPDATE followup_spedizioni SET email_dest=$1, updated_at=NOW() WHERE id=$2`,
+      [email, req.params.id]);
+    // la aggiorno anche in anagrafica, se il cliente non ne aveva una
+    const cid = f.rows[0]?.cliente_id;
+    if (cid) {
+      await pool.query(`UPDATE clienti SET email=$1 WHERE id=$2 AND (email IS NULL OR email='')`, [email, cid]);
+    }
+    await fupEvento(req.params.id, 'email_aggiunta', email, req.body?.utente || null);
+    res.json({ ok: true, anagrafica_aggiornata: !!cid });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Clienti da ricontattare: consegna avvenuta da N giorni e nessun nuovo ordine dopo
+app.get('/api/followup/da-ricontattare', async (req, res) => {
+  const g = Number(req.query.giorni) || 30;
+  try {
+    const r = await pool.query(
+      `SELECT f.id, f.cliente_id, f.cliente_nome, f.ddt_numero, f.importo,
+              COALESCE(f.consegnata_il, f.ddt_data) AS riferimento,
+              f.stato_consegna, f.email_dest,
+              c.tel, c.tel2, c.citta,
+              (CURRENT_DATE - COALESCE(f.consegnata_il, f.ddt_data)) AS giorni,
+              (SELECT MAX(o.data) FROM ordini o WHERE o.cliente_id = f.cliente_id) AS ultimo_ordine,
+              (SELECT t.stato FROM followup_tappe t
+                WHERE t.followup_id = f.id AND t.tipo = 'riordino' LIMIT 1) AS stato_riordino
+       FROM followup_spedizioni f LEFT JOIN clienti c ON c.id = f.cliente_id
+       WHERE COALESCE(f.consegnata_il, f.ddt_data) <= CURRENT_DATE - ($1 || ' days')::interval
+         AND NOT EXISTS (
+           SELECT 1 FROM ordini o
+           WHERE o.cliente_id = f.cliente_id
+             AND o.data > COALESCE(f.consegnata_il, f.ddt_data)
+         )
+       ORDER BY COALESCE(f.consegnata_il, f.ddt_data) ASC LIMIT 100`, [String(g)]);
+    res.json({ giorni: g, righe: r.rows });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
 app.get('/api/listini', async (req, res) => {
   try {
@@ -7644,6 +7718,145 @@ app.patch('/api/listini/:id', async (req, res) => {
       `UPDATE listini_prezzi SET listino=COALESCE($1,listino), minimo=COALESCE($2,minimo), aggiornato=NOW() WHERE id=$3`,
       [listino ? JSON.stringify(listino) : null, minimo ? JSON.stringify(minimo) : null, req.params.id]);
     res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// CRM4 — ricezione esiti chiamata via webhook
+// crm4 invia una chiamata HTTP al gestionale ogni volta che un contatto viene
+// lavorato. L'indirizzo da configurare in crm4 e':
+//   https://<indirizzo-gestionale>/api/crm4/webhook?token=<token segreto>
+// ══════════════════════════════════════════════════════════════════════════
+
+function soloCifre(t) { return String(t || '').replace(/\D/g, ''); }
+
+// I nomi dei campi cambiano da configurazione a configurazione: cerco il primo
+// che assomiglia a quello che mi serve, senza pretendere un tracciato fisso.
+function campo(obj, ...chiavi) {
+  if (!obj || typeof obj !== 'object') return null;
+  const piatto = {};
+  const scendi = (o, pref = '') => {
+    for (const [k, v] of Object.entries(o || {})) {
+      const key = (pref ? pref + '.' : '') + k.toLowerCase();
+      if (v && typeof v === 'object' && !Array.isArray(v)) scendi(v, key);
+      else piatto[key] = v;
+    }
+  };
+  scendi(obj);
+  for (const c of chiavi) {
+    for (const [k, v] of Object.entries(piatto)) {
+      if (k === c || k.endsWith('.' + c) || k.includes(c)) {
+        if (v !== null && v !== undefined && String(v).trim() !== '') return String(v).trim();
+      }
+    }
+  }
+  return null;
+}
+
+app.all('/api/crm4/webhook', async (req, res) => {
+  try {
+    const atteso = (await pool.query(`SELECT valore FROM impostazioni WHERE chiave='crm4_token'`)).rows[0]?.valore;
+    const ricevuto = req.query.token || req.headers['x-crm4-token'] || req.body?.token;
+    if (atteso && ricevuto !== atteso) return res.status(401).json({ error: 'Token non valido' });
+
+    const dati = { ...(req.body || {}), ...(req.query || {}) };
+    const telefono = campo(dati, 'telefono', 'phone', 'tel', 'cellulare', 'numero');
+    const nome = campo(dati, 'ragione_sociale', 'azienda', 'nome', 'name', 'cliente');
+    const esito = campo(dati, 'esito', 'outcome', 'status', 'stato', 'result');
+    const citta = campo(dati, 'citta', 'city', 'comune');
+    const email = campo(dati, 'email', 'mail');
+    const campagna = campo(dati, 'campagna', 'campaign', 'lista');
+    const operatore = campo(dati, 'operatore', 'agent', 'operator', 'utente');
+    const note = campo(dati, 'note', 'notes', 'commento', 'descrizione');
+
+    if (!telefono && !nome) return res.json({ ok: false, motivo: 'Nessun telefono o nome nel messaggio ricevuto' });
+
+    // provo ad agganciare il contatto a un cliente o a un lead esistente, dal numero
+    let clienteId = null, leadId = null;
+    const num = soloCifre(telefono);
+    if (num.length >= 6) {
+      const c = await pool.query(
+        `SELECT id FROM clienti WHERE regexp_replace(COALESCE(tel,''),'\\D','','g') LIKE $1
+            OR regexp_replace(COALESCE(tel2,''),'\\D','','g') LIKE $1 LIMIT 1`, ['%' + num.slice(-8)]);
+      clienteId = c.rows[0]?.id || null;
+      if (!clienteId) {
+        const l = await pool.query(
+          `SELECT id FROM leads WHERE regexp_replace(COALESCE(tel,''),'\\D','','g') LIKE $1
+              OR regexp_replace(COALESCE(tel2,''),'\\D','','g') LIKE $1 LIMIT 1`, ['%' + num.slice(-8)]);
+        leadId = l.rows[0]?.id || null;
+      }
+    }
+
+    await pool.query(
+      `INSERT INTO crm4_chiamate (telefono, nome, citta, email, esito, campagna, operatore, note, lead_id, cliente_id, payload)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)`,
+      [telefono, nome, citta, email, esito, campagna, operatore, note, leadId, clienteId, JSON.stringify(dati)]);
+
+    // se il contatto non esiste da nessuna parte, lo creo come lead nella pipeline
+    let creato = null;
+    if (!clienteId && !leadId && nome) {
+      const fasi = await pool.query(`SELECT id FROM fasi ORDER BY id LIMIT 1`);
+      const primaFase = fasi.rows[0]?.id || 'lead';
+      const ins = await pool.query(
+        `INSERT INTO leads (nome, tel, citta, email, stato, note, tag)
+         VALUES ($1,$2,$3,$4,$5,$6,'crm4') RETURNING id`,
+        [nome, telefono, citta, email, primaFase,
+         `Da crm4${campagna ? ' — campagna ' + campagna : ''}${esito ? ' — esito: ' + esito : ''}${note ? '\n' + note : ''}`]);
+      creato = ins.rows[0].id;
+    }
+
+    console.log(`[CRM4] chiamata ricevuta: ${nome || telefono} — esito "${esito || 'n/d'}"${creato ? ' → lead #' + creato : ''}`);
+    res.json({ ok: true, registrata: true, lead_creato: creato, agganciato_a: clienteId ? 'cliente' : (leadId ? 'lead' : null) });
+  } catch (e) {
+    console.error('[CRM4 webhook]', e.message);
+    res.json({ error: e.message });
+  }
+});
+
+// Elenco e analisi delle chiamate ricevute
+app.get('/api/crm4/chiamate', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM crm4_chiamate ORDER BY data_chiamata DESC LIMIT 200`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/crm4/analisi', async (req, res) => {
+  try {
+    const esiti = await pool.query(
+      `SELECT COALESCE(esito,'non indicato') esito, COUNT(*) n FROM crm4_chiamate
+       GROUP BY esito ORDER BY n DESC`);
+    const campagne = await pool.query(
+      `SELECT COALESCE(campagna,'senza campagna') campagna, COUNT(*) n,
+              COUNT(*) FILTER (WHERE cliente_id IS NOT NULL) gia_clienti,
+              COUNT(DISTINCT telefono) contatti
+       FROM crm4_chiamate GROUP BY campagna ORDER BY n DESC LIMIT 20`);
+    const conversioni = await pool.query(
+      `SELECT COUNT(DISTINCT c.telefono) chiamati,
+              COUNT(DISTINCT c.telefono) FILTER (WHERE EXISTS (
+                SELECT 1 FROM ordini o WHERE o.cliente_id = c.cliente_id AND o.data >= c.data_chiamata::date
+              )) con_ordine_dopo
+       FROM crm4_chiamate c`);
+    res.json({ esiti: esiti.rows, campagne: campagne.rows, conversioni: conversioni.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Token del webhook: si imposta una volta e si incolla in crm4
+app.get('/api/crm4/token', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='crm4_token'`);
+    res.json({ token: r.rows[0]?.valore || null });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/crm4/token', async (req, res) => {
+  try {
+    const t = req.body?.token || require('crypto').randomBytes(16).toString('hex');
+    await pool.query(
+      `INSERT INTO impostazioni (chiave, valore) VALUES ('crm4_token',$1)
+       ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [t]);
+    res.json({ ok: true, token: t });
   } catch (e) { res.json({ error: e.message }); }
 });
 
