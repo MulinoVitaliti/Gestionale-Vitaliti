@@ -296,11 +296,13 @@ window.recuperaSpedizioniFollowup = recuperaSpedizioniFollowup;
 
 // Pallino arancione sul bottone in Ordini quando ci sono email da approvare
 async function aggiornaBadgeFollowup(){
-  const b = document.getElementById('btn-fup-badge');
+  const b = document.getElementById('sped-fup-badge') || document.getElementById('btn-fup-badge');
   if(!b) return;
   try{
     const r = await api.get('/api/followup/riepilogo');
-    const n = Number(r && r.da_approvare) || 0;
+    // sulla linguetta segnalo quello che richiede un'azione: email da approvare
+    // piu' i clienti da ricontattare
+    const n = (Number(r && r.da_approvare) || 0) + (Number(r && r.da_ricontattare) || 0);
     b.textContent = n;
     b.style.display = n ? 'inline-block' : 'none';
   }catch(e){ b.style.display='none'; }
