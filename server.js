@@ -2180,10 +2180,20 @@ async function boRaccogliDati() {
 async function boGeneraAlert(dati) {
   const nuoviAlert = [];
 
+  // Tetto di sicurezza: oltre questa soglia l'agente smette di creare alert
+  const apertiOra = await pool.query(`SELECT COUNT(*) n FROM backoffice_alert WHERE letto=false`);
+  if (Number(apertiOra.rows[0].n) >= 60) {
+    console.log('[Agente] Tetto alert raggiunto (60 non letti): nessun nuovo alert');
+    return nuoviAlert;
+  }
+
   const aggiungi = async (tipo, gravita, titolo, dettaglio, riferimento) => {
-    // Evita duplicati: stesso tipo+riferimento non ancora letto
+    // Evita duplicati: stesso tipo+riferimento negli ultimi 30 giorni,
+    // LETTO O NON LETTO. Guardare solo i non letti faceva ricomparire
+    // all'infinito gli alert che erano appena stati segnati come letti.
     const esiste = await pool.query(
-      `SELECT id FROM backoffice_alert WHERE tipo=$1 AND riferimento=$2 AND letto=false`,
+      `SELECT id FROM backoffice_alert
+       WHERE tipo=$1 AND riferimento=$2 AND created_at > NOW() - INTERVAL '30 days'`,
       [tipo, riferimento]
     );
     if (esiste.rows.length) return;
@@ -2375,16 +2385,25 @@ async function eseguiLoopAgente(origine = 'automatico') {
 // ── 1. Segna clienti inattivi come "a rischio" ────────────────────────────
 async function agenteSegnaClintiARischio(risultati) {
   try {
-    // Clienti senza ordini da più di 60 giorni che non sono ancora "a rischio"
+    // Non basta "non ordina da 60 giorni": cosi' finiva dentro mezza anagrafica,
+    // compresi i clienti che hanno comprato una volta sola anni fa.
+    // A rischio = cliente ABITUALE (almeno 3 ordini) che ha smesso, cioe' fermo
+    // da oltre il doppio del suo ritmo abituale. Al massimo 15 per giro.
     const soglia = new Date(); soglia.setDate(soglia.getDate() - 60);
     const inattivi = await pool.query(`
-      SELECT c.id, c.nome, c.tag, MAX(o.data) as ultimo_ordine
+      SELECT c.id, c.nome, c.tag, MAX(o.data) AS ultimo_ordine, COUNT(o.id) AS n_ordini,
+             (MAX(o.data) - MIN(o.data)) / NULLIF(COUNT(o.id) - 1, 0) AS ciclo_medio
       FROM clienti c
-      LEFT JOIN ordini o ON o.cliente_id = c.id
+      JOIN ordini o ON o.cliente_id = c.id
       WHERE c.tipo = 'cliente'
       GROUP BY c.id, c.nome, c.tag
-      HAVING (MAX(o.data) IS NULL OR MAX(o.data) < $1)
+      HAVING COUNT(o.id) >= 3
+        AND MAX(o.data) < $1
+        AND (CURRENT_DATE - MAX(o.data)) > 2 * GREATEST(
+              (MAX(o.data) - MIN(o.data)) / NULLIF(COUNT(o.id) - 1, 0), 15)
         AND (c.tag IS NULL OR c.tag NOT LIKE '%rischio%')
+      ORDER BY MAX(o.data) ASC
+      LIMIT 15
     `, [soglia.toISOString().slice(0, 10)]);
 
     for (const c of inattivi.rows) {
@@ -2396,7 +2415,8 @@ async function agenteSegnaClintiARischio(risultati) {
 
       // Crea alert
       const esiste = await pool.query(
-        `SELECT id FROM backoffice_alert WHERE tipo='cliente_rischio' AND riferimento=$1 AND letto=false`,
+        `SELECT id FROM backoffice_alert WHERE tipo='cliente_rischio' AND riferimento=$1
+           AND created_at > NOW() - INTERVAL '60 days'`,
         [`cli:${c.id}`]
       );
       if (!esiste.rows.length) {
