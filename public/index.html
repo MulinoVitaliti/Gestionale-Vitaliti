@@ -418,19 +418,7 @@ window.addEventListener('unhandledrejection', function(e) {
       </div>
 
       <!-- Widget Virtual Company -->
-      <div id="dash-agente-chat" style="display:none;margin-bottom:18px;border:1px solid var(--border);border-radius:12px;background:var(--surface-2);overflow:hidden">
-        <div style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border)">
-          <div id="dac-avatar" style="width:30px;height:30px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:12px"></div>
-          <div><div id="dac-nome" style="font-weight:600;font-size:13px"></div><div id="dac-ruolo" style="font-size:11px;color:var(--text-3)"></div></div>
-          <button class="btn btn-sm" style="margin-left:auto" onclick="showPage('ai')"><i class="ti ti-arrows-diagonal"></i>Chat completa</button>
-        </div>
-        <div id="dac-messages" style="height:220px;overflow-y:auto;padding:12px;display:flex;flex-direction:column;gap:8px;font-size:13px"></div>
-        <div style="display:flex;gap:8px;padding:10px 12px;border-top:1px solid var(--border)">
-          <input id="dac-input" type="text" placeholder="Scrivi al tuo assistente..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter')dacInvia()">
-          <button class="btn btn-primary btn-sm" id="dac-send" onclick="dacInvia()"><i class="ti ti-send"></i></button>
-        </div>
-      </div>
-      <!-- Task del Giorno - Focus Giornaliero -->
+<!-- Task del Giorno - Focus Giornaliero -->
       <div class="card" style="margin-bottom:14px;overflow:hidden">
         <!-- Header motivazionale -->
         <div style="background:linear-gradient(135deg,var(--brand) 0%,#c0572e 100%);padding:14px 18px;color:#fff">
@@ -2559,5 +2547,35 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="app-etichetta.js"></script>
 <script src="app-ui.js"></script>
 
+
+<!-- ASSISTENTE: bolla sempre presente, si apre su ogni pagina -->
+<div id="ai-bolla" onclick="toggleAssistente()" style="display:none;position:fixed;bottom:22px;right:22px;width:56px;height:56px;border-radius:50%;box-shadow:0 6px 20px rgba(0,0,0,.28);cursor:pointer;z-index:9000;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:20px;transition:transform .15s" onmouseover="this.style.transform='scale(1.06)'" onmouseout="this.style.transform='scale(1)'">
+  <span id="ai-bolla-iniziale"></span>
+  <span id="ai-bolla-badge" style="display:none;position:absolute;top:-2px;right:-2px;background:var(--red);color:#fff;border-radius:10px;min-width:18px;height:18px;font-size:10px;line-height:18px;text-align:center;padding:0 4px;border:2px solid var(--surface)"></span>
+</div>
+
+<div id="ai-pannello" style="display:none;position:fixed;bottom:88px;right:22px;width:370px;max-width:calc(100vw - 32px);height:490px;max-height:calc(100vh - 130px);background:var(--surface);border:1px solid var(--border);border-radius:16px;box-shadow:0 12px 40px rgba(0,0,0,.3);z-index:9001;flex-direction:column;overflow:hidden">
+  <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;border-bottom:1px solid var(--border);flex-shrink:0">
+    <div id="ai-avatar" style="width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:13px"></div>
+    <div style="flex:1;min-width:0">
+      <div id="ai-nome" style="font-weight:600;font-size:13px"></div>
+      <div id="ai-ruolo" style="font-size:11px;color:var(--text-3)"></div>
+    </div>
+    <button class="btn btn-icon btn-sm" onclick="showPage('ai');toggleAssistente(false)" title="Apri la chat completa"><i class="ti ti-arrows-diagonal"></i></button>
+    <button class="btn btn-icon btn-sm" onclick="toggleAssistente(false)" title="Chiudi"><i class="ti ti-x"></i></button>
+  </div>
+  <div id="dac-messages" style="flex:1;overflow-y:auto;padding:14px;display:flex;flex-direction:column;gap:9px;font-size:13px"></div>
+  <div style="display:flex;gap:8px;padding:11px 12px;border-top:1px solid var(--border);flex-shrink:0">
+    <input id="dac-input" type="text" placeholder="Scrivi al tuo assistente..." style="flex:1;padding:9px 11px;border:1px solid var(--border);border-radius:9px;font-size:13px" onkeydown="if(event.key==='Enter')dacInvia()">
+    <button class="btn btn-primary btn-sm" id="dac-send" onclick="dacInvia()"><i class="ti ti-send"></i></button>
+  </div>
+</div>
+
+<style>
+@media(max-width:680px){
+  #ai-pannello{ right:8px; left:8px; bottom:78px; width:auto; max-width:none; height:calc(100vh - 150px) }
+  #ai-bolla{ bottom:16px; right:16px; width:52px; height:52px }
+}
+</style>
 </body>
 </html>
