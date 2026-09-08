@@ -1420,6 +1420,14 @@ window.addEventListener('unhandledrejection', function(e) {
 <div class="modal-overlay" id="modal-lead">
   <div class="modal" style="max-width:560px"><div class="modal-header"><div class="modal-title"><i class="ti ti-user-plus" style="color:var(--brand);margin-right:6px"></i>Nuovo lead</div><button class="btn btn-icon" onclick="closeModal('modal-lead')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
+    <div style="background:var(--surface-2);border-radius:10px;padding:11px 13px;margin-bottom:14px">
+      <label class="form-label" style="margin-bottom:5px;display:block"><i class="ti ti-brand-google" style="color:var(--brand)"></i> Cerca l'azienda su Google</label>
+      <div style="display:flex;gap:7px">
+        <input type="text" id="lead-ricerca-azienda" placeholder="Nome attività e città (es. Panificio Rosso Catania)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();cercaAziendaGoogle('lead');}">
+        <button type="button" class="btn btn-sm" onclick="cercaAziendaGoogle('lead')"><i class="ti ti-search"></i>Cerca</button>
+      </div>
+      <div id="lead-risultati-ricerca" style="margin-top:8px"></div>
+    </div>
     <!-- Dati contatto -->
     <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.6px;color:var(--text-3);margin-bottom:10px">Dati contatto</div>
     <div class="form-row"><div class="form-group"><label class="form-label">Nome / Ragione sociale *</label><input type="text" id="lead-nome" placeholder="Es. Panificio Rossi"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="lead-contatto"></div></div>
@@ -1470,6 +1478,14 @@ window.addEventListener('unhandledrejection', function(e) {
 <div class="modal-overlay" id="modal-edit-lead">
   <div class="modal"><div class="modal-header"><div class="modal-title">Modifica contatto</div><button class="btn btn-icon" onclick="closeModal('modal-edit-lead')"><i class="ti ti-x"></i></button></div>
   <div class="modal-body">
+    <div style="background:var(--surface-2);border-radius:10px;padding:11px 13px;margin-bottom:14px">
+      <label class="form-label" style="margin-bottom:5px;display:block"><i class="ti ti-brand-google" style="color:var(--brand)"></i> Cerca l'azienda su Google</label>
+      <div style="display:flex;gap:7px">
+        <input type="text" id="edit-lead-ricerca-azienda" placeholder="Nome attività e città (es. Panificio Rosso Catania)" style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();cercaAziendaGoogle('edit-lead');}">
+        <button type="button" class="btn btn-sm" onclick="cercaAziendaGoogle('edit-lead')"><i class="ti ti-search"></i>Cerca</button>
+      </div>
+      <div id="edit-lead-risultati-ricerca" style="margin-top:8px"></div>
+    </div>
     <input type="hidden" id="edit-lead-id">
     <div class="form-row"><div class="form-group"><label class="form-label">Nome *</label><input type="text" id="edit-lead-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-lead-contatto"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-lead-tel" placeholder="principale"></div><div class="form-group"><label class="form-label">Secondo telefono</label><input type="text" id="edit-lead-tel2" placeholder="facoltativo"></div></div>
