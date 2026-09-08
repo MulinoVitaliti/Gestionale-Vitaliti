@@ -284,6 +284,8 @@ async function salvaModelloFollowup(tipo){
   showSave();
 }
 
+// Non più tra i comandi della pagina: serviva a popolare il monitoraggio la prima
+// volta. Resta richiamabile dalla console se dovesse servire un recupero.
 async function recuperaSpedizioniFollowup(){
   const g = prompt('Creare i percorsi per le spedizioni corriere degli ultimi quanti giorni?', '30');
   if(g === null) return;
