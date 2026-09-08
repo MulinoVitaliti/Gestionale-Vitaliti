@@ -31,7 +31,7 @@ async function aggiornaContatoreBozze(){
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
   const nuovoStato = document.getElementById('edit-lead-stato').value;
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
 
   if(currentPipelineId === 'default'){
     body.stato = nuovoStato;
@@ -490,6 +490,8 @@ function editLead(id){
   document.getElementById('edit-lead-nome').value=l.nome;
   document.getElementById('edit-lead-contatto').value=l.contatto||'';
   document.getElementById('edit-lead-tel').value=l.tel||'';
+  document.getElementById('edit-lead-tel2').value=l.tel2||'';
+  document.getElementById('edit-lead-indirizzo').value=l.indirizzo||'';
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
   const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
@@ -1377,6 +1379,8 @@ async function salvaLead(){
     nome,
     contatto:document.getElementById('lead-contatto').value,
     tel:document.getElementById('lead-tel').value,
+    tel2:document.getElementById('lead-tel2').value,
+    indirizzo:document.getElementById('lead-indirizzo').value,
     email:document.getElementById('lead-email')?.value||'',
     citta:document.getElementById('lead-citta').value,
     prodotto:document.getElementById('lead-prodotto').value,
@@ -1408,7 +1412,7 @@ async function salvaLead(){
   }
   closeModal('modal-lead'); renderPipeline(); renderDash(); showSave();
   // Reset campi
-  ['lead-nome','lead-contatto','lead-tel','lead-email','lead-citta','lead-att-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['lead-nome','lead-contatto','lead-tel','lead-tel2','lead-email','lead-indirizzo','lead-citta','lead-att-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('lead-tag').value='';
   const toggle=document.getElementById('lead-att-toggle');
   if(toggle){toggle.checked=false;toggleLeadAttivita(false);}
