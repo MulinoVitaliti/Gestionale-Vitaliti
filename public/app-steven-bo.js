@@ -54,7 +54,8 @@ async function boCaricaAlert(){
           <div style="font-size:13px;font-weight:600">${a.titolo}</div>
           ${a.dettaglio?`<div style="font-size:12px;color:var(--text-2)">${a.dettaglio}</div>`:''}
         </div>
-        <button class="btn btn-sm" onclick="boSegnaLetto(${a.id})" style="font-size:11px;padding:3px 8px">✓</button>
+        <button class="btn btn-sm" onclick="boSegnaLetto(${a.id})" style="font-size:11px;padding:3px 8px" title="Segna come letto">✓</button>
+        <button class="btn btn-sm btn-danger" onclick="boEliminaAlert(${a.id})" style="font-size:11px;padding:3px 7px" title="Elimina"><i class="ti ti-trash"></i></button>
       </div>`).join('');
   }catch(e){}
 }
@@ -81,6 +82,17 @@ async function boCaricaListe(){
     if(elTot) elTot.textContent = '€' + Number(dati.totaleDaIncassare||0).toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
 
     // Non pagati
+    // Gli insoluti sono dati riservati: li vede solo chi ha accesso alla contabilita'
+    const puoVedereSoldi = typeof canDo === 'function' ? canDo('contabilita') : true;
+    const box = document.getElementById('bo-box-nonpagati');
+    if(box) box.style.display = puoVedereSoldi ? '' : 'none';
+    const espo = document.getElementById('bo-totale-esposizione');
+    if(!puoVedereSoldi){
+      if(espo) espo.textContent = '';
+      const l = document.getElementById('bo-lista-nonpagati');
+      if(l) l.innerHTML = '';
+      dati.nonPagati = [];   // non deve nemmeno restare in pagina
+    }
     document.getElementById('bo-count-nonpagati').textContent = dati.nonPagati.length;
     const listaNP = document.getElementById('bo-lista-nonpagati');
     listaNP.innerHTML = dati.nonPagati.length
@@ -222,3 +234,58 @@ async function boInviaSollecito(i){
 }
 
 // ── RICERCA E SCHEDA CLIENTE (sezione AI) ────────────────────────────────
+
+
+// ── ELIMINAZIONE ALERT E CLIENTI A RISCHIO ───────────────────────────────
+async function boEliminaAlert(id){
+  await fetch('/api/backoffice/alert/' + id, {method:'DELETE'});
+  boCaricaAlert();
+  if(typeof aggiornaStatoAgente==='function') aggiornaStatoAgente();
+}
+
+async function boEliminaTuttiAlert(){
+  if(!confirm('Eliminare definitivamente TUTTI gli alert? L\'operazione non si puo\' annullare.')) return;
+  const r = await (await fetch('/api/backoffice/alert', {method:'DELETE'})).json();
+  if(r.error) return alert('Errore: ' + r.error);
+  boCaricaAlert();
+  if(typeof aggiornaStatoAgente==='function') aggiornaStatoAgente();
+}
+
+// Clienti a rischio: elenco e rimozione dell'etichetta
+async function apriClientiRischio(){
+  openModal('modal-clienti-rischio');
+  const box = document.getElementById('mcr-lista');
+  box.innerHTML = '<div style="padding:14px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  const dati = await api.get('/api/clienti-rischio');
+  if(!Array.isArray(dati) || !dati.length){
+    box.innerHTML = '<div style="padding:18px;text-align:center;color:var(--text-3);font-size:13px">Nessun cliente segnato a rischio.</div>';
+    return;
+  }
+  box.innerHTML = dati.map(c => `
+    <div style="display:flex;align-items:center;gap:10px;padding:9px 4px;border-bottom:1px solid var(--border)">
+      <div style="flex:1">
+        <div style="font-size:13px;font-weight:600">${c.nome}</div>
+        <div style="font-size:11px;color:var(--text-3)">${c.citta || ''}${c.tel ? ' · ' + c.tel : ''}</div>
+      </div>
+      <button class="btn btn-sm" onclick="togliRischio(${c.id})" title="Togli l'etichetta a rischio"><i class="ti ti-flag-off"></i>Togli</button>
+    </div>`).join('');
+}
+
+async function togliRischio(id){
+  await fetch('/api/clienti-rischio/' + id, {method:'DELETE'});
+  apriClientiRischio();
+  if(typeof aggiornaStatoAgente==='function') aggiornaStatoAgente();
+}
+
+async function togliRischioTutti(){
+  if(!confirm('Togliere l\'etichetta "a rischio" da TUTTI i clienti?')) return;
+  const r = await (await fetch('/api/clienti-rischio', {method:'DELETE'})).json();
+  if(r.error) return alert('Errore: ' + r.error);
+  apriClientiRischio();
+  if(typeof aggiornaStatoAgente==='function') aggiornaStatoAgente();
+}
+window.boEliminaAlert = boEliminaAlert;
+window.boEliminaTuttiAlert = boEliminaTuttiAlert;
+window.apriClientiRischio = apriClientiRischio;
+window.togliRischio = togliRischio;
+window.togliRischioTutti = togliRischioTutti;
