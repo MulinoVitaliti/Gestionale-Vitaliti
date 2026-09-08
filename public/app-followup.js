@@ -80,15 +80,15 @@ async function caricaFollowup(){
 function renderFupRiepilogo(r){
   const box = document.getElementById('fup-riepilogo');
   if(!box || !r || r.error) return;
-  const card = (n, testo, colore) => `<div class="card" style="padding:14px 16px">
+  const card = (n, testo, colore, azione) => `<div class="card" style="padding:14px 16px${azione ? ';cursor:pointer' : ''}"${azione ? ` onclick="${azione}"` : ''}>
       <div style="font-size:24px;font-weight:700;color:${colore}">${n || 0}</div>
-      <div style="font-size:11px;color:var(--text-3);margin-top:2px">${testo}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:2px">${testo}${azione ? ' <i class="ti ti-chevron-right" style="font-size:11px"></i>' : ''}</div>
     </div>`;
   box.innerHTML =
     card(r.in_corso, 'Ordini seguiti', 'var(--brand)') +
     card(r.da_approvare, 'Email da approvare', 'var(--orange)') +
-    card(r.riordini_vicini, 'Riordini entro 7 giorni', 'var(--green)') +
-    card(r.senza_email, 'Clienti senza email', r.senza_email > 0 ? 'var(--red)' : 'var(--text-3)');
+    card(r.riordini_vicini, 'Riordini entro 7 giorni', 'var(--green)', 'apriDaRicontattare()') +
+    card(r.senza_email, 'Clienti senza email', r.senza_email > 0 ? 'var(--red)' : 'var(--text-3)', 'apriSenzaEmail()');
 }
 
 function filtraFollowup(stato, el){
@@ -484,3 +484,73 @@ window.emettiDocumento = emettiDocumento;
 window.ricontrollaDocumento = ricontrollaDocumento;
 window.scartaDocumento = scartaDocumento;
 window.aggiornaBadgeDocumenti = aggiornaBadgeDocumenti;
+
+
+// ── CLIENTI SENZA EMAIL ──────────────────────────────────────────────────
+async function apriSenzaEmail(){
+  openModal('modal-senza-email');
+  const box = document.getElementById('se-lista');
+  box.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  try{
+    const dati = await api.get('/api/followup/senza-email');
+    if(!Array.isArray(dati) || !dati.length){
+      box.innerHTML = '<div style="padding:24px;text-align:center;color:var(--green);font-size:13px">✅ Tutte le spedizioni hanno un indirizzo email.</div>';
+      return;
+    }
+    box.innerHTML = dati.map(r => `
+      <div style="display:flex;align-items:center;gap:10px;padding:9px 0;border-bottom:1px solid var(--border)" id="se-riga-${r.id}">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.cliente_nome}</div>
+          <div style="font-size:11px;color:var(--text-3)">DDT ${r.ddt_numero || '—'} del ${fupData(r.ddt_data)}${r.citta ? ' · ' + r.citta : ''}${r.tel ? ' · ' + r.tel : ''}</div>
+        </div>
+        <input type="email" id="se-mail-${r.id}" placeholder="indirizzo email" style="width:230px;padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:12px" onkeydown="if(event.key==='Enter')salvaEmailFollowup(${r.id})">
+        <button class="btn btn-sm btn-primary" onclick="salvaEmailFollowup(${r.id})"><i class="ti ti-check"></i></button>
+      </div>`).join('');
+  }catch(e){ box.innerHTML = '<div style="padding:18px">Errore nel caricamento.</div>'; }
+}
+
+async function salvaEmailFollowup(id){
+  const el = document.getElementById('se-mail-'+id);
+  const v = (el.value||'').trim();
+  if(!v.includes('@')) return alert('Scrivi un indirizzo email valido.');
+  const r = await api.post('/api/followup/'+id+'/email', {email:v, utente:(currentUser&&currentUser.username)||null});
+  if(r.error) return alert('Errore: '+r.error);
+  const riga = document.getElementById('se-riga-'+id);
+  if(riga) riga.innerHTML = `<div style="padding:9px 0;font-size:13px;color:var(--green)">✅ ${v} salvata${r.anagrafica_aggiornata?' anche in anagrafica':''}</div>`;
+  caricaFollowup();
+}
+
+// ── DA RICONTATTARE ──────────────────────────────────────────────────────
+async function apriDaRicontattare(giorni){
+  openModal('modal-da-ricontattare');
+  const g = giorni || document.getElementById('dr-giorni')?.value || 30;
+  const box = document.getElementById('dr-lista');
+  box.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  try{
+    const d = await api.get('/api/followup/da-ricontattare?giorni='+g);
+    if(!d.righe || !d.righe.length){
+      box.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px">Nessun cliente da ricontattare oltre i ${g} giorni.</div>`;
+      return;
+    }
+    box.innerHTML = `<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">${d.righe.length} clienti serviti da oltre ${g} giorni che non hanno più ordinato.</div>` +
+      d.righe.map(r => {
+        const col = r.giorni > 60 ? 'var(--red)' : r.giorni > 45 ? 'var(--orange)' : 'var(--text-2)';
+        return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
+          <div style="flex:1;min-width:0">
+            <div style="font-size:13px;font-weight:600">${r.cliente_nome}</div>
+            <div style="font-size:11px;color:var(--text-3)">${r.citta || ''}${r.ddt_numero ? ' · DDT ' + r.ddt_numero : ''} · consegna ${fupData(r.riferimento)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
+          </div>
+          <div style="width:90px;text-align:right;font-size:12px;font-weight:600;color:${col}">${r.giorni} giorni</div>
+          <div style="display:flex;gap:5px">
+            ${r.tel ? `<a class="btn btn-sm" href="tel:${r.tel}" title="Chiama"><i class="ti ti-phone"></i></a>` : ''}
+            ${r.email_dest ? `<button class="btn btn-sm" onclick="apriFollowup(${r.id});closeModal('modal-da-ricontattare')" title="Apri la scheda e manda la proposta"><i class="ti ti-mail"></i></button>` : ''}
+            <button class="btn btn-sm" onclick="apriFollowup(${r.id});closeModal('modal-da-ricontattare')" title="Apri la spedizione"><i class="ti ti-chevron-right"></i></button>
+          </div>
+        </div>`;
+      }).join('');
+  }catch(e){ box.innerHTML = '<div style="padding:18px">Errore nel caricamento.</div>'; }
+}
+
+window.apriSenzaEmail = apriSenzaEmail;
+window.salvaEmailFollowup = salvaEmailFollowup;
+window.apriDaRicontattare = apriDaRicontattare;
