@@ -467,6 +467,18 @@ async function preparaFattureOra(btn){
 }
 window.preparaFattureOra = preparaFattureOra;
 
+async function allineaFIC(btn){
+  const o = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Allineo...';
+  try{
+    const r = await api.post('/api/fatture/sincronizza-emessi', {});
+    if(r.error) alert('Errore: ' + r.error);
+    else alert(`Esaminate ${r.fatture} fatture e ${r.ddt} DDT su Fatture in Cloud.\nOrdini allineati: ${r.ordini_allineati}.`);
+    aggiornaBadgeDocumenti();
+  }catch(e){ alert('Errore: '+e.message); }
+  finally{ btn.disabled=false; btn.innerHTML=o; }
+}
+window.allineaFIC = allineaFIC;
+
 window.apriDocumentiBozza = apriDocumentiBozza;
 window.emettiDocumento = emettiDocumento;
 window.ricontrollaDocumento = ricontrollaDocumento;
