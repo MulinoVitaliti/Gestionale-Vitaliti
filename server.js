@@ -5456,6 +5456,68 @@ async function costruisciContesto(agente, messages) {
 }
 
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// RISPOSTA PREZZI SCRITTA DAL GESTIONALE
+// Le domande di prezzo non passano dal modello: la risposta la compone il
+// codice leggendo la tabella dei listini. Cosi' le cifre non possono essere
+// inventate, arrotondate o ricalcolate con formule sbagliate.
+// ══════════════════════════════════════════════════════════════════════════
+
+function eDomandaDiPrezzo(testo) {
+  const t = String(testo || '').toLowerCase();
+  return /(prezzo|prezzi|costa|costo|quanto\s+(?:costa|viene|fa)|listino|tariffa|preventiv|quotazion|offerta|scontat)/.test(t);
+}
+
+async function rispostaPrezzoDiretta(messages) {
+  try {
+    const ultimo = [...(messages || [])].reverse().find(m => m.role === 'user');
+    const testo = ultimo && typeof ultimo.content === 'string' ? ultimo.content : '';
+    if (!testo || !eDomandaDiPrezzo(testo)) return null;
+    const t = testo.toLowerCase();
+
+    const loc = await pool.query(`SELECT localita, zona, listino, minimo FROM listini_prezzi`);
+    if (!loc.rows.length) return null;
+    const trovate = loc.rows
+      .filter(r => { const n = String(r.localita).toLowerCase(); return n.length >= 4 && t.includes(n); })
+      .sort((a, b) => b.localita.length - a.localita.length)
+      .slice(0, 2);
+    if (!trovate.length) return null;
+
+    const kg = [...t.matchAll(/(\d{2,5})\s*(?:kg|chili|chilogrammi)/g)].map(m => Number(m[1]))
+      .concat([...t.matchAll(/\b(120|270|420|510|630|780|1050)\b/g)].map(m => Number(m[1])))
+      .filter(n => n >= 50 && n <= 5000);
+    const quantita = [...new Set(kg)].slice(0, 2);
+
+    let out = '';
+    for (const r of trovate) {
+      const li = r.listino, mi = r.minimo;
+      out += `**${r.localita}** (${r.zona})\n`;
+      if (quantita.length) {
+        for (const q of quantita) {
+          const i = scaglionePerKg(q);
+          const prezzo = Number(li[i]), min = mi ? Number(mi[i]) : null;
+          out += `\nPer **${q} kg** (scaglione ${SCAGLIONI_KG[i]} kg):\n` +
+                 `• Listino: **€${prezzo.toFixed(2)}/kg** → totale **€${(prezzo * q).toFixed(2)}**\n`;
+          if (min) {
+            const scontoMax = ((prezzo - min) / prezzo * 100);
+            out += `• Prezzo minimo: **€${min.toFixed(2)}/kg** → totale €${(min * q).toFixed(2)} (sotto non si scende)\n` +
+                   `• Margine di trattativa: fino a −${scontoMax.toFixed(1)}%\n`;
+          }
+          if (q >= 780) out += `• Attenzione: ${q} kg non si propone come primo ordine a un cliente nuovo o non contrattualizzato (limite 630 kg).\n`;
+        }
+      } else {
+        out += `\n| Quantita' | Listino | Minimo |\n|---|---|---|\n`;
+        SCAGLIONI_KG.forEach((s, i) => {
+          out += `| ${s} kg | €${Number(li[i]).toFixed(2)} | ${mi ? '€' + Number(mi[i]).toFixed(2) : '—'} |\n`;
+        });
+      }
+      out += '\n';
+    }
+    out += `_Prezzi in €/kg, IVA esclusa. Il trasporto e' gia' compreso. Dati dal listino del gestionale._`;
+    return out;
+  } catch (e) { console.error('[PREZZI diretta]', e.message); return null; }
+}
+
 app.post('/api/chat', async (req, res) => {
   const start = Date.now();
   const agente = req.body.agente || 'steven';
@@ -5463,6 +5525,14 @@ app.post('/api/chat', async (req, res) => {
   try {
     if (!process.env.ANTHROPIC_API_KEY) {
       return res.json({ reply: 'Errore: chiave API Anthropic non configurata.' });
+    }
+
+    // Domanda di prezzo: risponde il gestionale con i dati del listino.
+    // Il modello non viene nemmeno interpellato, cosi' non puo' sbagliare cifra.
+    const prezzoDiretto = await rispostaPrezzoDiretta(req.body.messages);
+    if (prezzoDiretto) {
+      console.log(`[${agente.toUpperCase()} Chat] Risposta prezzo generata dal gestionale`);
+      return res.json({ reply: prezzoDiretto, fonte: 'listino' });
     }
 
     let systemPrompt = await costruisciContesto(agente, req.body.messages);
