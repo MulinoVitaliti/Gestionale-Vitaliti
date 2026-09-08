@@ -5182,6 +5182,44 @@ ${p.domande_aperte.length ? p.domande_aperte.map(d => `- (dal ${d.dal}) ${d.doma
   } catch (e) { return 'Errore nella ricerca: ' + e.message; }
 }
 
+// Se nel messaggio compare una localita' dei listini, allego i prezzi VERI al
+// contesto prima ancora che l'agente risponda: cosi' non puo' inventarli.
+async function prezziDalMessaggio(messages) {
+  try {
+    const ultimi = (messages || []).filter(m => m.role === 'user').slice(-2);
+    const testo = ultimi.map(m => typeof m.content === 'string' ? m.content : '').join(' ');
+    if (!testo.trim()) return '';
+    const t = testo.toLowerCase();
+
+    const loc = await pool.query(`SELECT localita, zona, listino, minimo FROM listini_prezzi`);
+    if (!loc.rows.length) return '';
+    const trovate = loc.rows.filter(r => {
+      const n = String(r.localita).toLowerCase();
+      return n.length >= 4 && t.includes(n);
+    }).slice(0, 3);
+    if (!trovate.length) return '';
+
+    // quantita' citate nel messaggio
+    const kg = [...t.matchAll(/(\d{2,5})\s*(?:kg|chili|chilogrammi)?/g)]
+      .map(m => Number(m[1])).filter(n => n >= 50 && n <= 5000);
+
+    let out = `\n\n## PREZZI DI LISTINO (dati reali del gestionale — USA QUESTI, non altri)`;
+    for (const r of trovate) {
+      const li = r.listino, mi = r.minimo;
+      out += `\n${r.localita} (${r.zona})\n  listino €/kg: ` +
+        SCAGLIONI_KG.map((s, i) => `${s}kg=${Number(li[i]).toFixed(2)}`).join(' · ');
+      if (mi) out += `\n  minimo  €/kg: ` + SCAGLIONI_KG.map((s, i) => `${s}kg=${Number(mi[i]).toFixed(2)}`).join(' · ');
+      for (const q of [...new Set(kg)].slice(0, 2)) {
+        const i = scaglionePerKg(q);
+        out += `\n  → per ${q} kg (scaglione ${SCAGLIONI_KG[i]}): listino €${Number(li[i]).toFixed(2)}/kg = €${(li[i] * q).toFixed(2)} totale` +
+               (mi ? ` · minimo €${Number(mi[i]).toFixed(2)}/kg = €${(mi[i] * q).toFixed(2)}` : '');
+      }
+    }
+    out += `\nQuesti prezzi sono IVA esclusa e comprendono gia' il trasporto. Non ricalcolarli e non arrotondarli.`;
+    return out;
+  } catch (e) { return ''; }
+}
+
 // ── RICERCA SCHEDE CLIENTI PER LA CHAT AI ─────────────────────────────────
 // Estrae i possibili nomi dal messaggio e allega le schede complete dal CRM,
 // cosi' gli agenti hanno telefono/email/indirizzo sotto gli occhi.
@@ -5337,8 +5375,14 @@ Ricorda che per legge la fattura differita va emessa entro il 15 del mese succes
 alla consegna: se vedi DDT piu' vecchi, segnalalo subito a Giovanni.
 
 ## PREZZI: SI USANO SOLO I LISTINI, MAI LA MEMORIA
-Non dire mai un prezzo a memoria e non calcolarlo da solo: cerca sempre con
-[CERCA:tipo="prezzo",q="<localita'> <kg>"] e riporta quello che ti risponde.
+REGOLA ASSOLUTA: non scrivere MAI una cifra di prezzo che non compaia, identica,
+nella sezione "PREZZI DI LISTINO" qui sopra oppure nel risultato di
+[CERCA:tipo="prezzo",...]. Niente stime, niente ricostruzioni con formule, niente
+prezzi ricordati da conversazioni precedenti: sono sbagliati.
+Se la localita' non compare tra i prezzi allegati, cerca con
+[CERCA:tipo="prezzo",q="<localita'> <kg>"] e aspetta il risultato.
+Se non trovi la localita', dillo e chiedi conferma: non inventare una cifra
+plausibile, e non applicare l'IVA al prezzo (i listini sono IVA esclusa).
 - Il prezzo cambia per localita' e per scaglione di quantita' (120, 270, 420, 510, 630, 780, 1050 kg).
 - Ogni localita' fuori Sicilia ha DUE prezzi: il LISTINO e il MINIMO. Il minimo e' il
   limite oltre il quale non si scende: sotto quella cifra non si vende, mai.
@@ -5386,8 +5430,9 @@ async function costruisciContesto(agente, messages) {
   else if (agente === 'mirko') base = await costruisciContestoMirko();
   else base = await costruisciContestoGestionale(); // default: Steven
   const schede = await cercaSchedeClienti(messages);
+  const prezzi = await prezziDalMessaggio(messages);
   const imparato = await leggiConoscenza(agente);
-  return base + schede + imparato + ISTRUZIONI_STRUMENTI;
+  return base + schede + prezzi + imparato + ISTRUZIONI_STRUMENTI;
 }
 
 // ── AI CHAT con contesto gestionale ───────────────────────────────────────
