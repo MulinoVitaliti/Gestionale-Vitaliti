@@ -32,8 +32,8 @@ async function aggiornaStatoAgente(){
     if(!badge) return;
     const parti = [];
     if(r.alertNonLetti > 0) parti.push(`<span style="color:var(--orange)">⚠️ ${r.alertNonLetti} alert</span>`);
-    if(r.clientiARischio > 0) parti.push(`<span style="color:var(--red)">🔴 ${r.clientiARischio} a rischio</span>`);
-    if(r.taskAperti > 0) parti.push(`<span style="color:var(--brand)">📋 ${r.taskAperti} task</span>`);
+    if(r.clientiARischio > 0) parti.push(`<span onclick="apriClientiRischio()" style="color:var(--red);cursor:pointer;text-decoration:underline dotted" title="Vedi e rimuovi">🔴 ${r.clientiARischio} a rischio</span>`);
+    if(r.taskAperti > 0) parti.push(`<span onclick="showPage('task')" style="color:var(--brand);cursor:pointer;text-decoration:underline dotted" title="Vai ai task">📋 ${r.taskAperti} task</span>`);
     if(r.agenteLock) parti.push(`<span style="color:var(--text-3)"><i class="ti ti-loader"></i> in esecuzione</span>`);
     badge.innerHTML = parti.join(' · ') || '<span style="color:var(--green)"><i class="ti ti-circle-check"></i> tutto ok</span>';
   }catch(e){}
@@ -70,7 +70,7 @@ let _agenteAttivo = 'steven';
 const AGENTI = {
   steven: { nome: 'Steven', ruolo: 'Back Office · loop ogni ora', colore: 'var(--brand)', iniziale: 'S' },
   simona: { nome: 'Simona', ruolo: 'Digital Marketing', colore: '#e91e8c', iniziale: 'Si' },
-  mirko:  { nome: 'Mirko',  ruolo: 'Commerciale', colore: '#1976d2', iniziale: 'M' },
+  mirko:  { nome: 'Mirko',  ruolo: 'Amministrazione e analisi', colore: '#1976d2', iniziale: 'M' },
 };
 
 function selezionaAgente(id){
@@ -1055,28 +1055,53 @@ window.applicaFiltroFigura = applicaFiltroFigura;
 // ── MINI-CHAT ASSISTENTE IN DASHBOARD ────────────────────────────────────
 let _dacHistory = [];
 
+let _dacPronta = false;
+let _dacAperta = false;
+
+// Prepara la bolla dell'assistente: si mostra solo a chi ha una figura assegnata
 function initDashAgenteChat(){
-  const box = document.getElementById('dash-agente-chat');
-  if(!box) return;
+  const bolla = document.getElementById('ai-bolla');
+  if(!bolla) return;
   const fig = currentUser && currentUser.figura_vc;
-  if(!fig || !AGENTI[fig]){ box.style.display='none'; return; }
+  if(!fig || !AGENTI[fig]){ bolla.style.display='none'; return; }
   const ag = AGENTI[fig];
-  box.style.display='';
-  const av = document.getElementById('dac-avatar');
-  av.style.background = ag.colore; av.textContent = ag.iniziale;
-  document.getElementById('dac-nome').textContent = 'Il tuo assistente: ' + ag.nome;
-  document.getElementById('dac-ruolo').textContent = ag.ruolo;
+  bolla.style.display = 'flex';
+  bolla.style.background = ag.colore;
+  document.getElementById('ai-bolla-iniziale').textContent = ag.iniziale;
+  document.getElementById('ai-avatar').style.background = ag.colore;
+  document.getElementById('ai-avatar').textContent = ag.iniziale;
+  document.getElementById('ai-nome').textContent = ag.nome;
+  document.getElementById('ai-ruolo').textContent = ag.ruolo;
+  // la conversazione si carica una volta sola e resta viva cambiando pagina
+  if(_dacPronta) return;
+  _dacPronta = true;
   _dacHistory = [];
-  const msgs = document.getElementById('dac-messages'); msgs.innerHTML='';
+  const msgs = document.getElementById('dac-messages');
+  if(msgs) msgs.innerHTML = '';
   fetch('/api/chat/cronologia/'+fig).then(r=>r.json()).then(dati=>{
     (Array.isArray(dati)?dati.slice(-8):[]).forEach(m=>_dacAppend(m.ruolo==='user'?'user':'assistant', m.contenuto, true));
-    if(!msgs.children.length){
+    if(msgs && !msgs.children.length){
       _dacAppend('assistant', 'Ciao ' + ((currentUser.nome||'').split(' ')[0]) + '! Sono ' + ag.nome + ', dimmi pure cosa ti serve.', true);
     }
-  }).catch(()=>{
-    _dacAppend('assistant', 'Ciao! Sono ' + ag.nome + ', dimmi pure.', true);
-  });
+  }).catch(()=>{ _dacAppend('assistant', 'Ciao! Sono ' + ag.nome + ', dimmi pure.', true); });
 }
+
+// Apre e chiude il pannello. Passa true/false per forzare.
+function toggleAssistente(forza){
+  const p = document.getElementById('ai-pannello');
+  if(!p) return;
+  _dacAperta = (forza === undefined) ? !_dacAperta : !!forza;
+  p.style.display = _dacAperta ? 'flex' : 'none';
+  const b = document.getElementById('ai-bolla-badge');
+  if(_dacAperta){
+    if(b) b.style.display = 'none';
+    const inp = document.getElementById('dac-input');
+    if(inp) setTimeout(()=>inp.focus(), 80);
+    const m = document.getElementById('dac-messages');
+    if(m) m.scrollTop = m.scrollHeight;
+  }
+}
+window.toggleAssistente = toggleAssistente;
 
 function _dacAppend(ruolo, testo, senzaStoria){
   const msgs = document.getElementById('dac-messages'); if(!msgs) return;
@@ -1104,11 +1129,17 @@ async function dacInvia(){
   const btn = document.getElementById('dac-send'); btn.disabled = true;
   try{
     const r = await fetch('/api/chat',{method:'POST',headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({messages: _dacHistory, agente: fig})});
+      body: JSON.stringify({messages: _dacHistory, agente: fig,
+        pagina: (document.querySelector('.page.active')||{}).id || null,
+        utente: (currentUser && currentUser.username) || null})});
     const data = await r.json();
     const reply = data.reply || data.error || 'Errore.';
     _dacAppend('assistant', reply);
     _dacHistory.push({role:'assistant', content:reply});
+    if(!_dacAperta){
+      const b = document.getElementById('ai-bolla-badge');
+      if(b){ b.textContent = '1'; b.style.display = 'block'; }
+    }
     fetch('/api/chat/cronologia/'+fig,{method:'POST',headers:{'Content-Type':'application/json'},
       body: JSON.stringify({messaggi:[{ruolo:'user',contenuto:text},{ruolo:'assistant',contenuto:reply}]})}).catch(()=>{});
   }catch(e){ _dacAppend('assistant','Errore di connessione, riprova.'); }
@@ -1119,7 +1150,7 @@ window.dacInvia = dacInvia;
 
 
 // ── PANNELLO CONOSCENZA AGENTI ───────────────────────────────────────────
-const AMBITO_LABEL = {generale:'Tutti gli assistenti', commerciale:'Mirko (commerciale)', marketing:'Simona (marketing)', backoffice:'Steven (back office)'};
+const AMBITO_LABEL = {generale:'Tutti gli assistenti', amministrazione:'Mirko (amministrazione)', marketing:'Simona (marketing)', backoffice:'Steven (back office)'};
 
 async function caricaConoscenza(){
   const box = document.getElementById('con-lista'); if(!box) return;
