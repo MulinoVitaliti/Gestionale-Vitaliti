@@ -38,6 +38,7 @@ function fupData(d){ return d ? new Date(d).toLocaleDateString('it-IT') : '—';
 async function caricaFollowup(){
   const box = document.getElementById('fup-lista');
   if(!box) return;
+  if(_fupFiltro === 'da_ricontattare') return caricaDaRicontattare();
   box.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
   try{
     const [righe, ries] = await Promise.all([
@@ -520,35 +521,59 @@ async function salvaEmailFollowup(id){
   caricaFollowup();
 }
 
-// ── DA RICONTATTARE ──────────────────────────────────────────────────────
-async function apriDaRicontattare(giorni){
-  openModal('modal-da-ricontattare');
-  const g = giorni || document.getElementById('dr-giorni')?.value || 30;
-  const box = document.getElementById('dr-lista');
+// ── DA RICONTATTARE (vista dentro la pagina) ─────────────────────────────
+let _drGiorni = 30;
+
+async function caricaDaRicontattare(){
+  const box = document.getElementById('fup-lista');
   box.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
   try{
-    const d = await api.get('/api/followup/da-ricontattare?giorni='+g);
+    const [d, ries] = await Promise.all([
+      api.get('/api/followup/da-ricontattare?giorni=' + _drGiorni),
+      api.get('/api/followup/riepilogo')
+    ]);
+    renderFupRiepilogo(ries);
+    const testa = `<div style="display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);background:var(--surface-2)">
+        <span style="font-size:12px;color:var(--text-3)">Consegnati da più di</span>
+        <select onchange="cambiaGiorniRicontatto(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px">
+          ${[20,30,45,60].map(g=>`<option value="${g}" ${g==_drGiorni?'selected':''}>${g} giorni</option>`).join('')}
+        </select>
+        <span style="font-size:12px;color:var(--text-3)">e senza nuovi ordini dopo la consegna</span>
+        <span style="margin-left:auto;font-size:12px;font-weight:600">${(d.righe||[]).length} clienti</span>
+      </div>`;
     if(!d.righe || !d.righe.length){
-      box.innerHTML = `<div style="padding:24px;text-align:center;color:var(--text-3);font-size:13px">Nessun cliente da ricontattare oltre i ${g} giorni.</div>`;
+      box.innerHTML = testa + `<div style="padding:26px;text-align:center;color:var(--text-3);font-size:13px">Nessun cliente da ricontattare oltre i ${_drGiorni} giorni.</div>`;
       return;
     }
-    box.innerHTML = `<div style="font-size:12px;color:var(--text-3);margin-bottom:10px">${d.righe.length} clienti serviti da oltre ${g} giorni che non hanno più ordinato.</div>` +
-      d.righe.map(r => {
-        const col = r.giorni > 60 ? 'var(--red)' : r.giorni > 45 ? 'var(--orange)' : 'var(--text-2)';
-        return `<div style="display:flex;align-items:center;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
-          <div style="flex:1;min-width:0">
-            <div style="font-size:13px;font-weight:600">${r.cliente_nome}</div>
-            <div style="font-size:11px;color:var(--text-3)">${r.citta || ''}${r.ddt_numero ? ' · DDT ' + r.ddt_numero : ''} · consegna ${fupData(r.riferimento)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
-          </div>
-          <div style="width:90px;text-align:right;font-size:12px;font-weight:600;color:${col}">${r.giorni} giorni</div>
-          <div style="display:flex;gap:5px">
-            ${r.tel ? `<a class="btn btn-sm" href="tel:${r.tel}" title="Chiama"><i class="ti ti-phone"></i></a>` : ''}
-            ${r.email_dest ? `<button class="btn btn-sm" onclick="apriFollowup(${r.id});closeModal('modal-da-ricontattare')" title="Apri la scheda e manda la proposta"><i class="ti ti-mail"></i></button>` : ''}
-            <button class="btn btn-sm" onclick="apriFollowup(${r.id});closeModal('modal-da-ricontattare')" title="Apri la spedizione"><i class="ti ti-chevron-right"></i></button>
-          </div>
-        </div>`;
-      }).join('');
+    box.innerHTML = testa + d.righe.map(r => {
+      const col = r.giorni > 60 ? 'var(--red)' : r.giorni > 45 ? 'var(--orange)' : 'var(--text-2)';
+      return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border)">
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:600">${r.cliente_nome}</div>
+          <div style="font-size:11px;color:var(--text-3)">${r.citta || ''}${r.ddt_numero ? ' · DDT ' + r.ddt_numero : ''} · consegna ${fupData(r.riferimento)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
+        </div>
+        <div style="width:95px;text-align:right;font-size:12px;font-weight:600;color:${col}">${r.giorni} giorni</div>
+        <div style="display:flex;gap:5px">
+          ${r.tel ? `<a class="btn btn-sm" href="tel:${r.tel}" title="Chiama ${r.tel}"><i class="ti ti-phone"></i></a>` : ''}
+          <button class="btn btn-sm" onclick="apriFollowup(${r.id})" title="Apri la scheda"><i class="ti ti-chevron-right"></i></button>
+        </div>
+      </div>`;
+    }).join('');
   }catch(e){ box.innerHTML = '<div style="padding:18px">Errore nel caricamento.</div>'; }
+}
+
+function cambiaGiorniRicontatto(g){ _drGiorni = Number(g) || 30; caricaDaRicontattare(); }
+window.caricaDaRicontattare = caricaDaRicontattare;
+window.cambiaGiorniRicontatto = cambiaGiorniRicontatto;
+
+// La card del riepilogo porta alla stessa vista
+async function apriDaRicontattare(giorni){
+  if(giorni) _drGiorni = Number(giorni);
+  _fupFiltro = 'da_ricontattare';
+  document.querySelectorAll('#fup-pills .pill').forEach(p=>p.classList.remove('active'));
+  const pills = document.querySelectorAll('#fup-pills .pill');
+  if(pills.length) pills[pills.length-1].classList.add('active');
+  caricaDaRicontattare();
 }
 
 window.apriSenzaEmail = apriSenzaEmail;
