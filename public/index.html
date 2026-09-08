@@ -1017,7 +1017,6 @@ window.addEventListener('unhandledrejection', function(e) {
           Monitoraggio spedizioni
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn btn-sm btn-primary" onclick="apriDaRicontattare(30)"><i class="ti ti-phone-call"></i>Da ricontattare</button>
           <button class="btn btn-sm" onclick="recuperaSpedizioniFollowup()" title="Crea i percorsi per le spedizioni corriere gia' registrate"><i class="ti ti-history"></i>Recupera spedizioni</button>
           <button class="btn btn-sm" onclick="apriModelliFollowup()"><i class="ti ti-mail-cog"></i>Modelli email</button>
           <button class="btn btn-sm btn-primary" onclick="sincronizzaFollowup(this)"><i class="ti ti-refresh"></i>Leggi nuove spedizioni</button>
@@ -1033,6 +1032,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <button class="pill" onclick="filtraFollowup('completato',this)">Completati</button>
         <button class="pill" onclick="filtraFollowup('fermato',this)">Fermati</button>
         <button class="pill" onclick="filtraFollowup('tutti',this)">Tutti</button>
+        <button class="pill" onclick="filtraFollowup('da_ricontattare',this)"><i class="ti ti-phone-call" style="font-size:12px"></i> Da ricontattare</button>
       </div>
 
       <div class="card"><div id="fup-lista" style="padding:4px 0"></div></div>
@@ -2092,27 +2092,6 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="modal-body">
       <div style="font-size:12px;color:var(--text-3);margin-bottom:12px">Senza email le comunicazioni al cliente non partono. Scrivi l'indirizzo e premi il segno di spunta: viene salvato anche in anagrafica.</div>
       <div id="se-lista" style="max-height:420px;overflow-y:auto"></div>
-    </div>
-  </div>
-</div>
-<div class="modal-overlay" id="modal-da-ricontattare">
-  <div class="modal" style="max-width:720px">
-    <div class="modal-header">
-      <div class="modal-title"><i class="ti ti-phone-call" style="color:var(--brand)"></i>Clienti da ricontattare</div>
-      <button class="btn btn-icon" onclick="closeModal('modal-da-ricontattare')"><i class="ti ti-x"></i></button>
-    </div>
-    <div class="modal-body">
-      <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px">
-        <span style="font-size:12px;color:var(--text-3)">Consegnati da più di</span>
-        <select id="dr-giorni" onchange="apriDaRicontattare(this.value)" style="padding:6px 9px;border:1px solid var(--border);border-radius:7px;font-size:13px">
-          <option value="20">20 giorni</option>
-          <option value="30" selected>30 giorni</option>
-          <option value="45">45 giorni</option>
-          <option value="60">60 giorni</option>
-        </select>
-        <span style="font-size:12px;color:var(--text-3)">e senza nuovi ordini</span>
-      </div>
-      <div id="dr-lista" style="max-height:440px;overflow-y:auto"></div>
     </div>
   </div>
 </div>
