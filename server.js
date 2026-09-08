@@ -211,6 +211,8 @@ async function initDB() {
         nome TEXT NOT NULL,
         contatto TEXT,
         tel TEXT,
+        tel2 TEXT,
+        indirizzo TEXT,
         citta TEXT,
         email TEXT,
         prodotto TEXT,
@@ -276,6 +278,8 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
       ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS ordini_ids JSONB;
@@ -1177,17 +1181,17 @@ app.get('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/leads', async (req, res) => {
-  const { nome, contatto, tel, citta, prodotto, stato, note, tag } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag } = req.body;
   try {
-    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,citta,prodotto,stato,note,tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *', [nome, contatto, tel, citta, prodotto, stato, note, tag||null]);
+    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,tel2,indirizzo,citta,prodotto,stato,note,tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/leads/:id', async (req, res) => {
-  const { nome, contatto, tel, citta, prodotto, stato, note, tag } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag } = req.body;
   try {
-    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,citta=$4,prodotto=$5,stato=$6,note=$7,tag=$8,updated_at=NOW() WHERE id=$9', [nome, contatto, tel, citta, prodotto, stato, note, tag||null, req.params.id]);
+    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,tel2=$4,indirizzo=$5,citta=$6,prodotto=$7,stato=$8,note=$9,tag=$10,updated_at=NOW() WHERE id=$11', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
