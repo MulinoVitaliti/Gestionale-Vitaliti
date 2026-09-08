@@ -79,6 +79,12 @@ async function caricaFollowup(){
 }
 
 function renderFupRiepilogo(r){
+  const badge = document.getElementById('pill-dr-badge');
+  if(badge && r && !r.error){
+    const n = Number(r.da_ricontattare) || 0;
+    badge.textContent = n;
+    badge.style.display = n ? 'inline-block' : 'none';
+  }
   const box = document.getElementById('fup-riepilogo');
   if(!box || !r || r.error) return;
   const card = (n, testo, colore, azione) => `<div class="card" style="padding:14px 16px${azione ? ';cursor:pointer' : ''}"${azione ? ` onclick="${azione}"` : ''}>
@@ -88,7 +94,7 @@ function renderFupRiepilogo(r){
   box.innerHTML =
     card(r.in_corso, 'Ordini seguiti', 'var(--brand)') +
     card(r.da_approvare, 'Email da approvare', 'var(--orange)') +
-    card(r.riordini_vicini, 'Riordini entro 7 giorni', 'var(--green)', 'apriDaRicontattare()') +
+    card(r.da_ricontattare, 'Da ricontattare (30+ gg)', Number(r.da_ricontattare) > 0 ? 'var(--orange)' : 'var(--text-3)', 'apriDaRicontattare()') +
     card(r.senza_email, 'Clienti senza email', r.senza_email > 0 ? 'var(--red)' : 'var(--text-3)', 'apriSenzaEmail()');
 }
 
@@ -514,10 +520,19 @@ async function salvaEmailFollowup(id){
   const el = document.getElementById('se-mail-'+id);
   const v = (el.value||'').trim();
   if(!v.includes('@')) return alert('Scrivi un indirizzo email valido.');
-  const r = await api.post('/api/followup/'+id+'/email', {email:v, utente:(currentUser&&currentUser.username)||null});
-  if(r.error) return alert('Errore: '+r.error);
+  let r;
+  try{
+    r = await api.post('/api/followup/'+id+'/email', {email:v, utente:(currentUser&&currentUser.username)||null});
+  }catch(e){ return alert('Non sono riuscito a salvare: ' + e.message); }
+  if(!r || r.error) return alert('Non salvata: ' + ((r&&r.error) || 'risposta non valida dal server'));
   const riga = document.getElementById('se-riga-'+id);
-  if(riga) riga.innerHTML = `<div style="padding:9px 0;font-size:13px;color:var(--green)">✅ ${v} salvata${r.anagrafica_aggiornata?' anche in anagrafica':''}</div>`;
+  if(riga){
+    riga.innerHTML = `<div style="padding:9px 0;font-size:13px;color:var(--green)">✅ ${v} salvata${r.anagrafica_aggiornata?' anche in anagrafica':''}${r.altre_spedizioni?` e su altre ${r.altre_spedizioni} spedizioni dello stesso cliente`:''}</div>`;
+    setTimeout(()=>{ riga.remove(); const box=document.getElementById('se-lista');
+      if(box && !box.querySelector('[id^="se-riga-"]')) box.innerHTML='<div style="padding:24px;text-align:center;color:var(--green);font-size:13px">✅ Tutte le spedizioni hanno un indirizzo email.</div>'; }, 1600);
+  }
+  // aggiorno subito il contatore e la lista sotto
+  try{ renderFupRiepilogo(await api.get('/api/followup/riepilogo')); }catch(e){}
   caricaFollowup();
 }
 
@@ -538,7 +553,7 @@ async function caricaDaRicontattare(){
         <select onchange="cambiaGiorniRicontatto(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px">
           ${[20,30,45,60].map(g=>`<option value="${g}" ${g==_drGiorni?'selected':''}>${g} giorni</option>`).join('')}
         </select>
-        <span style="font-size:12px;color:var(--text-3)">e senza nuovi ordini dopo la consegna</span>
+        <span style="font-size:12px;color:var(--text-3)">dall'ultimo ordine — corriere e consegne dirette</span>
         <span style="margin-left:auto;font-size:12px;font-weight:600">${(d.righe||[]).length} clienti</span>
       </div>`;
     if(!d.righe || !d.righe.length){
@@ -547,15 +562,17 @@ async function caricaDaRicontattare(){
     }
     box.innerHTML = testa + d.righe.map(r => {
       const col = r.giorni > 60 ? 'var(--red)' : r.giorni > 45 ? 'var(--orange)' : 'var(--text-2)';
+      const tel = r.tel || r.tel2;
       return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600">${r.cliente_nome}</div>
-          <div style="font-size:11px;color:var(--text-3)">${r.citta || ''}${r.ddt_numero ? ' · DDT ' + r.ddt_numero : ''} · consegna ${fupData(r.riferimento)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
+          <div style="font-size:11px;color:var(--text-3)">${r.citta || ''} · ultimo ordine ${fupData(r.ultimo_ordine)}${r.ultimo_importo ? ' da € ' + Number(r.ultimo_importo).toFixed(0) : ''} · ${r.n_ordini} ordini in tutto${r.totale ? ' per € ' + Number(r.totale).toFixed(0) : ''}</div>
         </div>
         <div style="width:95px;text-align:right;font-size:12px;font-weight:600;color:${col}">${r.giorni} giorni</div>
         <div style="display:flex;gap:5px">
-          ${r.tel ? `<a class="btn btn-sm" href="tel:${r.tel}" title="Chiama ${r.tel}"><i class="ti ti-phone"></i></a>` : ''}
-          <button class="btn btn-sm" onclick="apriFollowup(${r.id})" title="Apri la scheda"><i class="ti ti-chevron-right"></i></button>
+          ${tel ? `<a class="btn btn-sm" href="tel:${tel}" title="Chiama ${tel}"><i class="ti ti-phone"></i></a>` : ''}
+          ${r.email ? `<a class="btn btn-sm" href="mailto:${r.email}?subject=Mulino%20Vitaliti%20-%20le%20serve%20altra%20farina%3F" title="Scrivi a ${r.email}"><i class="ti ti-mail"></i></a>` : ''}
+          ${r.followup_id ? `<button class="btn btn-sm" onclick="apriFollowup(${r.followup_id})" title="Apri l'ultima spedizione"><i class="ti ti-chevron-right"></i></button>` : ''}
         </div>
       </div>`;
     }).join('');
