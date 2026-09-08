@@ -4574,6 +4574,10 @@ ${bz.note || ''}</p>
 // Controllo giornaliero alle 8: prepara le fatture dei DDT scaduti
 setInterval(async () => {
   if (new Date().getHours() !== 8) return;
+  // prima allineo con Fatture in Cloud: cosi' non ripreparo fatture gia' fatte a mano
+  if (typeof sincronizzaDocumentiEmessi === 'function') {
+    await sincronizzaDocumentiEmessi().catch(() => {});
+  }
   await preparaFattureDifferite(GIORNI_FATTURAZIONE);
 }, 60 * 60 * 1000);
 
@@ -6376,6 +6380,91 @@ setInterval(async () => {
     await eseguiSincronizzazioneFattureRicevute();
   } catch (e) { /* già loggato */ }
 }, 60 * 1000); // controlla ogni minuto
+
+// ── SINCRONIZZAZIONE DOCUMENTI EMESSI (fatture e DDT) ─────────────────────
+// Allinea il gestionale con Fatture in Cloud anche quando un documento viene
+// creato direttamente su FIC senza passare da qui. Senza questo giro, un DDT
+// gia' fatturato a mano su FIC risulterebbe ancora "da fatturare".
+let ultimaSyncEmessi = null;
+
+async function sincronizzaDocumentiEmessi() {
+  if (!ficCompanyId || !ficTokens) return { saltata: true };
+  let fattureViste = 0, ddtVisti = 0, ordiniAllineati = 0;
+  try {
+    // 1. Fatture emesse: aggiorno lo storico clienti e marco gli ordini fatturati
+    const rf = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=invoice&per_page=100&sort=-date`);
+    if (rf.ok) {
+      const df = await rf.json();
+      const fatture = df.data || [];
+      fattureViste = fatture.length;
+      if (fatture.length) await registraClienteStorico(fatture, 'invoice').catch(() => {});
+
+      // Se una fattura richiama dei DDT, segno quegli ordini come fatturati
+      for (const f of fatture) {
+        const rif = `${f.subject || ''} ${f.notes || ''} ${f.entity?.name || ''}`;
+        const numeriDDT = [...String(rif).matchAll(/\b(\d{1,5})\/(?:20)?\d{2}\b/g)].map(m => m[0]);
+        if (!numeriDDT.length) continue;
+        for (const n of numeriDDT) {
+          const u = await pool.query(
+            `UPDATE ordini SET fic_fattura_id=$1, fic_fattura_numero=$2
+             WHERE fic_ddt_numero=$3 AND fic_fattura_id IS NULL`,
+            [f.id || null, f.number ? String(f.number) : null, n]);
+          ordiniAllineati += u.rowCount;
+        }
+      }
+    }
+
+    // 2. DDT emessi: aggiorno lo storico e collego quelli creati fuori dal gestionale
+    const rd = await ficFetch(`/c/${ficCompanyId}/issued_documents?type=delivery_note&per_page=100&sort=-date`);
+    if (rd.ok) {
+      const dd = await rd.json();
+      const ddt = dd.data || [];
+      ddtVisti = ddt.length;
+      if (ddt.length) await registraClienteStorico(ddt, 'delivery_note').catch(() => {});
+
+      for (const d of ddt) {
+        const gia = await pool.query(`SELECT id FROM ordini WHERE fic_ddt_id=$1 LIMIT 1`, [d.id]);
+        if (gia.rows.length) continue;
+        // DDT creato direttamente su FIC: provo ad agganciarlo a un ordine dello stesso
+        // cliente, stessa data e senza DDT collegato
+        const nome = d.entity?.name || '';
+        if (!nome || !d.date) continue;
+        const u = await pool.query(
+          `UPDATE ordini o SET fic_ddt_id=$1, fic_ddt_numero=$2
+           FROM clienti c
+           WHERE c.id = o.cliente_id AND o.fic_ddt_id IS NULL
+             AND c.nome ILIKE $3 AND o.data BETWEEN $4::date - 3 AND $4::date + 3`,
+          [d.id, d.number ? String(d.number) : null, '%' + nome.slice(0, 25) + '%', d.date]);
+        ordiniAllineati += u.rowCount;
+      }
+    }
+    if (ordiniAllineati) console.log(`[FIC emessi] ${ordiniAllineati} ordini allineati (${fattureViste} fatture, ${ddtVisti} DDT esaminati)`);
+    return { fatture: fattureViste, ddt: ddtVisti, ordini_allineati: ordiniAllineati };
+  } catch (e) {
+    console.error('[FIC emessi]', e.message);
+    return { error: e.message };
+  }
+}
+
+// Ogni 6 ore, sfasato di mezz'ora rispetto alle ricevute per non sovrapporsi
+setInterval(async () => {
+  try {
+    if (!ficCompanyId || !ficTokens) return;
+    const ora = new Date();
+    if (ora.getMinutes() !== 30) return;
+    if (![0, 6, 12, 18].includes(ora.getHours())) return;
+    const chiave = ora.toISOString().slice(0, 13);
+    if (ultimaSyncEmessi === chiave) return;
+    ultimaSyncEmessi = chiave;
+    console.log(`[Scheduler] Avvio sync documenti emessi FIC (${chiave})`);
+    await sincronizzaDocumentiEmessi();
+  } catch (e) { /* gia' loggato */ }
+}, 60 * 1000);
+
+app.post('/api/fatture/sincronizza-emessi', async (req, res) => {
+  const r = await sincronizzaDocumentiEmessi();
+  res.json(r.error ? { error: r.error } : { ok: true, ...r });
+});
 
 // Leggi DDT specifico da FIC (debug/ispezione struttura)
 app.get('/api/fatture/ddt/:id', async (req, res) => {
