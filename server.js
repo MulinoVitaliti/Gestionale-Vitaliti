@@ -7248,8 +7248,79 @@ app.get('/api/followup/riepilogo', async (req, res) => {
           WHERE t.tipo='riordino' AND t.stato IN ('programmata','in_attesa_ok') AND f.stato='in_corso'
             AND t.programmata_per <= CURRENT_DATE + 7) AS riordini_vicini,
         (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso' AND (email_dest IS NULL OR email_dest='')) AS senza_email`);
-    res.json(r.rows[0]);
+    const dr = await pool.query(
+      `SELECT COUNT(*) n FROM (
+         SELECT c.id FROM clienti c JOIN ordini o ON o.cliente_id=c.id
+         WHERE c.tipo='cliente' GROUP BY c.id
+         HAVING MAX(o.data) <= CURRENT_DATE - INTERVAL '30 days') x`);
+    res.json({ ...r.rows[0], da_ricontattare: Number(dr.rows[0].n) });
   } catch (e) { res.json({ error: e.message }); }
+});
+
+// Clienti senza email tra le spedizioni seguite (per completarle al volo)
+app.get('/api/followup/senza-email', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT f.id, f.cliente_id, f.cliente_nome, f.ddt_numero, f.ddt_data, f.stato,
+              c.tel, c.citta
+       FROM followup_spedizioni f LEFT JOIN clienti c ON c.id = f.cliente_id
+       WHERE (f.email_dest IS NULL OR f.email_dest = '')
+         AND f.stato = 'in_corso'
+       ORDER BY f.ddt_data DESC NULLS LAST LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Salva l'email sia sulla spedizione seguita sia nell'anagrafica del cliente
+app.post('/api/followup/:id/email', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email || !email.includes('@')) return res.json({ error: 'Indirizzo email non valido' });
+  try {
+    const f = await pool.query(`SELECT cliente_id FROM followup_spedizioni WHERE id=$1`, [req.params.id]);
+    await pool.query(`UPDATE followup_spedizioni SET email_dest=$1, updated_at=NOW() WHERE id=$2`,
+      [email, req.params.id]);
+    // la aggiorno anche in anagrafica, se il cliente non ne aveva una
+    const cid = f.rows[0]?.cliente_id;
+    let altre = 0;
+    if (cid) {
+      await pool.query(`UPDATE clienti SET email=$1 WHERE id=$2 AND (email IS NULL OR email='')`, [email, cid]);
+      // stesso cliente, altre spedizioni aperte senza email: le completo tutte
+      const u = await pool.query(
+        `UPDATE followup_spedizioni SET email_dest=$1, updated_at=NOW()
+         WHERE cliente_id=$2 AND id <> $3 AND (email_dest IS NULL OR email_dest='')`,
+        [email, cid, req.params.id]);
+      altre = u.rowCount;
+    }
+    await fupEvento(req.params.id, 'email_aggiunta', email, req.body?.utente || null);
+    res.json({ ok: true, anagrafica_aggiornata: !!cid, altre_spedizioni: altre });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Clienti da ricontattare: ultimo ordine oltre N giorni fa.
+// Parte dagli ORDINI, quindi comprende sia le spedizioni via corriere sia le
+// consegne fatte col nostro furgone.
+async function clientiDaRicontattare(giorni) {
+  const g = Number(giorni) || 30;
+  const r = await pool.query(
+    `SELECT c.id AS cliente_id, c.nome AS cliente_nome, c.citta, c.tel, c.tel2, c.email, c.tag,
+            MAX(o.data) AS ultimo_ordine,
+            (CURRENT_DATE - MAX(o.data)) AS giorni,
+            COUNT(o.id) AS n_ordini,
+            SUM(o.importo) AS totale,
+            (SELECT o2.importo FROM ordini o2 WHERE o2.cliente_id=c.id ORDER BY o2.data DESC LIMIT 1) AS ultimo_importo,
+            (SELECT f.id FROM followup_spedizioni f WHERE f.cliente_id=c.id ORDER BY f.id DESC LIMIT 1) AS followup_id,
+            (SELECT f.stato_consegna FROM followup_spedizioni f WHERE f.cliente_id=c.id ORDER BY f.id DESC LIMIT 1) AS stato_consegna
+     FROM clienti c JOIN ordini o ON o.cliente_id = c.id
+     WHERE c.tipo = 'cliente'
+     GROUP BY c.id, c.nome, c.citta, c.tel, c.tel2, c.email, c.tag
+     HAVING MAX(o.data) <= CURRENT_DATE - ($1 || ' days')::interval
+     ORDER BY MAX(o.data) ASC LIMIT 150`, [String(g)]);
+  return { giorni: g, righe: r.rows };
+}
+
+app.get('/api/followup/da-ricontattare', async (req, res) => {
+  try { res.json(await clientiDaRicontattare(req.query.giorni)); }
+  catch (e) { res.json({ error: e.message }); }
 });
 
 app.get('/api/followup/:id', async (req, res) => {
@@ -7638,62 +7709,6 @@ app.post('/api/impegni', async (req, res) => {
 app.delete('/api/impegni/:id', async (req, res) => {
   try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
-});
-
-// Clienti senza email tra le spedizioni seguite (per completarle al volo)
-app.get('/api/followup/senza-email', async (req, res) => {
-  try {
-    const r = await pool.query(
-      `SELECT f.id, f.cliente_id, f.cliente_nome, f.ddt_numero, f.ddt_data, f.stato,
-              c.tel, c.citta
-       FROM followup_spedizioni f LEFT JOIN clienti c ON c.id = f.cliente_id
-       WHERE (f.email_dest IS NULL OR f.email_dest = '')
-       ORDER BY f.ddt_data DESC NULLS LAST LIMIT 100`);
-    res.json(r.rows);
-  } catch (e) { res.json({ error: e.message }); }
-});
-
-// Salva l'email sia sulla spedizione seguita sia nell'anagrafica del cliente
-app.post('/api/followup/:id/email', async (req, res) => {
-  const email = String(req.body?.email || '').trim();
-  if (!email || !email.includes('@')) return res.json({ error: 'Indirizzo email non valido' });
-  try {
-    const f = await pool.query(`SELECT cliente_id FROM followup_spedizioni WHERE id=$1`, [req.params.id]);
-    await pool.query(`UPDATE followup_spedizioni SET email_dest=$1, updated_at=NOW() WHERE id=$2`,
-      [email, req.params.id]);
-    // la aggiorno anche in anagrafica, se il cliente non ne aveva una
-    const cid = f.rows[0]?.cliente_id;
-    if (cid) {
-      await pool.query(`UPDATE clienti SET email=$1 WHERE id=$2 AND (email IS NULL OR email='')`, [email, cid]);
-    }
-    await fupEvento(req.params.id, 'email_aggiunta', email, req.body?.utente || null);
-    res.json({ ok: true, anagrafica_aggiornata: !!cid });
-  } catch (e) { res.json({ error: e.message }); }
-});
-
-// Clienti da ricontattare: consegna avvenuta da N giorni e nessun nuovo ordine dopo
-app.get('/api/followup/da-ricontattare', async (req, res) => {
-  const g = Number(req.query.giorni) || 30;
-  try {
-    const r = await pool.query(
-      `SELECT f.id, f.cliente_id, f.cliente_nome, f.ddt_numero, f.importo,
-              COALESCE(f.consegnata_il, f.ddt_data) AS riferimento,
-              f.stato_consegna, f.email_dest,
-              c.tel, c.tel2, c.citta,
-              (CURRENT_DATE - COALESCE(f.consegnata_il, f.ddt_data)) AS giorni,
-              (SELECT MAX(o.data) FROM ordini o WHERE o.cliente_id = f.cliente_id) AS ultimo_ordine,
-              (SELECT t.stato FROM followup_tappe t
-                WHERE t.followup_id = f.id AND t.tipo = 'riordino' LIMIT 1) AS stato_riordino
-       FROM followup_spedizioni f LEFT JOIN clienti c ON c.id = f.cliente_id
-       WHERE COALESCE(f.consegnata_il, f.ddt_data) <= CURRENT_DATE - ($1 || ' days')::interval
-         AND NOT EXISTS (
-           SELECT 1 FROM ordini o
-           WHERE o.cliente_id = f.cliente_id
-             AND o.data > COALESCE(f.consegnata_il, f.ddt_data)
-         )
-       ORDER BY COALESCE(f.consegnata_il, f.ddt_data) ASC LIMIT 100`, [String(g)]);
-    res.json({ giorni: g, righe: r.rows });
-  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
