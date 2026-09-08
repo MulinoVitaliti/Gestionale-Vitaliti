@@ -3,7 +3,7 @@
 
 // ── COSTANTI ──────────────────────────────────────────────────────────────
 const PERMESSI = {
-  admin:       {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:true,email:true,automazioni:true,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true,followup:true},
+  admin:       {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:true,email:true,automazioni:false,ai:true,utenti:true,attivita:true,statistiche:true,impostazioni:true,task:true,whatsapp:true,fatture:true,spedizioni:true,followup:true},
   commerciale: {dashboard:true,pipeline:true,'lead-detail':true,'cliente-detail':true,contatti:true,ordini:true,contabilita:false,email:true,automazioni:false,ai:true,utenti:false,attivita:true,statistiche:false,impostazioni:false,task:true,whatsapp:true,fatture:false,spedizioni:true,followup:true},
   contabile:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':true,contatti:true,ordini:false,contabilita:true,email:false,automazioni:false,ai:true,utenti:false,attivita:false,statistiche:true,impostazioni:false,task:true,whatsapp:false,fatture:true,spedizioni:false,followup:false},
   magazzino:   {dashboard:true,pipeline:false,'lead-detail':false,'cliente-detail':false,contatti:false,ordini:true,contabilita:false,email:false,automazioni:false,ai:false,utenti:false,attivita:false,statistiche:false,impostazioni:false,task:true,whatsapp:false,fatture:false,spedizioni:true,followup:true},
@@ -202,7 +202,7 @@ function showPage(id){
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   document.getElementById('page-'+id).classList.add('active');
-  const navEl = document.getElementById('nav-'+(id==='followup'?'ordini':id));
+  const navEl = document.getElementById('nav-'+(id==='followup'?'spedizioni':id));
   if(navEl) navEl.classList.add('active');
   if(id==='attivita')renderPageAttivita();
   if(id==='task'){
@@ -231,7 +231,7 @@ function showPage(id){
   if(id==='email')checkGmailStatus();
   if(id==='fatture'){ initPaginaFatture(); if(typeof aggiornaBadgeDocumenti==='function')aggiornaBadgeDocumenti(); }
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
-  if(id==='spedizioni'){ 
+  if(id==='spedizioni'){ if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); 
     // Reset alla tab Spedizioni ogni volta che si apre la pagina
     switchSpedizioniTab('spedizioni', document.querySelector('#sped-tabs .pill'));
     initPaginaSpedizioni(); 
