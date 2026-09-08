@@ -5400,7 +5400,18 @@ app.post('/api/chat', async (req, res) => {
       return res.json({ reply: 'Errore: chiave API Anthropic non configurata.' });
     }
 
-    const systemPrompt = await costruisciContesto(agente, req.body.messages);
+    let systemPrompt = await costruisciContesto(agente, req.body.messages);
+    // Sapere dove si trova chi scrive aiuta a interpretare le domande brevi
+    const PAGINE = {
+      dashboard: 'Dashboard', ordini: 'Ordini', contatti: 'Contatti e clienti',
+      pipeline: 'Pipeline vendite', contabilita: 'Contabilita\'', fatture: 'Fatture in Cloud',
+      spedizioni: 'Spedizioni', followup: 'Monitoraggio ordini spediti', task: 'Task',
+      statistiche: 'Statistiche', email: 'Email', impostazioni: 'Impostazioni'
+    };
+    const pag = String(req.body.pagina || '').replace(/^page-/, '');
+    if (PAGINE[pag]) {
+      systemPrompt += `\n\n## DOVE SI TROVA CHI TI STA SCRIVENDO\nIn questo momento sta guardando la pagina "${PAGINE[pag]}" del gestionale. Se la domanda e' breve o generica, interpretala in quel contesto (ma non darlo per scontato se il testo dice altro).`;
+    }
     console.log(`[${agente.toUpperCase()} Chat] Contesto pronto (${Date.now()-start}ms)`);
 
     const controller = new AbortController();
