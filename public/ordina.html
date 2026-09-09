@@ -14,7 +14,12 @@
   body{ margin:0; font-family:'Open Sans',Arial,sans-serif; background:#faf8f4; color:var(--scuro);
         font-size:15px; line-height:1.55; padding-bottom:100px }
   .wrap{ max-width:620px; margin:0 auto; padding:22px 16px }
-  .logo{ display:block; margin:8px auto 18px; width:120px }
+  .testata{ text-align:center; margin:10px 0 20px }
+  .logo{ display:block; margin:0 auto; width:120px }
+  .logo-testo{ padding:6px 0 }
+  .lt-nome{ font-size:30px; font-weight:700; color:var(--terra); line-height:1; letter-spacing:.5px }
+  .lt-sotto{ font-size:13px; letter-spacing:7px; color:var(--oro); margin-top:3px }
+  .lt-anno{ font-size:10px; letter-spacing:2.5px; color:var(--terra); margin-top:5px; opacity:.75 }
   h1{ font-size:20px; margin:0 0 4px; text-align:center; color:var(--terra) }
   .sub{ text-align:center; color:#8a7a6a; font-size:13px; margin:0 0 22px }
   .card{ background:#fff; border:1px solid var(--bordo); border-radius:14px; padding:18px; margin-bottom:14px }
@@ -50,7 +55,15 @@
 </head>
 <body>
 <div class="wrap">
-  <img src="/logo.png" class="logo" alt="Mulino Vitaliti">
+  <div class="testata">
+    <img src="/logo.png" class="logo" alt="Mulino Vitaliti"
+         onerror="this.style.display='none';document.getElementById('logo-testo').style.display='block'">
+    <div id="logo-testo" class="logo-testo" style="display:none">
+      <div class="lt-nome">Vitalití</div>
+      <div class="lt-sotto">MULINO</div>
+      <div class="lt-anno">DAL 1930</div>
+    </div>
+  </div>
 
   <!-- ACCESSO -->
   <div id="vista-accesso">
