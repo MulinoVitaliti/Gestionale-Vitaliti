@@ -8270,7 +8270,7 @@ app.post('/api/portale/verifica-codice', async (req, res) => {
       `INSERT INTO portale_sessioni (token, email, scade_il) VALUES ($1,$2,NOW() + INTERVAL '180 days')`,
       [token, email]);
     await pool.query(`UPDATE portale_accessi SET ultimo_accesso=NOW() WHERE id=$1`, [acc.id]);
-    res.json({ ok: true, token, cliente: acc.cliente_nome || email });
+    res.json({ ok: true, token, cliente: acc.cliente_nome || acc.referente || email, referente: acc.referente || null });
   } catch (e) { res.json({ error: e.message }); }
 });
 
@@ -8307,7 +8307,8 @@ app.get('/api/portale/catalogo', async (req, res) => {
       if (Number(c.rows[0]?.n) > 0 || tag.includes('contratt')) limite = 3000;
     }
     res.json({
-      cliente: s.cliente_nome || s.email,
+      cliente: s.cliente_nome || s.referente || s.email,
+      referente: s.referente || null,
       catalogo: PORTALE_CATALOGO,
       abituali,
       limite_kg: limite,
