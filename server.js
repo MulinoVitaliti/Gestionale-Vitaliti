@@ -8351,7 +8351,7 @@ app.post('/api/portale/ordine', async (req, res) => {
       return res.json({ error: `Per questo primo ordine il massimo è ${limite} kg. Ci contatti per quantità superiori.` });
     }
     if (consegna && consegna < primaDataConsegna(PORTALE_GIORNI_LAVORATIVI)) {
-      return res.json({ error: 'La data di consegna richiesta è troppo vicina: servono almeno 5 giorni lavorativi.' });
+      return res.json({ error: 'Possiamo garantire la consegna a partire da 5 giorni lavorativi dall\'ordine: scelga una data successiva.' });
     }
 
     const descr = dettaglio.map(d => `${d.nome} — ${d.sacchi} sacchi da ${d.kgSacco} kg (${d.kg} kg)`).join('\n');
