@@ -353,6 +353,20 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Promemoria di riordino impostati dal cliente
+      CREATE TABLE IF NOT EXISTS portale_promemoria (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        cliente_id INTEGER,
+        cliente_nome TEXT,
+        giorni INTEGER NOT NULL,
+        ultimo_ordine DATE,
+        prossimo_avviso DATE,
+        attivo BOOLEAN DEFAULT TRUE,
+        inviati INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Portale ordini clienti: accessi autorizzati
       CREATE TABLE IF NOT EXISTS portale_accessi (
         id SERIAL PRIMARY KEY,
@@ -8398,6 +8412,9 @@ app.get('/api/portale/catalogo', async (req, res) => {
       cliente: s.cliente_nome || s.referente || s.email,
       referente: s.referente || null,
       ultimo_ordine: ultimo,
+      promemoria: (await pool.query(
+        `SELECT giorni, prossimo_avviso FROM portale_promemoria
+         WHERE email=$1 AND attivo=TRUE ORDER BY id DESC LIMIT 1`, [s.email])).rows[0] || null,
       catalogo: PORTALE_CATALOGO,
       abituali,
       limite_kg: limite,
@@ -8454,6 +8471,27 @@ app.post('/api/portale/ordine', async (req, res) => {
        (note ? `\nNote del cliente: ${note}` : '')]);
 
     await pool.query(`UPDATE portale_accessi SET n_ordini = n_ordini + 1 WHERE id=$1`, [s.accesso_id]);
+
+    // promemoria di riordino: il cliente sceglie ogni quanti giorni
+    const giorni = parseInt(req.body?.promemoria_giorni) || 0;
+    if (giorni > 0) {
+      const prossimo = new Date(); prossimo.setDate(prossimo.getDate() + giorni);
+      await pool.query(
+        `INSERT INTO portale_promemoria (email, cliente_id, cliente_nome, giorni, ultimo_ordine, prossimo_avviso)
+         VALUES ($1,$2,$3,$4,CURRENT_DATE,$5)`,
+        [s.email, s.cliente_id || null, s.cliente_nome || s.referente || s.email, giorni,
+         prossimo.toISOString().slice(0, 10)]);
+      // tengo attivo solo il piu' recente
+      await pool.query(
+        `UPDATE portale_promemoria SET attivo=FALSE
+         WHERE email=$1 AND id <> (SELECT MAX(id) FROM portale_promemoria WHERE email=$1)`, [s.email]);
+    } else {
+      // se aveva un promemoria, sposto comunque in avanti la prossima scadenza
+      await pool.query(
+        `UPDATE portale_promemoria
+         SET ultimo_ordine=CURRENT_DATE, prossimo_avviso = CURRENT_DATE + giorni
+         WHERE email=$1 AND attivo=TRUE`, [s.email]);
+    }
     await pool.query(
       `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
        VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Portale ordini')`,
@@ -8535,6 +8573,79 @@ app.get('/api/portale/in-attesa', async (req, res) => {
       </div></body></html>`);
   } catch (e) { res.status(500).send('Errore: ' + e.message); }
 });
+
+// Il cliente cambia o annulla il proprio promemoria
+app.post('/api/portale/promemoria', async (req, res) => {
+  const s = await portaleSessione(req);
+  if (!s) return res.status(401).json({ error: 'Sessione scaduta' });
+  const giorni = parseInt(req.body?.giorni) || 0;
+  try {
+    if (!giorni) {
+      await pool.query(`UPDATE portale_promemoria SET attivo=FALSE WHERE email=$1`, [s.email]);
+      return res.json({ ok: true, attivo: false });
+    }
+    const prossimo = new Date(); prossimo.setDate(prossimo.getDate() + giorni);
+    await pool.query(`UPDATE portale_promemoria SET attivo=FALSE WHERE email=$1`, [s.email]);
+    await pool.query(
+      `INSERT INTO portale_promemoria (email, cliente_id, cliente_nome, giorni, ultimo_ordine, prossimo_avviso)
+       VALUES ($1,$2,$3,$4,CURRENT_DATE,$5)`,
+      [s.email, s.cliente_id || null, s.cliente_nome || s.email, giorni, prossimo.toISOString().slice(0, 10)]);
+    res.json({ ok: true, attivo: true, giorni });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Elenco dei promemoria attivi: e' anche la lista di chi e' pronto per il contratto
+app.get('/api/portale/promemoria', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM portale_promemoria WHERE attivo=TRUE ORDER BY prossimo_avviso`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Invio dei promemoria in scadenza — gira ogni mattina alle 8
+async function inviaPromemoriaRiordino() {
+  try {
+    const oggi = new Date();
+    if (oggi.getDay() === 0 || oggi.getDay() === 6) return;  // niente nel weekend
+    const base = process.env.APP_URL || 'https://gestionale-vitaliti-production.up.railway.app';
+    const r = await pool.query(
+      `SELECT p.* FROM portale_promemoria p
+       WHERE p.attivo=TRUE AND p.prossimo_avviso <= CURRENT_DATE
+         AND NOT EXISTS (
+           SELECT 1 FROM ordini o
+           WHERE o.cliente_id = p.cliente_id AND o.data > p.ultimo_ordine
+         )
+       LIMIT 30`);
+    for (const p of r.rows) {
+      try {
+        await portaleInviaEmail(p.email, 'Il suo riordino — Mulino Vitaliti',
+          `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">
+           <p>Buongiorno,</p>
+           <p>sono passati <strong>${p.giorni} giorni</strong> dall'ultimo ordine. Se le serve altra farina
+           pu&ograve; rifare lo stesso ordine in pochi secondi:</p>
+           <p style="margin:22px 0">
+             <a href="${base}/ordina" style="background:#973D37;color:#fff;padding:13px 26px;
+                border-radius:8px;text-decoration:none;font-weight:600">Rifai il tuo ordine</a>
+           </p>
+           <p>Trover&agrave; le stesse quantit&agrave; dell'ultima volta gi&agrave; pronte: le basta confermare o modificarle.</p>
+           <p style="margin-top:22px"><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br>
+           <em>Noi la maciniamo, tu la impasti!</em></p>
+           <p style="font-size:11px;color:#999;margin-top:18px">Se non desidera pi&ugrave; ricevere questo promemoria,
+           pu&ograve; disattivarlo dalla pagina degli ordini.</p></div>`);
+        const prossimo = new Date(); prossimo.setDate(prossimo.getDate() + p.giorni);
+        await pool.query(
+          `UPDATE portale_promemoria SET prossimo_avviso=$1, inviati=inviati+1 WHERE id=$2`,
+          [prossimo.toISOString().slice(0, 10), p.id]);
+        console.log(`[PORTALE] promemoria riordino inviato a ${p.email}`);
+      } catch (e) { console.error(`[PORTALE] promemoria non inviato a ${p.email}: ${e.message}`); }
+    }
+  } catch (e) { console.error('[PORTALE promemoria]', e.message); }
+}
+
+setInterval(() => {
+  if (new Date().getHours() === 8) inviaPromemoriaRiordino();
+}, 60 * 60 * 1000);
 
 // Diagnostica del portale: serve a capire perche' un'email non parte
 app.get('/api/portale/diagnostica', async (req, res) => {
