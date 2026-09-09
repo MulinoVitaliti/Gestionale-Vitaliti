@@ -459,7 +459,8 @@ function chiudiRicercaRapida(){
 }
 
 function connettiAccountEmailCorrente(){
-  window.location.href = currentEmailAccount === 'spedizioni' ? '/auth/spedizioni/login' : '/auth/login';
+  window.location.href = currentEmailAccount === 'spedizioni' ? '/auth/spedizioni/login'
+    : currentEmailAccount === 'insieme' ? '/auth/insieme/login' : '/auth/login';
 }
 
 async function disconnettiFatture(){
@@ -1626,7 +1627,7 @@ function sommaProdotti(prefix){
 
 function switchEmailAccount(account, el){
   currentEmailAccount = account;
-  document.querySelectorAll('#eacc-principale, #eacc-spedizioni').forEach(e=>e.classList.remove('active'));
+  document.querySelectorAll('#eacc-principale, #eacc-spedizioni, #eacc-insieme').forEach(e=>e.classList.remove('active'));
   if(el) el.classList.add('active');
   checkGmailStatus();
 }
