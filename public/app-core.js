@@ -197,8 +197,17 @@ function applyPermissions(){
 function canDo(a){return currentUser&&(PERMESSI[currentUser.ruolo]||{})[a];}
 
 // ── NAVIGATION ────────────────────────────────────────────────────────────
+// La pagina Email lavora a schermo intero: la barra laterale si chiude e resta
+// una linguetta sul bordo sinistro per riaprirla.
+function mostraBarra(){
+  document.getElementById('app-screen')?.classList.remove('barra-chiusa');
+}
+window.mostraBarra = mostraBarra;
+
 function showPage(id){
   if(!canDo(id)){alert('Non hai i permessi per questa sezione.');return;}
+  const app = document.getElementById('app-screen');
+  if(app) app.classList.toggle('barra-chiusa', id === 'email');
   if(typeof initDashAgenteChat==='function') initDashAgenteChat();
   document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
