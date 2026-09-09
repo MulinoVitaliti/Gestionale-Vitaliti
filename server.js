@@ -8306,9 +8306,26 @@ app.get('/api/portale/catalogo', async (req, res) => {
       const tag = String(c.rows[0]?.tag || '').toLowerCase();
       if (Number(c.rows[0]?.n) > 0 || tag.includes('contratt')) limite = 3000;
     }
+    // ultimo ordine fatto dal portale, da riproporre con un tocco
+    let ultimo = null;
+    if (s.cliente_id) {
+      const u = await pool.query(
+        `SELECT prodotti, data, peso_totale FROM ordini
+         WHERE cliente_id=$1 AND canale='portale cliente' AND prodotti IS NOT NULL
+         ORDER BY data DESC, id DESC LIMIT 1`, [s.cliente_id]);
+      if (u.rows.length) {
+        let righe = [];
+        try { righe = Array.isArray(u.rows[0].prodotti) ? u.rows[0].prodotti : JSON.parse(u.rows[0].prodotti || '[]'); } catch (e) {}
+        // tengo solo le righe che corrispondono ancora a prodotti a catalogo
+        righe = righe.filter(r => PORTALE_CATALOGO.some(p => p.nome === r.nome && p.pezzature.includes(Number(r.kgSacco))));
+        if (righe.length) ultimo = { data: u.rows[0].data, peso: Number(u.rows[0].peso_totale) || 0, righe };
+      }
+    }
+
     res.json({
       cliente: s.cliente_nome || s.referente || s.email,
       referente: s.referente || null,
+      ultimo_ordine: ultimo,
       catalogo: PORTALE_CATALOGO,
       abituali,
       limite_kg: limite,
