@@ -8154,21 +8154,15 @@ function primaDataConsegna(giorni) {
   return d.toISOString().slice(0, 10);
 }
 
-// Destinatari degli avvisi del portale. Si possono indicare piu' caselle
-// separate da virgola: ricevono tutte lo stesso messaggio.
-const PORTALE_AVVISI_DEFAULT = 'mulino.vitaliti@gmail.com, insieme.mulinovitaliti@gmail.com, spedizioni.mulinovitaliti@gmail.com';
+// Gli avvisi del portale arrivano su insieme.mulinovitaliti@gmail.com, che e'
+// la casella collegata al gestionale: gli ordini si leggono direttamente li'.
+const PORTALE_AVVISI_DEFAULT = 'insieme.mulinovitaliti@gmail.com';
 
 async function portaleDestinatarioAvvisi() {
   try {
     const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='portale_email_avvisi'`);
     const v = (r.rows[0]?.valore || '').trim();
-    const lista = (v || PORTALE_AVVISI_DEFAULT)
-      .split(/[,;]/).map(x => x.trim()).filter(x => x.includes('@'));
-    // le tre caselle aziendali ci sono sempre, anche se qualcuno le togliesse
-    for (const fissa of PORTALE_AVVISI_DEFAULT.split(',').map(x => x.trim())) {
-      if (!lista.some(x => x.toLowerCase() === fissa.toLowerCase())) lista.push(fissa);
-    }
-    return lista.join(', ');
+    return v.includes('@') ? v : PORTALE_AVVISI_DEFAULT;
   } catch (e) { return PORTALE_AVVISI_DEFAULT; }
 }
 
