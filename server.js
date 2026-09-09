@@ -5845,7 +5845,19 @@ function patchOAuth2ClientRefresh(client) {
   };
 }
 patchOAuth2ClientRefresh(oauth2Client);
+// ── Terzo account Gmail: insieme.mulinovitaliti@gmail.com (ordini) ───────
+let gmailInsiemeTokens = null;
+const INSIEME_REDIRECT_URI = process.env.INSIEME_REDIRECT_URI ||
+  (process.env.REDIRECT_URI ? process.env.REDIRECT_URI.replace('/auth/callback', '/auth/insieme/callback') : '');
+
+const oauth2ClientInsieme = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  INSIEME_REDIRECT_URI
+);
+
 patchOAuth2ClientRefresh(oauth2ClientSpedizioni);
+patchOAuth2ClientRefresh(oauth2ClientInsieme);
 
 // Restituisce { client, tokens, label } in base al parametro ?account=principale|spedizioni
 function getGmailAccount(req) {
@@ -5853,7 +5865,29 @@ function getGmailAccount(req) {
   if (account === 'spedizioni') {
     return { client: oauth2ClientSpedizioni, tokens: gmailSpedizioniTokens, label: 'spedizioni.mulinovitaliti@gmail.com' };
   }
+  if (account === 'insieme') {
+    return { client: oauth2ClientInsieme, tokens: gmailInsiemeTokens, label: 'insieme.mulinovitaliti@gmail.com' };
+  }
   return { client: oauth2Client, tokens: gmailTokens, label: 'mulino.vitaliti@gmail.com' };
+}
+
+async function loadGmailInsiemeTokens() {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='gmail_insieme_tokens'`);
+    if (r.rows.length) {
+      gmailInsiemeTokens = JSON.parse(r.rows[0].valore);
+      oauth2ClientInsieme.setCredentials(gmailInsiemeTokens);
+      console.log('✅ Token Gmail Insieme caricati dal database');
+    }
+  } catch (e) { console.log('ℹ️ Nessun token Gmail Insieme salvato'); }
+}
+
+async function saveGmailInsiemeTokens(tokens) {
+  try {
+    await pool.query(
+      `INSERT INTO impostazioni (chiave, valore) VALUES ('gmail_insieme_tokens', $1)
+       ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [JSON.stringify(tokens)]);
+  } catch (e) { console.error('[Gmail Insieme] salvataggio token:', e.message); }
 }
 
 async function loadGmailSpedizioniTokens() {
@@ -5904,6 +5938,39 @@ app.get('/auth/spedizioni/callback', async (req, res) => {
     console.error('[OAuth Spedizioni Callback] Errore:', err.message);
     res.redirect('/auth/spedizioni/login?retry=1');
   }
+});
+
+app.get('/auth/insieme/login', (req, res) => {
+  if (!INSIEME_REDIRECT_URI) return res.status(500).send('Redirect URI insieme non configurato');
+  const url = oauth2ClientInsieme.generateAuthUrl({
+    access_type: 'offline',
+    prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/gmail.readonly', 'https://www.googleapis.com/auth/gmail.send']
+  });
+  res.redirect(url);
+});
+
+app.get('/auth/insieme/callback', async (req, res) => {
+  try {
+    const { tokens } = await oauth2ClientInsieme.getToken(req.query.code);
+    gmailInsiemeTokens = tokens;
+    oauth2ClientInsieme.setCredentials(tokens);
+    await saveGmailInsiemeTokens(tokens);
+    res.redirect('/?insieme=connected');
+  } catch (err) {
+    console.error('[OAuth Insieme Callback] Errore:', err.message);
+    res.redirect('/auth/insieme/login?retry=1');
+  }
+});
+
+app.get('/api/insieme/gmail-status', (req, res) => {
+  res.json({ connected: !!gmailInsiemeTokens, email: 'insieme.mulinovitaliti@gmail.com' });
+});
+
+app.post('/api/insieme/disconnect', async (req, res) => {
+  gmailInsiemeTokens = null;
+  try { await pool.query(`DELETE FROM impostazioni WHERE chiave='gmail_insieme_tokens'`); } catch (e) {}
+  res.json({ success: true });
 });
 
 app.get('/api/spedizioni/gmail-status', (req, res) => {
@@ -8768,6 +8835,7 @@ initDB().then(async () => {
   await loadGmailTokens();
   console.log('[Avvio] Gmail principale OK, carico Gmail spedizioni...');
   await loadGmailSpedizioniTokens();
+  await loadGmailInsiemeTokens();
   console.log('[Avvio] Gmail spedizioni OK, carico FIC...');
   await loadFicTokens();
   console.log('[Avvio] FIC OK, avvio server...');
