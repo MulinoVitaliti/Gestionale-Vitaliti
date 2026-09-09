@@ -114,11 +114,12 @@
     <div class="card">
       <label for="promemoria">Vuoi che te lo ricordiamo?</label>
       <select id="promemoria">
+        <option value="" selected disabled>— Scegli —</option>
+        <option value="10">Sì, tra 10 giorni</option>
+        <option value="15">Sì, tra 15 giorni</option>
+        <option value="20">Sì, tra 20 giorni</option>
+        <option value="30">Sì, tra 30 giorni</option>
         <option value="0">No, grazie</option>
-        <option value="10">Ricordamelo tra 10 giorni</option>
-        <option value="15">Ricordamelo tra 15 giorni</option>
-        <option value="20">Ricordamelo tra 20 giorni</option>
-        <option value="30">Ricordamelo tra 30 giorni</option>
       </select>
       <p style="font-size:12px;color:#8a7a6a;margin:7px 0 0">Ti scriviamo una email quando è il momento di riordinare. Puoi cambiare idea quando vuoi.</p>
       <div id="promemoria-attivo" style="display:none;margin-top:12px;padding:11px 13px;background:var(--crema);border-radius:10px;font-size:13px"></div>
@@ -308,7 +309,7 @@ async function inviaOrdine(){
     const r = await chiamata('/api/portale/ordine', {method:'POST', body: JSON.stringify({
       righe, consegna: document.getElementById('consegna').value || null,
       note: document.getElementById('note').value || '',
-      promemoria_giorni: Number(document.getElementById('promemoria').value || 0)
+      promemoria_giorni: Number(document.getElementById('promemoria').value || 0) || 0
     })});
     if(r.error){ msg('msg-ordine', r.error, 'err'); return; }
     document.getElementById('catalogo').innerHTML =
