@@ -11,8 +11,9 @@
 <style>
   :root{ --terra:#973D37; --crema:#EEE8DA; --oro:#C9A84C; --scuro:#3A231C; --bordo:#e2dbd0; }
   *{ box-sizing:border-box }
-  body{ margin:0; font-family:'Open Sans',Arial,sans-serif; background:#faf8f4; color:var(--scuro);
-        font-size:15px; line-height:1.55; padding-bottom:100px }
+  body{ margin:0; font-family:'Open Sans',Arial,sans-serif; background:#fff; color:var(--scuro);
+        font-size:15px; line-height:1.55; padding-bottom:100px; transition:background .2s }
+  body.in-ordine{ background:#faf8f4 }
   .wrap{ max-width:620px; margin:0 auto; padding:22px 16px }
   .testata{ text-align:center; margin:10px 0 20px }
   .logo{ display:block; margin:0 auto; width:120px }
@@ -44,6 +45,8 @@
   .riga input{ width:88px; text-align:center }
   .sez{ font-size:11.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
         color:#a08e7c; margin:18px 0 6px }
+  .sez-titolo{ margin:26px 0 4px; padding-top:20px; border-top:2px solid var(--crema);
+        font-size:15px; font-weight:700; color:var(--terra) }
   .barra{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--bordo);
         padding:12px 16px calc(12px + env(safe-area-inset-bottom)); }
   .barra-in{ max-width:620px; margin:0 auto; display:flex; align-items:center; gap:12px }
@@ -70,11 +73,14 @@
     <h1>Ordina dal Mulino</h1>
     <p class="sub">Semola e farine di grano duro siciliano</p>
     <div id="msg-accesso"></div>
-    <div class="card">
+    <div class="card" style="border:0;box-shadow:none;padding:6px 0">
       <div id="passo-email">
-        <label for="email">La sua email</label>
+        <label for="referente">Referente</label>
+        <input type="text" id="referente" placeholder="Nome e cognome" autocomplete="name">
+        <div style="height:14px"></div>
+        <label for="email">Email</label>
         <input type="email" id="email" placeholder="nome@esempio.it" autocomplete="email" inputmode="email">
-        <div style="height:12px"></div>
+        <div style="height:16px"></div>
         <button onclick="chiediCodice()" id="btn-codice">Continua</button>
       </div>
       <div id="passo-codice" style="display:none">
@@ -136,10 +142,12 @@ async function chiamata(url, opzioni){
 
 async function chiediCodice(){
   const email = document.getElementById('email').value.trim();
+  const referente = document.getElementById('referente').value.trim();
+  if(!referente) return msg('msg-accesso','Scriva il nome del referente.','err');
   if(!email.includes('@')) return msg('msg-accesso','Scriva un indirizzo email valido.','err');
   const b = document.getElementById('btn-codice'); b.disabled = true; b.textContent = 'Attenda...';
   try{
-    const r = await chiamata('/api/portale/richiedi-codice', {method:'POST', body: JSON.stringify({email})});
+    const r = await chiamata('/api/portale/richiedi-codice', {method:'POST', body: JSON.stringify({email, referente})});
     if(r.error){ msg('msg-accesso', r.error, 'err'); }
     else if(r.stato === 'codice_inviato'){
       msg('msg-accesso', r.messaggio, 'ok');
@@ -184,8 +192,8 @@ async function apriOrdine(){
   dc.min = d.prima_consegna; dc.value = d.prima_consegna;
 
   const abituale = p => (d.abituali||[]).some(a => a.toLowerCase().includes(p.nome.toLowerCase().slice(0,12)));
-  const suoi = d.catalogo.filter(abituale);
-  const altri = d.catalogo.filter(p => !abituale(p));
+  const principali = d.catalogo.filter(p => p.gruppo !== 'antichi');
+  const antichi = d.catalogo.filter(p => p.gruppo === 'antichi');
 
   const blocco = p => `
     <div class="prod">
@@ -200,8 +208,9 @@ async function apriOrdine(){
     </div>`;
 
   document.getElementById('catalogo').innerHTML =
-    (suoi.length ? `<div class="sez" style="margin-top:0">I suoi prodotti</div>` + suoi.map(blocco).join('') : '') +
-    (altri.length ? `<div class="sez">Tutti i prodotti</div>` + altri.map(blocco).join('') : '');
+    principali.map(blocco).join('') +
+    (antichi.length ? `<div class="sez-titolo">Farine di grani antichi</div>` + antichi.map(blocco).join('') : '');
+  document.body.classList.add('in-ordine');
   calcola();
 }
 
