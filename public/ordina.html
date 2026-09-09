@@ -13,7 +13,7 @@
   *{ box-sizing:border-box }
   body{ margin:0; font-family:'Open Sans',Arial,sans-serif; background:#fff; color:var(--scuro);
         font-size:15px; line-height:1.55; padding-bottom:100px; transition:background .2s }
-  body.in-ordine{ background:#faf8f4 }
+  /* sfondo bianco anche nella scelta dei prodotti: le schede si leggono meglio */
   .wrap{ max-width:620px; margin:0 auto; padding:22px 16px }
   .testata{ text-align:center; margin:10px 0 20px }
   .logo{ display:block; margin:0 auto; width:120px }
@@ -187,7 +187,14 @@ async function apriOrdine(){
   document.getElementById('vista-accesso').style.display = 'none';
   document.getElementById('vista-ordine').style.display = '';
   document.getElementById('barra').style.display = '';
-  document.getElementById('benvenuto').textContent = d.cliente;
+  // in alto il nome del referente, non l'indirizzo email
+  const nome = d.referente || d.cliente || '';
+  document.getElementById('benvenuto').textContent = nome.includes('@')
+    ? 'Il suo ordine' : ('Ciao ' + nome.split(' ')[0]);
+  const sotto = document.querySelector('#vista-ordine .sub');
+  if(sotto && d.cliente && !d.cliente.includes('@') && d.referente && d.cliente !== d.referente){
+    sotto.textContent = d.cliente;
+  }
   const dc = document.getElementById('consegna');
   dc.min = d.prima_consegna; dc.value = d.prima_consegna;
 
@@ -210,7 +217,6 @@ async function apriOrdine(){
   document.getElementById('catalogo').innerHTML =
     principali.map(blocco).join('') +
     (antichi.length ? `<div class="sez-titolo">Farine di grani antichi</div>` + antichi.map(blocco).join('') : '');
-  document.body.classList.add('in-ordine');
   calcola();
 }
 
