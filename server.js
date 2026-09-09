@@ -352,6 +352,39 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Portale ordini clienti: accessi autorizzati
+      CREATE TABLE IF NOT EXISTS portale_accessi (
+        id SERIAL PRIMARY KEY,
+        email TEXT UNIQUE NOT NULL,
+        cliente_id INTEGER REFERENCES clienti(id) ON DELETE SET NULL,
+        cliente_nome TEXT,
+        stato TEXT DEFAULT 'in_attesa',      -- in_attesa | attivo | rifiutato | revocato
+        approvato_da TEXT,
+        approvato_il TIMESTAMP,
+        token_approvazione TEXT,
+        ultimo_accesso TIMESTAMP,
+        n_ordini INTEGER DEFAULT 0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Codici a sei cifre inviati per email
+      CREATE TABLE IF NOT EXISTS portale_codici (
+        id SERIAL PRIMARY KEY,
+        email TEXT NOT NULL,
+        codice TEXT NOT NULL,
+        scade_il TIMESTAMP NOT NULL,
+        usato BOOLEAN DEFAULT FALSE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- Dispositivi riconosciuti, per non richiedere il codice ogni volta
+      CREATE TABLE IF NOT EXISTS portale_sessioni (
+        token TEXT PRIMARY KEY,
+        email TEXT NOT NULL,
+        scade_il TIMESTAMP NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Esiti delle chiamate ricevuti da crm4 (webhook)
       CREATE TABLE IF NOT EXISTS crm4_chiamate (
         id SERIAL PRIMARY KEY,
@@ -8020,6 +8053,326 @@ app.post('/api/crm4/token', async (req, res) => {
     res.json({ ok: true, token: t });
   } catch (e) { res.json({ error: e.message }); }
 });
+
+// ══════════════════════════════════════════════════════════════════════════
+// PORTALE ORDINI CLIENTI — pagina pubblica /ordina
+// Il cliente entra con la sua email + codice a sei cifre. Il primo accesso
+// deve essere approvato da Giovanni. Nessun prezzo e' visibile.
+// Gli ordini arrivano SEMPRE in bozza: nulla parte senza conferma interna.
+// ══════════════════════════════════════════════════════════════════════════
+
+const PORTALE_CATALOGO = [
+  { nome: 'Perciasacchi',                    pezzature: [25, 10, 5] },
+  { nome: 'Tumminia',                        pezzature: [25, 10, 5] },
+  { nome: 'Maiorca',                         pezzature: [25, 10, 5] },
+  { nome: 'Russello Integrale',              pezzature: [25, 10, 5] },
+  { nome: 'Russello Burattato',              pezzature: [25, 10, 5] },
+  { nome: 'Senatore Cappelli 100%',          pezzature: [25, 10, 5] },
+  { nome: 'Semola rimacinata di grano duro con Senatore Cappelli', pezzature: [30, 10, 5] },
+  { nome: 'Farina integrale di grano duro',  pezzature: [30, 10, 5] },
+];
+
+const PORTALE_GIORNI_LAVORATIVI = 5;
+
+// Prima data di consegna possibile: N giorni lavorativi da oggi
+function primaDataConsegna(giorni) {
+  const d = new Date();
+  let contati = 0;
+  while (contati < (giorni || PORTALE_GIORNI_LAVORATIVI)) {
+    d.setDate(d.getDate() + 1);
+    const g = d.getDay();
+    if (g !== 0 && g !== 6) contati++;
+  }
+  return d.toISOString().slice(0, 10);
+}
+
+async function portaleDestinatarioAvvisi() {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='portale_email_avvisi'`);
+    return r.rows[0]?.valore || 'insieme.mulinovitaliti@gmail.com';
+  } catch (e) { return 'insieme.mulinovitaliti@gmail.com'; }
+}
+
+async function portaleInviaEmail(dest, oggetto, corpoHtml) {
+  if (!gmailTokens) throw new Error('Account Gmail non collegato');
+  oauth2Client.setCredentials(gmailTokens);
+  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
+  const raw = Buffer.from(
+    `To: ${dest}\r\nSubject: ${encodeEmailSubject(oggetto)}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpoHtml}`
+  ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+}
+
+// ── 1. Il cliente chiede il codice ───────────────────────────────────────
+app.post('/api/portale/richiedi-codice', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  if (!email.includes('@')) return res.json({ error: 'Scrivi un indirizzo email valido' });
+  try {
+    let acc = (await pool.query(`SELECT * FROM portale_accessi WHERE email=$1`, [email])).rows[0];
+
+    // primo accesso: creo la richiesta e avviso Giovanni
+    if (!acc) {
+      const cli = await pool.query(
+        `SELECT id, nome FROM clienti WHERE lower(COALESCE(email,''))=$1 LIMIT 1`, [email]);
+      const token = require('crypto').randomBytes(20).toString('hex');
+      const ins = await pool.query(
+        `INSERT INTO portale_accessi (email, cliente_id, cliente_nome, token_approvazione)
+         VALUES ($1,$2,$3,$4) RETURNING *`,
+        [email, cli.rows[0]?.id || null, cli.rows[0]?.nome || null, token]);
+      acc = ins.rows[0];
+
+      const base = process.env.APP_URL || `https://${req.get('host')}`;
+      const dest = await portaleDestinatarioAvvisi();
+      await portaleInviaEmail(dest, 'Richiesta accesso al portale ordini',
+        `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+         <p>Un cliente ha chiesto l'accesso al portale ordini.</p>
+         <p><strong>Email:</strong> ${email}<br>
+         <strong>Cliente in anagrafica:</strong> ${cli.rows[0]?.nome || '— non trovato, da collegare a mano —'}</p>
+         <p style="margin-top:22px">
+           <a href="${base}/api/portale/approva/${acc.id}?token=${token}&esito=si"
+              style="background:#973D37;color:#fff;padding:11px 22px;border-radius:7px;text-decoration:none;font-weight:600">Approva</a>
+           &nbsp;&nbsp;
+           <a href="${base}/api/portale/approva/${acc.id}?token=${token}&esito=no"
+              style="background:#eee;color:#333;padding:11px 22px;border-radius:7px;text-decoration:none">Rifiuta</a>
+         </p>
+         <p style="font-size:12px;color:#888;margin-top:20px">Finché non approvi, il cliente non riceve il codice e non può entrare.</p>
+         </div>`).catch(e => console.error('[PORTALE avviso]', e.message));
+
+      return res.json({ ok: true, stato: 'in_attesa',
+        messaggio: 'Richiesta inviata. Il Mulino la esaminerà e riceverà il codice di accesso via email.' });
+    }
+
+    if (acc.stato === 'in_attesa') return res.json({ ok: true, stato: 'in_attesa',
+      messaggio: 'La sua richiesta è in attesa di approvazione. Le scriveremo appena è pronta.' });
+    if (acc.stato !== 'attivo') return res.json({ error: 'Accesso non attivo. Contatti il Mulino.' });
+
+    // accesso attivo: genero e mando il codice
+    const codice = String(Math.floor(100000 + Math.random() * 900000));
+    await pool.query(
+      `INSERT INTO portale_codici (email, codice, scade_il) VALUES ($1,$2,NOW() + INTERVAL '15 minutes')`,
+      [email, codice]);
+    await portaleInviaEmail(email, 'Il suo codice di accesso — Mulino Vitaliti',
+      `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+       <p>Buongiorno,</p>
+       <p>il codice per accedere al portale ordini è:</p>
+       <p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#973D37">${codice}</p>
+       <p>È valido per 15 minuti. Se non ha richiesto lei l'accesso, ignori questo messaggio.</p>
+       <p style="margin-top:20px"><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p></div>`);
+    res.json({ ok: true, stato: 'codice_inviato', messaggio: 'Le abbiamo inviato un codice via email.' });
+  } catch (e) {
+    console.error('[PORTALE codice]', e.message);
+    res.json({ error: 'Non riesco a inviare il codice in questo momento. Riprovi tra poco.' });
+  }
+});
+
+// ── 2. Approvazione dalla mail ───────────────────────────────────────────
+app.get('/api/portale/approva/:id', async (req, res) => {
+  const pagina = (titolo, testo, colore) => `<!DOCTYPE html><html><head><meta charset="utf-8">
+    <meta name="viewport" content="width=device-width,initial-scale=1"><title>${titolo}</title></head>
+    <body style="font-family:Arial,sans-serif;background:#f6f3ee;margin:0;padding:60px 20px;text-align:center">
+    <div style="max-width:440px;margin:0 auto;background:#fff;border-radius:14px;padding:34px">
+    <h2 style="color:${colore};margin:0 0 12px">${titolo}</h2>
+    <p style="color:#444;font-size:15px;line-height:1.6">${testo}</p></div></body></html>`;
+  try {
+    const r = await pool.query(`SELECT * FROM portale_accessi WHERE id=$1`, [req.params.id]);
+    const a = r.rows[0];
+    if (!a || a.token_approvazione !== req.query.token) {
+      return res.status(403).send(pagina('Collegamento non valido', 'Questo collegamento è scaduto o già utilizzato.', '#973D37'));
+    }
+    if (a.stato !== 'in_attesa') {
+      return res.send(pagina('Già gestita', `Questa richiesta risulta già <strong>${a.stato}</strong>.`, '#8a7a6a'));
+    }
+    const ok = req.query.esito !== 'no';
+    await pool.query(
+      `UPDATE portale_accessi SET stato=$1, approvato_da='Giovanni', approvato_il=NOW(), token_approvazione=NULL WHERE id=$2`,
+      [ok ? 'attivo' : 'rifiutato', a.id]);
+
+    if (ok) {
+      const codice = String(Math.floor(100000 + Math.random() * 900000));
+      await pool.query(
+        `INSERT INTO portale_codici (email, codice, scade_il) VALUES ($1,$2,NOW() + INTERVAL '60 minutes')`,
+        [a.email, codice]);
+      const base = process.env.APP_URL || `https://${req.get('host')}`;
+      await portaleInviaEmail(a.email, 'Accesso attivato — Mulino Vitaliti',
+        `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+         <p>Buongiorno,</p>
+         <p>il suo accesso al portale ordini del Mulino Vitaliti è attivo.</p>
+         <p>Può ordinare da qui: <a href="${base}/ordina" style="color:#973D37">${base}/ordina</a></p>
+         <p>Il codice per il primo accesso è:</p>
+         <p style="font-size:30px;font-weight:700;letter-spacing:6px;color:#973D37">${codice}</p>
+         <p style="margin-top:20px"><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p></div>`).catch(() => {});
+    }
+    res.send(pagina(ok ? 'Accesso approvato' : 'Richiesta rifiutata',
+      ok ? `A <strong>${a.email}</strong> è stato inviato il collegamento e il codice per entrare.`
+         : `La richiesta di <strong>${a.email}</strong> è stata rifiutata.`,
+      ok ? '#3B6D11' : '#973D37'));
+  } catch (e) { res.status(500).send('Errore: ' + e.message); }
+});
+
+// ── 3. Verifica del codice e sessione ────────────────────────────────────
+app.post('/api/portale/verifica-codice', async (req, res) => {
+  const email = String(req.body?.email || '').trim().toLowerCase();
+  const codice = String(req.body?.codice || '').trim();
+  try {
+    const c = await pool.query(
+      `SELECT id FROM portale_codici WHERE email=$1 AND codice=$2 AND usato=FALSE AND scade_il > NOW()
+       ORDER BY id DESC LIMIT 1`, [email, codice]);
+    if (!c.rows.length) return res.json({ error: 'Codice non valido o scaduto' });
+    await pool.query(`UPDATE portale_codici SET usato=TRUE WHERE id=$1`, [c.rows[0].id]);
+
+    const acc = (await pool.query(`SELECT * FROM portale_accessi WHERE email=$1`, [email])).rows[0];
+    if (!acc || acc.stato !== 'attivo') return res.json({ error: 'Accesso non attivo' });
+
+    const token = require('crypto').randomBytes(24).toString('hex');
+    await pool.query(
+      `INSERT INTO portale_sessioni (token, email, scade_il) VALUES ($1,$2,NOW() + INTERVAL '180 days')`,
+      [token, email]);
+    await pool.query(`UPDATE portale_accessi SET ultimo_accesso=NOW() WHERE id=$1`, [acc.id]);
+    res.json({ ok: true, token, cliente: acc.cliente_nome || email });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+async function portaleSessione(req) {
+  const token = req.headers['x-portale-token'] || req.query.token || req.body?.token;
+  if (!token) return null;
+  const r = await pool.query(
+    `SELECT s.email, a.cliente_id, a.cliente_nome, a.stato, a.id AS accesso_id
+     FROM portale_sessioni s JOIN portale_accessi a ON a.email = s.email
+     WHERE s.token=$1 AND s.scade_il > NOW() AND a.stato='attivo'`, [token]);
+  return r.rows[0] || null;
+}
+
+// ── 4. Catalogo e dati per la pagina ─────────────────────────────────────
+app.get('/api/portale/catalogo', async (req, res) => {
+  const s = await portaleSessione(req);
+  if (!s) return res.status(401).json({ error: 'Sessione scaduta' });
+  try {
+    // prodotti gia' acquistati, per metterli in cima
+    let abituali = [];
+    if (s.cliente_id) {
+      const r = await pool.query(
+        `SELECT DISTINCT prodotto FROM ordini WHERE cliente_id=$1 AND prodotto IS NOT NULL
+         ORDER BY prodotto LIMIT 10`, [s.cliente_id]);
+      abituali = r.rows.map(x => String(x.prodotto));
+    }
+    // limite quantita': 630 kg per chi non ha ancora ordinato o non e' contrattualizzato
+    let limite = 630;
+    if (s.cliente_id) {
+      const c = await pool.query(
+        `SELECT (SELECT COUNT(*) FROM ordini o WHERE o.cliente_id=c.id) n, c.tag
+         FROM clienti c WHERE c.id=$1`, [s.cliente_id]);
+      const tag = String(c.rows[0]?.tag || '').toLowerCase();
+      if (Number(c.rows[0]?.n) > 0 || tag.includes('contratt')) limite = 3000;
+    }
+    res.json({
+      cliente: s.cliente_nome || s.email,
+      catalogo: PORTALE_CATALOGO,
+      abituali,
+      limite_kg: limite,
+      prima_consegna: primaDataConsegna(PORTALE_GIORNI_LAVORATIVI)
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// ── 5. Invio dell'ordine ─────────────────────────────────────────────────
+app.post('/api/portale/ordine', async (req, res) => {
+  const s = await portaleSessione(req);
+  if (!s) return res.status(401).json({ error: 'Sessione scaduta' });
+  const righe = Array.isArray(req.body?.righe) ? req.body.righe : [];
+  const consegna = req.body?.consegna || null;
+  const note = String(req.body?.note || '').slice(0, 500);
+  if (!righe.length) return res.json({ error: 'Non hai indicato nessun prodotto' });
+
+  try {
+    let pesoTot = 0;
+    const dettaglio = [];
+    for (const r of righe) {
+      const prod = PORTALE_CATALOGO.find(p => p.nome === r.prodotto);
+      const pez = Number(r.pezzatura), sacchi = Number(r.sacchi);
+      if (!prod || !prod.pezzature.includes(pez) || !(sacchi > 0)) continue;
+      const kg = pez * sacchi;
+      pesoTot += kg;
+      dettaglio.push({ nome: prod.nome, kgSacco: pez, sacchi, kg });
+    }
+    if (!dettaglio.length) return res.json({ error: 'Ordine non valido' });
+
+    // limite quantita'
+    let limite = 630;
+    if (s.cliente_id) {
+      const c = await pool.query(
+        `SELECT (SELECT COUNT(*) FROM ordini o WHERE o.cliente_id=c.id) n, c.tag FROM clienti c WHERE c.id=$1`,
+        [s.cliente_id]);
+      const tag = String(c.rows[0]?.tag || '').toLowerCase();
+      if (Number(c.rows[0]?.n) > 0 || tag.includes('contratt')) limite = 3000;
+    }
+    if (pesoTot > limite) {
+      return res.json({ error: `Per questo primo ordine il massimo è ${limite} kg. Ci contatti per quantità superiori.` });
+    }
+    if (consegna && consegna < primaDataConsegna(PORTALE_GIORNI_LAVORATIVI)) {
+      return res.json({ error: 'La data di consegna richiesta è troppo vicina: servono almeno 5 giorni lavorativi.' });
+    }
+
+    const descr = dettaglio.map(d => `${d.nome} — ${d.sacchi} sacchi da ${d.kgSacco} kg (${d.kg} kg)`).join('\n');
+    const ins = await pool.query(
+      `INSERT INTO ordini (cliente, cliente_id, prodotti, prodotto, peso_totale, data, data_consegna, stato, canale, note)
+       VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,'bozza','portale cliente',$7) RETURNING id`,
+      [s.cliente_nome || s.email, s.cliente_id || null, JSON.stringify(dettaglio),
+       dettaglio.map(d => d.nome).join(' + '), pesoTot, consegna || null,
+       `ORDINE DAL PORTALE\n${descr}` + (note ? `\nNote del cliente: ${note}` : '')]);
+
+    await pool.query(`UPDATE portale_accessi SET n_ordini = n_ordini + 1 WHERE id=$1`, [s.accesso_id]);
+    await pool.query(
+      `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
+       VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Portale ordini')`,
+      [`Nuovo ordine dal portale: ${s.cliente_nome || s.email} (${pesoTot} kg)`,
+       `${descr}\n\nConsegna richiesta: ${consegna || 'non indicata'}\n${note ? 'Note: ' + note + '\n' : ''}\nÈ in BOZZA nella pagina Ordini: va verificato e confermato.`]);
+
+    const dest = await portaleDestinatarioAvvisi();
+    portaleInviaEmail(dest, `Nuovo ordine dal portale — ${s.cliente_nome || s.email}`,
+      `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+       <p><strong>${s.cliente_nome || s.email}</strong> ha inviato un ordine dal portale.</p>
+       <p style="white-space:pre-line">${descr}</p>
+       <p><strong>Totale:</strong> ${pesoTot} kg<br>
+       <strong>Consegna richiesta:</strong> ${consegna || 'non indicata'}</p>
+       ${note ? `<p><strong>Note:</strong> ${note}</p>` : ''}
+       <p style="color:#888;font-size:12px">L'ordine è in bozza nel gestionale: va verificato e confermato.</p></div>`).catch(() => {});
+
+    console.log(`[PORTALE] ordine #${ins.rows[0].id} da ${s.email}: ${pesoTot} kg`);
+    res.json({ ok: true, numero: ins.rows[0].id, peso: pesoTot });
+  } catch (e) {
+    console.error('[PORTALE ordine]', e.message);
+    res.json({ error: 'Non sono riuscito a registrare l\'ordine. Riprovi tra poco.' });
+  }
+});
+
+// ── 6. Gestione accessi dal gestionale ───────────────────────────────────
+app.get('/api/portale/accessi', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM portale_accessi ORDER BY created_at DESC LIMIT 200`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.patch('/api/portale/accessi/:id', async (req, res) => {
+  const { stato, cliente_id } = req.body || {};
+  try {
+    if (cliente_id) {
+      const c = await pool.query(`SELECT nome FROM clienti WHERE id=$1`, [cliente_id]);
+      await pool.query(`UPDATE portale_accessi SET cliente_id=$1, cliente_nome=$2 WHERE id=$3`,
+        [cliente_id, c.rows[0]?.nome || null, req.params.id]);
+    }
+    if (stato) {
+      await pool.query(`UPDATE portale_accessi SET stato=$1, approvato_da=$2, approvato_il=NOW() WHERE id=$3`,
+        [stato, req.body?.utente || 'Giovanni', req.params.id]);
+      if (stato === 'revocato') await pool.query(
+        `DELETE FROM portale_sessioni WHERE email=(SELECT email FROM portale_accessi WHERE id=$1)`, [req.params.id]);
+    }
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// La pagina pubblica
+app.get('/ordina', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ordina.html')));
 
 // ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
 // Riceve gli errori JavaScript dal browser e li scrive nei log Railway.
