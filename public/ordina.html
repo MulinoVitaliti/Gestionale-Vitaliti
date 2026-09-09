@@ -100,7 +100,7 @@
   <!-- ORDINE -->
   <div id="vista-ordine" style="display:none">
     <h1 id="benvenuto"></h1>
-    <p class="sub">Indichi i prodotti e quando le servono</p>
+    <p class="sub">Noi la maciniamo, tu la impasti!</p>
     <div id="msg-ordine"></div>
     <div class="card" id="catalogo"></div>
     <div class="card">
@@ -190,7 +190,7 @@ async function apriOrdine(){
   // in alto il nome del referente, non l'indirizzo email
   const nome = d.referente || d.cliente || '';
   document.getElementById('benvenuto').textContent = nome.includes('@')
-    ? 'Il suo ordine' : ('Ciao ' + nome.split(' ')[0]);
+    ? 'Il tuo ordine' : ('Ciao ' + nome.split(' ')[0]);
   const sotto = document.querySelector('#vista-ordine .sub');
   if(sotto && d.cliente && !d.cliente.includes('@') && d.referente && d.cliente !== d.referente){
     sotto.textContent = d.cliente;
