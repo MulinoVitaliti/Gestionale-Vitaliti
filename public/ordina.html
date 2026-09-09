@@ -1,0 +1,249 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ordina — Mulino Vitaliti</title>
+<link rel="icon" href="/logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Open+Sans:wght@400;600;700&display=swap" rel="stylesheet">
+<style>
+  :root{ --terra:#973D37; --crema:#EEE8DA; --oro:#C9A84C; --scuro:#3A231C; --bordo:#e2dbd0; }
+  *{ box-sizing:border-box }
+  body{ margin:0; font-family:'Open Sans',Arial,sans-serif; background:#faf8f4; color:var(--scuro);
+        font-size:15px; line-height:1.55; padding-bottom:100px }
+  .wrap{ max-width:620px; margin:0 auto; padding:22px 16px }
+  .logo{ display:block; margin:8px auto 18px; width:120px }
+  h1{ font-size:20px; margin:0 0 4px; text-align:center; color:var(--terra) }
+  .sub{ text-align:center; color:#8a7a6a; font-size:13px; margin:0 0 22px }
+  .card{ background:#fff; border:1px solid var(--bordo); border-radius:14px; padding:18px; margin-bottom:14px }
+  label{ display:block; font-size:13px; font-weight:600; margin-bottom:5px }
+  input,select,textarea{ width:100%; padding:12px 13px; border:1px solid var(--bordo); border-radius:10px;
+        font-size:16px; font-family:inherit; background:#fff; color:var(--scuro) }
+  button{ font-family:inherit; font-size:15px; font-weight:600; border:0; border-radius:10px;
+        padding:13px 18px; cursor:pointer; background:var(--terra); color:#fff; width:100% }
+  button.sec{ background:var(--crema); color:var(--terra) }
+  button:disabled{ opacity:.55 }
+  .msg{ padding:12px 14px; border-radius:10px; font-size:13.5px; margin-bottom:14px }
+  .msg.err{ background:#fdecea; color:#8c2f26 }
+  .msg.ok{ background:#eaf4e6; color:#2f6320 }
+  .msg.info{ background:var(--crema); color:#6b4a3e }
+  .prod{ border-bottom:1px solid var(--bordo); padding:13px 0 }
+  .prod:last-child{ border-bottom:0 }
+  .prod-nome{ font-weight:600; font-size:14.5px; margin-bottom:8px }
+  .tag{ display:inline-block; background:var(--crema); color:var(--terra); font-size:10.5px;
+        font-weight:700; padding:2px 8px; border-radius:20px; margin-left:7px; vertical-align:2px }
+  .riga{ display:flex; gap:8px; align-items:center; margin-top:6px }
+  .riga select{ flex:1 }
+  .riga input{ width:88px; text-align:center }
+  .sez{ font-size:11.5px; font-weight:700; letter-spacing:.6px; text-transform:uppercase;
+        color:#a08e7c; margin:18px 0 6px }
+  .barra{ position:fixed; left:0; right:0; bottom:0; background:#fff; border-top:1px solid var(--bordo);
+        padding:12px 16px calc(12px + env(safe-area-inset-bottom)); }
+  .barra-in{ max-width:620px; margin:0 auto; display:flex; align-items:center; gap:12px }
+  .tot{ font-size:13px; color:#8a7a6a; flex:1 }
+  .tot b{ color:var(--scuro); font-size:16px }
+  .barra button{ width:auto; padding:13px 26px }
+  .pie{ text-align:center; font-size:12px; color:#a08e7c; margin-top:26px; line-height:1.7 }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <img src="/logo.png" class="logo" alt="Mulino Vitaliti">
+
+  <!-- ACCESSO -->
+  <div id="vista-accesso">
+    <h1>Ordina dal Mulino</h1>
+    <p class="sub">Semola e farine di grano duro siciliano</p>
+    <div id="msg-accesso"></div>
+    <div class="card">
+      <div id="passo-email">
+        <label for="email">La sua email</label>
+        <input type="email" id="email" placeholder="nome@esempio.it" autocomplete="email" inputmode="email">
+        <div style="height:12px"></div>
+        <button onclick="chiediCodice()" id="btn-codice">Continua</button>
+      </div>
+      <div id="passo-codice" style="display:none">
+        <label for="codice">Codice ricevuto per email</label>
+        <input type="text" id="codice" placeholder="6 cifre" inputmode="numeric" maxlength="6"
+               style="letter-spacing:8px;text-align:center;font-size:22px;font-weight:700">
+        <div style="height:12px"></div>
+        <button onclick="verificaCodice()" id="btn-verifica">Entra</button>
+        <div style="height:8px"></div>
+        <button class="sec" onclick="tornaEmail()">Cambia email</button>
+      </div>
+    </div>
+    <p class="pie">Il primo accesso viene autorizzato dal Mulino.<br>
+      Per informazioni: 095 913523</p>
+  </div>
+
+  <!-- ORDINE -->
+  <div id="vista-ordine" style="display:none">
+    <h1 id="benvenuto"></h1>
+    <p class="sub">Indichi quantità e data, penseremo noi al resto</p>
+    <div id="msg-ordine"></div>
+    <div class="card" id="catalogo"></div>
+    <div class="card">
+      <label for="consegna">Quando le servirebbe</label>
+      <input type="date" id="consegna">
+      <p style="font-size:12px;color:#8a7a6a;margin:6px 0 16px">Prepariamo l'ordine in 5 giorni lavorativi: la data più vicina è già impostata.</p>
+      <label for="note">Note per noi (facoltativo)</label>
+      <textarea id="note" rows="3" placeholder="Es. consegna al mattino, chiamare prima..."></textarea>
+    </div>
+    <p class="pie">Riceverà la nostra conferma con i prezzi prima della spedizione.<br>
+      <a href="#" onclick="esci();return false" style="color:#a08e7c">Esci</a></p>
+  </div>
+</div>
+
+<div class="barra" id="barra" style="display:none">
+  <div class="barra-in">
+    <div class="tot">Totale ordine<br><b id="tot-kg">0 kg</b></div>
+    <button onclick="inviaOrdine()" id="btn-invia">Invia ordine</button>
+  </div>
+</div>
+
+<script>
+const T = 'vv_portale_token';
+let dati = null;
+
+function msg(dove, testo, tipo){
+  document.getElementById(dove).innerHTML = testo
+    ? `<div class="msg ${tipo||'info'}">${testo}</div>` : '';
+}
+
+async function chiamata(url, opzioni){
+  const o = opzioni || {};
+  o.headers = Object.assign({'Content-Type':'application/json'}, o.headers||{});
+  const t = localStorage.getItem(T);
+  if(t) o.headers['x-portale-token'] = t;
+  const r = await fetch(url, o);
+  return r.json();
+}
+
+async function chiediCodice(){
+  const email = document.getElementById('email').value.trim();
+  if(!email.includes('@')) return msg('msg-accesso','Scriva un indirizzo email valido.','err');
+  const b = document.getElementById('btn-codice'); b.disabled = true; b.textContent = 'Attenda...';
+  try{
+    const r = await chiamata('/api/portale/richiedi-codice', {method:'POST', body: JSON.stringify({email})});
+    if(r.error){ msg('msg-accesso', r.error, 'err'); }
+    else if(r.stato === 'codice_inviato'){
+      msg('msg-accesso', r.messaggio, 'ok');
+      document.getElementById('passo-email').style.display = 'none';
+      document.getElementById('passo-codice').style.display = '';
+      document.getElementById('codice').focus();
+    } else {
+      msg('msg-accesso', r.messaggio, 'info');
+    }
+  }catch(e){ msg('msg-accesso','Problema di collegamento, riprovi.','err'); }
+  finally{ b.disabled = false; b.textContent = 'Continua'; }
+}
+
+function tornaEmail(){
+  document.getElementById('passo-codice').style.display = 'none';
+  document.getElementById('passo-email').style.display = '';
+  msg('msg-accesso','');
+}
+
+async function verificaCodice(){
+  const email = document.getElementById('email').value.trim();
+  const codice = document.getElementById('codice').value.trim();
+  const b = document.getElementById('btn-verifica'); b.disabled = true; b.textContent = 'Verifico...';
+  try{
+    const r = await chiamata('/api/portale/verifica-codice', {method:'POST', body: JSON.stringify({email, codice})});
+    if(r.error) return msg('msg-accesso', r.error, 'err');
+    localStorage.setItem(T, r.token);
+    apriOrdine();
+  }catch(e){ msg('msg-accesso','Problema di collegamento, riprovi.','err'); }
+  finally{ b.disabled = false; b.textContent = 'Entra'; }
+}
+
+async function apriOrdine(){
+  const d = await chiamata('/api/portale/catalogo');
+  if(d.error){ localStorage.removeItem(T); return; }
+  dati = d;
+  document.getElementById('vista-accesso').style.display = 'none';
+  document.getElementById('vista-ordine').style.display = '';
+  document.getElementById('barra').style.display = '';
+  document.getElementById('benvenuto').textContent = d.cliente;
+  const dc = document.getElementById('consegna');
+  dc.min = d.prima_consegna; dc.value = d.prima_consegna;
+
+  const abituale = p => (d.abituali||[]).some(a => a.toLowerCase().includes(p.nome.toLowerCase().slice(0,12)));
+  const suoi = d.catalogo.filter(abituale);
+  const altri = d.catalogo.filter(p => !abituale(p));
+
+  const blocco = p => `
+    <div class="prod">
+      <div class="prod-nome">${p.nome}${abituale(p) ? '<span class="tag">di solito</span>' : ''}</div>
+      <div class="riga">
+        <select id="pz-${cod(p.nome)}">
+          ${p.pezzature.map(k => `<option value="${k}">sacchi da ${k} kg</option>`).join('')}
+        </select>
+        <input type="number" min="0" step="1" placeholder="n. sacchi" id="qt-${cod(p.nome)}"
+               inputmode="numeric" oninput="calcola()">
+      </div>
+    </div>`;
+
+  document.getElementById('catalogo').innerHTML =
+    (suoi.length ? `<div class="sez" style="margin-top:0">I suoi prodotti</div>` + suoi.map(blocco).join('') : '') +
+    (altri.length ? `<div class="sez">Tutti i prodotti</div>` + altri.map(blocco).join('') : '');
+  calcola();
+}
+
+function cod(nome){ return nome.toLowerCase().replace(/[^a-z0-9]/g,'').slice(0,24); }
+
+function calcola(){
+  let kg = 0;
+  (dati.catalogo||[]).forEach(p => {
+    const q = Number(document.getElementById('qt-'+cod(p.nome))?.value || 0);
+    const pz = Number(document.getElementById('pz-'+cod(p.nome))?.value || 0);
+    if(q > 0) kg += q * pz;
+  });
+  document.getElementById('tot-kg').textContent = kg.toLocaleString('it-IT') + ' kg';
+  const oltre = kg > (dati.limite_kg || 630);
+  document.getElementById('btn-invia').disabled = (kg === 0) || oltre;
+  msg('msg-ordine', oltre
+    ? `Per ora possiamo accettare fino a ${dati.limite_kg} kg per ordine. Per quantità superiori ci chiami: 095 913523.`
+    : '', 'err');
+}
+
+async function inviaOrdine(){
+  const righe = [];
+  (dati.catalogo||[]).forEach(p => {
+    const q = Number(document.getElementById('qt-'+cod(p.nome))?.value || 0);
+    const pz = Number(document.getElementById('pz-'+cod(p.nome))?.value || 0);
+    if(q > 0) righe.push({prodotto: p.nome, pezzatura: pz, sacchi: q});
+  });
+  if(!righe.length) return;
+  const b = document.getElementById('btn-invia'); b.disabled = true; b.textContent = 'Invio...';
+  try{
+    const r = await chiamata('/api/portale/ordine', {method:'POST', body: JSON.stringify({
+      righe, consegna: document.getElementById('consegna').value || null,
+      note: document.getElementById('note').value || ''
+    })});
+    if(r.error){ msg('msg-ordine', r.error, 'err'); return; }
+    document.getElementById('catalogo').innerHTML =
+      `<div style="text-align:center;padding:26px 10px">
+         <div style="font-size:42px">✅</div>
+         <h2 style="color:#2f6320;font-size:18px;margin:10px 0 6px">Ordine ricevuto</h2>
+         <p style="color:#6b5a4a;font-size:14px">Grazie. Le confermeremo a breve quantità, prezzo e data di consegna.</p>
+         <p style="color:#a08e7c;font-size:12.5px">Riferimento n. ${r.numero} — ${r.peso} kg</p>
+         <div style="height:10px"></div>
+         <button class="sec" onclick="location.reload()">Fai un altro ordine</button>
+       </div>`;
+    document.getElementById('barra').style.display = 'none';
+    document.querySelectorAll('#vista-ordine .card').forEach((c,i) => { if(i>0) c.style.display='none'; });
+    msg('msg-ordine','');
+  }catch(e){ msg('msg-ordine','Problema di collegamento, riprovi.','err'); }
+  finally{ b.disabled = false; b.textContent = 'Invia ordine'; }
+}
+
+function esci(){ localStorage.removeItem(T); location.reload(); }
+
+// se il dispositivo è già riconosciuto entra da solo
+(async () => { if(localStorage.getItem(T)) { try{ await apriOrdine(); }catch(e){} } })();
+</script>
+</body>
+</html>
