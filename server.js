@@ -278,6 +278,7 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
@@ -8062,14 +8063,14 @@ app.post('/api/crm4/token', async (req, res) => {
 // ══════════════════════════════════════════════════════════════════════════
 
 const PORTALE_CATALOGO = [
-  { nome: 'Perciasacchi',                    pezzature: [25, 10, 5] },
-  { nome: 'Tumminia',                        pezzature: [25, 10, 5] },
-  { nome: 'Maiorca',                         pezzature: [25, 10, 5] },
-  { nome: 'Russello Integrale',              pezzature: [25, 10, 5] },
-  { nome: 'Russello Burattato',              pezzature: [25, 10, 5] },
-  { nome: 'Senatore Cappelli 100%',          pezzature: [25, 10, 5] },
-  { nome: 'Semola rimacinata di grano duro con Senatore Cappelli', pezzature: [30, 10, 5] },
-  { nome: 'Farina integrale di grano duro',  pezzature: [30, 10, 5] },
+  { nome: 'Semola rimacinata di grano duro con miscela Senatore Cappelli', pezzature: [30, 10, 5], gruppo: 'principali' },
+  { nome: 'Farina integrale di grano duro',  pezzature: [30, 10, 5], gruppo: 'principali' },
+  { nome: 'Perciasacchi',                    pezzature: [25, 10, 5], gruppo: 'antichi' },
+  { nome: 'Tumminia',                        pezzature: [25, 10, 5], gruppo: 'antichi' },
+  { nome: 'Maiorca',                         pezzature: [25, 10, 5], gruppo: 'antichi' },
+  { nome: 'Russello Integrale',              pezzature: [25, 10, 5], gruppo: 'antichi' },
+  { nome: 'Russello Burattato',              pezzature: [25, 10, 5], gruppo: 'antichi' },
+  { nome: 'Senatore Cappelli 100%',          pezzature: [25, 10, 5], gruppo: 'antichi' },
 ];
 
 const PORTALE_GIORNI_LAVORATIVI = 5;
@@ -8106,6 +8107,7 @@ async function portaleInviaEmail(dest, oggetto, corpoHtml) {
 // ── 1. Il cliente chiede il codice ───────────────────────────────────────
 app.post('/api/portale/richiedi-codice', async (req, res) => {
   const email = String(req.body?.email || '').trim().toLowerCase();
+  const referente = String(req.body?.referente || '').trim().slice(0, 120);
   if (!email.includes('@')) return res.json({ error: 'Scrivi un indirizzo email valido' });
   try {
     let acc = (await pool.query(`SELECT * FROM portale_accessi WHERE email=$1`, [email])).rows[0];
@@ -8116,9 +8118,9 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
         `SELECT id, nome FROM clienti WHERE lower(COALESCE(email,''))=$1 LIMIT 1`, [email]);
       const token = require('crypto').randomBytes(20).toString('hex');
       const ins = await pool.query(
-        `INSERT INTO portale_accessi (email, cliente_id, cliente_nome, token_approvazione)
-         VALUES ($1,$2,$3,$4) RETURNING *`,
-        [email, cli.rows[0]?.id || null, cli.rows[0]?.nome || null, token]);
+        `INSERT INTO portale_accessi (email, cliente_id, cliente_nome, referente, token_approvazione)
+         VALUES ($1,$2,$3,$4,$5) RETURNING *`,
+        [email, cli.rows[0]?.id || null, cli.rows[0]?.nome || null, referente || null, token]);
       acc = ins.rows[0];
 
       const base = process.env.APP_URL || `https://${req.get('host')}`;
@@ -8127,7 +8129,8 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
         await portaleInviaEmail(dest, 'Richiesta accesso al portale ordini',
         `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
          <p>Un cliente ha chiesto l'accesso al portale ordini.</p>
-         <p><strong>Email:</strong> ${email}<br>
+         <p><strong>Referente:</strong> ${referente || '— non indicato —'}<br>
+         <strong>Email:</strong> ${email}<br>
          <strong>Cliente in anagrafica:</strong> ${cli.rows[0]?.nome || '— non trovato, da collegare a mano —'}</p>
          <p style="margin-top:22px">
            <a href="${base}/api/portale/approva/${acc.id}?token=${token}&esito=si"
@@ -8147,8 +8150,42 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
         messaggio: 'Richiesta inviata. Il Mulino la esaminerà e riceverà il codice di accesso via email.' });
     }
 
-    if (acc.stato === 'in_attesa') return res.json({ ok: true, stato: 'in_attesa',
-      messaggio: 'La sua richiesta è in attesa di approvazione. Le scriveremo appena è pronta.' });
+    // Richiesta gia' in attesa: rimando l'avviso, cosi' si puo' riprovare se
+    // la prima email si e' persa. Al massimo una volta ogni 10 minuti.
+    if (acc.stato === 'in_attesa') {
+      if (referente && !acc.referente) {
+        await pool.query(`UPDATE portale_accessi SET referente=$1 WHERE id=$2`, [referente, acc.id]);
+        acc.referente = referente;
+      }
+      const recente = acc.created_at && (Date.now() - new Date(acc.created_at).getTime() < 10 * 60 * 1000);
+      if (!recente) {
+        const token = acc.token_approvazione || require('crypto').randomBytes(20).toString('hex');
+        await pool.query(`UPDATE portale_accessi SET token_approvazione=$1, created_at=NOW() WHERE id=$2`,
+          [token, acc.id]);
+        const base = process.env.APP_URL || `https://${req.get('host')}`;
+        const dest = await portaleDestinatarioAvvisi();
+        try {
+          await portaleInviaEmail(dest, 'Richiesta accesso al portale ordini (sollecito)',
+            `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+             <p>Richiesta di accesso ancora in attesa.</p>
+             <p><strong>Referente:</strong> ${acc.referente || '— non indicato —'}<br>
+             <strong>Email:</strong> ${email}<br>
+             <strong>Cliente in anagrafica:</strong> ${acc.cliente_nome || '— da collegare a mano —'}</p>
+             <p style="margin-top:22px">
+               <a href="${base}/api/portale/approva/${acc.id}?token=${token}&esito=si"
+                  style="background:#973D37;color:#fff;padding:11px 22px;border-radius:7px;text-decoration:none;font-weight:600">Approva</a>
+               &nbsp;&nbsp;
+               <a href="${base}/api/portale/approva/${acc.id}?token=${token}&esito=no"
+                  style="background:#eee;color:#333;padding:11px 22px;border-radius:7px;text-decoration:none">Rifiuta</a>
+             </p></div>`);
+          console.log(`[PORTALE] sollecito approvazione per ${email} inviato a ${dest}`);
+        } catch (err) {
+          console.error(`[PORTALE] SOLLECITO NON INVIATO a ${dest}: ${err.message}`);
+        }
+      }
+      return res.json({ ok: true, stato: 'in_attesa',
+        messaggio: 'La sua richiesta è in attesa di approvazione. Le scriveremo appena è pronta.' });
+    }
     if (acc.stato !== 'attivo') return res.json({ error: 'Accesso non attivo. Contatti il Mulino.' });
 
     // accesso attivo: genero e mando il codice
@@ -8241,7 +8278,7 @@ async function portaleSessione(req) {
   const token = req.headers['x-portale-token'] || req.query.token || req.body?.token;
   if (!token) return null;
   const r = await pool.query(
-    `SELECT s.email, a.cliente_id, a.cliente_nome, a.stato, a.id AS accesso_id
+    `SELECT s.email, a.cliente_id, a.cliente_nome, a.referente, a.stato, a.id AS accesso_id
      FROM portale_sessioni s JOIN portale_accessi a ON a.email = s.email
      WHERE s.token=$1 AND s.scade_il > NOW() AND a.stato='attivo'`, [token]);
   return r.rows[0] || null;
@@ -8323,7 +8360,8 @@ app.post('/api/portale/ordine', async (req, res) => {
        VALUES ($1,$2,$3,$4,$5,CURRENT_DATE,$6,'bozza','portale cliente',$7) RETURNING id`,
       [s.cliente_nome || s.email, s.cliente_id || null, JSON.stringify(dettaglio),
        dettaglio.map(d => d.nome).join(' + '), pesoTot, consegna || null,
-       `ORDINE DAL PORTALE\n${descr}` + (note ? `\nNote del cliente: ${note}` : '')]);
+       `ORDINE DAL PORTALE\nReferente: ${s.referente || '—'} (${s.email})\n${descr}` +
+       (note ? `\nNote del cliente: ${note}` : '')]);
 
     await pool.query(`UPDATE portale_accessi SET n_ordini = n_ordini + 1 WHERE id=$1`, [s.accesso_id]);
     await pool.query(
@@ -8336,6 +8374,7 @@ app.post('/api/portale/ordine', async (req, res) => {
     portaleInviaEmail(dest, `Nuovo ordine dal portale — ${s.cliente_nome || s.email}`,
       `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
        <p><strong>${s.cliente_nome || s.email}</strong> ha inviato un ordine dal portale.</p>
+       <p><strong>Referente:</strong> ${s.referente || '—'} · ${s.email}</p>
        <p style="white-space:pre-line">${descr}</p>
        <p><strong>Totale:</strong> ${pesoTot} kg<br>
        <strong>Consegna richiesta:</strong> ${consegna || 'non indicata'}</p>
@@ -8378,6 +8417,34 @@ app.patch('/api/portale/accessi/:id', async (req, res) => {
 
 // La pagina pubblica
 app.get('/ordina', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ordina.html')));
+
+// Elenco leggibile delle richieste in attesa, con i link per approvarle.
+// Serve quando l'email di avviso non arriva: si apre questo indirizzo e si approva da qui.
+app.get('/api/portale/in-attesa', async (req, res) => {
+  try {
+    const base = process.env.APP_URL || `https://${req.get('host')}`;
+    const r = await pool.query(
+      `SELECT id, email, cliente_nome, token_approvazione, created_at
+       FROM portale_accessi WHERE stato='in_attesa' ORDER BY created_at DESC`);
+    const righe = r.rows.map(a => `
+      <div style="border:1px solid #e2dbd0;border-radius:12px;padding:16px;margin-bottom:12px;background:#fff">
+        <div style="font-weight:700;font-size:15px">${a.cliente_nome || a.email}</div>
+        <div style="color:#8a7a6a;font-size:13px;margin-bottom:12px">${a.email} · richiesta del ${new Date(a.created_at).toLocaleString('it-IT')}</div>
+        <a href="${base}/api/portale/approva/${a.id}?token=${a.token_approvazione}&esito=si"
+           style="background:#973D37;color:#fff;padding:10px 20px;border-radius:7px;text-decoration:none;font-weight:600;font-size:14px">Approva</a>
+        &nbsp;
+        <a href="${base}/api/portale/approva/${a.id}?token=${a.token_approvazione}&esito=no"
+           style="background:#eee;color:#333;padding:10px 20px;border-radius:7px;text-decoration:none;font-size:14px">Rifiuta</a>
+      </div>`).join('');
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8">
+      <meta name="viewport" content="width=device-width,initial-scale=1"><title>Richieste di accesso</title></head>
+      <body style="font-family:Arial,sans-serif;background:#faf8f4;margin:0;padding:30px 16px">
+      <div style="max-width:560px;margin:0 auto">
+      <h2 style="color:#973D37">Richieste di accesso al portale</h2>
+      ${righe || '<p style="color:#8a7a6a">Nessuna richiesta in attesa.</p>'}
+      </div></body></html>`);
+  } catch (e) { res.status(500).send('Errore: ' + e.message); }
+});
 
 // Diagnostica del portale: serve a capire perche' un'email non parte
 app.get('/api/portale/diagnostica', async (req, res) => {
