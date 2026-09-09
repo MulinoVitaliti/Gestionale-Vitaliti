@@ -111,6 +111,18 @@
       <label for="note">Note per noi (facoltativo)</label>
       <textarea id="note" rows="3" placeholder="Es. consegna al mattino, chiamare prima..."></textarea>
     </div>
+    <div class="card">
+      <label for="promemoria">Vuoi che te lo ricordiamo?</label>
+      <select id="promemoria">
+        <option value="0">No, grazie</option>
+        <option value="10">Ricordamelo tra 10 giorni</option>
+        <option value="15">Ricordamelo tra 15 giorni</option>
+        <option value="20">Ricordamelo tra 20 giorni</option>
+        <option value="30">Ricordamelo tra 30 giorni</option>
+      </select>
+      <p style="font-size:12px;color:#8a7a6a;margin:7px 0 0">Ti scriviamo una email quando è il momento di riordinare. Puoi cambiare idea quando vuoi.</p>
+      <div id="promemoria-attivo" style="display:none;margin-top:12px;padding:11px 13px;background:var(--crema);border-radius:10px;font-size:13px"></div>
+    </div>
     <p class="pie">Riceverà la nostra conferma con i prezzi prima della spedizione.<br>
       <a href="#" onclick="esci();return false" style="color:#a08e7c">Esci</a></p>
   </div>
@@ -199,6 +211,16 @@ async function apriOrdine(){
   const dc = document.getElementById('consegna');
   dc.min = d.prima_consegna; dc.value = d.prima_consegna;
 
+  // promemoria gia' impostato
+  const pa = document.getElementById('promemoria-attivo');
+  if(d.promemoria && pa){
+    document.getElementById('promemoria').value = String(d.promemoria.giorni);
+    pa.style.display = '';
+    pa.innerHTML = `Promemoria attivo: <strong>ogni ${d.promemoria.giorni} giorni</strong>` +
+      (d.promemoria.prossimo_avviso ? ` · prossimo il ${new Date(d.promemoria.prossimo_avviso).toLocaleDateString('it-IT')}` : '') +
+      ` <a href="#" onclick="annullaPromemoria();return false" style="color:#973D37;margin-left:6px">annulla</a>`;
+  }
+
   const abituale = p => (d.abituali||[]).some(a => a.toLowerCase().includes(p.nome.toLowerCase().slice(0,12)));
   const principali = d.catalogo.filter(p => p.gruppo !== 'antichi');
   const antichi = d.catalogo.filter(p => p.gruppo === 'antichi');
@@ -285,7 +307,8 @@ async function inviaOrdine(){
   try{
     const r = await chiamata('/api/portale/ordine', {method:'POST', body: JSON.stringify({
       righe, consegna: document.getElementById('consegna').value || null,
-      note: document.getElementById('note').value || ''
+      note: document.getElementById('note').value || '',
+      promemoria_giorni: Number(document.getElementById('promemoria').value || 0)
     })});
     if(r.error){ msg('msg-ordine', r.error, 'err'); return; }
     document.getElementById('catalogo').innerHTML =
@@ -302,6 +325,14 @@ async function inviaOrdine(){
     msg('msg-ordine','');
   }catch(e){ msg('msg-ordine','Problema di collegamento, riprovi.','err'); }
   finally{ b.disabled = false; b.textContent = 'Invia ordine'; }
+}
+
+async function annullaPromemoria(){
+  const r = await chiamata('/api/portale/promemoria', {method:'POST', body: JSON.stringify({giorni:0})});
+  if(r.error) return alert('Errore: ' + r.error);
+  document.getElementById('promemoria').value = '0';
+  const pa = document.getElementById('promemoria-attivo');
+  if(pa){ pa.innerHTML = 'Promemoria annullato.'; setTimeout(()=>{ pa.style.display='none'; }, 2500); }
 }
 
 function esci(){ localStorage.removeItem(T); location.reload(); }
