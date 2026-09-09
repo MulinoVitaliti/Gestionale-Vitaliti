@@ -8123,7 +8123,8 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
 
       const base = process.env.APP_URL || `https://${req.get('host')}`;
       const dest = await portaleDestinatarioAvvisi();
-      await portaleInviaEmail(dest, 'Richiesta accesso al portale ordini',
+      try {
+        await portaleInviaEmail(dest, 'Richiesta accesso al portale ordini',
         `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
          <p>Un cliente ha chiesto l'accesso al portale ordini.</p>
          <p><strong>Email:</strong> ${email}<br>
@@ -8136,7 +8137,11 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
               style="background:#eee;color:#333;padding:11px 22px;border-radius:7px;text-decoration:none">Rifiuta</a>
          </p>
          <p style="font-size:12px;color:#888;margin-top:20px">Finché non approvi, il cliente non riceve il codice e non può entrare.</p>
-         </div>`).catch(e => console.error('[PORTALE avviso]', e.message));
+         </div>`);
+        console.log(`[PORTALE] richiesta accesso da ${email} — avviso inviato a ${dest}`);
+      } catch (err) {
+        console.error(`[PORTALE] AVVISO NON INVIATO a ${dest}: ${err.message} — la richiesta resta comunque in elenco`);
+      }
 
       return res.json({ ok: true, stato: 'in_attesa',
         messaggio: 'Richiesta inviata. Il Mulino la esaminerà e riceverà il codice di accesso via email.' });
@@ -8373,6 +8378,43 @@ app.patch('/api/portale/accessi/:id', async (req, res) => {
 
 // La pagina pubblica
 app.get('/ordina', (req, res) => res.sendFile(path.join(__dirname, 'public', 'ordina.html')));
+
+// Diagnostica del portale: serve a capire perche' un'email non parte
+app.get('/api/portale/diagnostica', async (req, res) => {
+  try {
+    const dest = await portaleDestinatarioAvvisi();
+    const inAttesa = await pool.query(`SELECT COUNT(*) n FROM portale_accessi WHERE stato='in_attesa'`);
+    res.json({
+      gmail_collegato: !!gmailTokens,
+      destinatario_avvisi: dest,
+      richieste_in_attesa: Number(inAttesa.rows[0].n),
+      nota: gmailTokens ? 'Gmail risulta collegato.' :
+        'Gmail NON e\' collegato: nessuna email puo\' partire. Collegalo da Impostazioni.'
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Prova di invio, per verificare il collegamento senza aspettare un cliente
+app.post('/api/portale/prova-email', async (req, res) => {
+  try {
+    const dest = req.body?.dest || await portaleDestinatarioAvvisi();
+    await portaleInviaEmail(dest, 'Prova invio — portale ordini',
+      `<div style="font-family:Arial,sans-serif;font-size:14px">Se leggi questo messaggio, l'invio dal portale ordini funziona.</div>`);
+    res.json({ ok: true, destinatario: dest });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Casella su cui ricevere gli avvisi del portale
+app.post('/api/portale/destinatario', async (req, res) => {
+  const email = String(req.body?.email || '').trim();
+  if (!email.includes('@')) return res.json({ error: 'Indirizzo non valido' });
+  try {
+    await pool.query(
+      `INSERT INTO impostazioni (chiave, valore) VALUES ('portale_email_avvisi',$1)
+       ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [email]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
 
 // ── LOG ERRORI CLIENT ─────────────────────────────────────────────────────
 // Riceve gli errori JavaScript dal browser e li scrive nei log Railway.
