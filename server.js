@@ -5898,6 +5898,20 @@ const oauth2ClientInsieme = new google.auth.OAuth2(
 patchOAuth2ClientRefresh(oauth2ClientSpedizioni);
 patchOAuth2ClientRefresh(oauth2ClientInsieme);
 
+// ── Casella Workspace del dominio: e' quella con cui il gestionale scrive
+// ai clienti. Mittente ordini@mulinovitaliti.com (alias di info@).
+let gmailDominioTokens = null;
+const MITTENTE_DOMINIO = process.env.MITTENTE_DOMINIO || 'ordini@mulinovitaliti.com';
+const DOMINIO_REDIRECT_URI = process.env.DOMINIO_REDIRECT_URI ||
+  (process.env.REDIRECT_URI ? process.env.REDIRECT_URI.replace('/auth/callback', '/auth/dominio/callback') : '');
+
+const oauth2ClientDominio = new google.auth.OAuth2(
+  process.env.GOOGLE_CLIENT_ID,
+  process.env.GOOGLE_CLIENT_SECRET,
+  DOMINIO_REDIRECT_URI
+);
+patchOAuth2ClientRefresh(oauth2ClientDominio);
+
 // Restituisce { client, tokens, label } in base al parametro ?account=principale|spedizioni
 function getGmailAccount(req) {
   const account = req.query.account || 'principale';
@@ -5908,6 +5922,25 @@ function getGmailAccount(req) {
     return { client: oauth2ClientInsieme, tokens: gmailInsiemeTokens, label: 'insieme.mulinovitaliti@gmail.com' };
   }
   return { client: oauth2Client, tokens: gmailTokens, label: 'mulino.vitaliti@gmail.com' };
+}
+
+async function loadGmailDominioTokens() {
+  try {
+    const r = await pool.query(`SELECT valore FROM impostazioni WHERE chiave='gmail_dominio_tokens'`);
+    if (r.rows.length) {
+      gmailDominioTokens = JSON.parse(r.rows[0].valore);
+      oauth2ClientDominio.setCredentials(gmailDominioTokens);
+      console.log(`✅ Casella dominio collegata — invio da ${MITTENTE_DOMINIO}`);
+    }
+  } catch (e) { console.log('ℹ️ Casella dominio non ancora collegata'); }
+}
+
+async function saveGmailDominioTokens(tokens) {
+  try {
+    await pool.query(
+      `INSERT INTO impostazioni (chiave, valore) VALUES ('gmail_dominio_tokens', $1)
+       ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [JSON.stringify(tokens)]);
+  } catch (e) { console.error('[Gmail dominio] salvataggio token:', e.message); }
 }
 
 async function loadGmailInsiemeTokens() {
@@ -6000,6 +6033,43 @@ app.get('/auth/insieme/callback', async (req, res) => {
     console.error('[OAuth Insieme Callback] Errore:', err.message);
     res.redirect('/auth/insieme/login?retry=1');
   }
+});
+
+app.get('/auth/dominio/login', (req, res) => {
+  if (!DOMINIO_REDIRECT_URI) return res.status(500).send('Redirect URI dominio non configurato');
+  const url = oauth2ClientDominio.generateAuthUrl({
+    access_type: 'offline', prompt: 'consent',
+    scope: ['https://www.googleapis.com/auth/gmail.send']
+  });
+  res.redirect(url);
+});
+
+app.get('/auth/dominio/callback', async (req, res) => {
+  try {
+    const { tokens } = await oauth2ClientDominio.getToken(req.query.code);
+    gmailDominioTokens = tokens;
+    oauth2ClientDominio.setCredentials(tokens);
+    await saveGmailDominioTokens(tokens);
+    res.send(`<!DOCTYPE html><html><head><meta charset="utf-8"></head>
+      <body style="font-family:Arial;background:#faf8f4;padding:60px 20px;text-align:center">
+      <div style="max-width:440px;margin:0 auto;background:#fff;border-radius:14px;padding:34px">
+      <h2 style="color:#3B6D11">Casella collegata</h2>
+      <p style="color:#444">Da adesso il gestionale scrive ai clienti da <strong>${MITTENTE_DOMINIO}</strong>.</p>
+      <p><a href="/" style="color:#973D37">Torna al gestionale</a></p></div></body></html>`);
+  } catch (err) {
+    console.error('[OAuth dominio] Errore:', err.message);
+    res.redirect('/auth/dominio/login?retry=1');
+  }
+});
+
+app.get('/api/dominio/stato', (req, res) => {
+  res.json({ collegato: !!gmailDominioTokens, mittente: MITTENTE_DOMINIO });
+});
+
+app.post('/api/dominio/disconnect', async (req, res) => {
+  gmailDominioTokens = null;
+  try { await pool.query(`DELETE FROM impostazioni WHERE chiave='gmail_dominio_tokens'`); } catch (e) {}
+  res.json({ ok: true });
 });
 
 app.get('/api/insieme/gmail-status', (req, res) => {
@@ -8335,13 +8405,29 @@ async function portaleDestinatarioAvvisi() {
   } catch (e) { return PORTALE_AVVISI_DEFAULT; }
 }
 
+// Le email ai clienti partono dalla casella del dominio (ordini@mulinovitaliti.com):
+// un mittente autenticato sul dominio aziendale finisce molto meno nello spam.
+// Se quella casella non e' collegata, si ripiega sull'account Gmail principale.
 async function portaleInviaEmail(dest, oggetto, corpoHtml) {
-  if (!gmailTokens) throw new Error('Account Gmail non collegato');
-  oauth2Client.setCredentials(gmailTokens);
-  const gmail = google.gmail({ version: 'v1', auth: oauth2Client });
-  const raw = Buffer.from(
-    `To: ${dest}\r\nSubject: ${encodeEmailSubject(oggetto)}\r\nContent-Type: text/html; charset=utf-8\r\n\r\n${corpoHtml}`
-  ).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  const usaDominio = !!gmailDominioTokens;
+  if (!usaDominio && !gmailTokens) throw new Error('Nessun account email collegato');
+
+  const client = usaDominio ? oauth2ClientDominio : oauth2Client;
+  client.setCredentials(usaDominio ? gmailDominioTokens : gmailTokens);
+  const gmail = google.gmail({ version: 'v1', auth: client });
+
+  const intestazioni = [
+    `To: ${dest}`,
+    `Subject: ${encodeEmailSubject(oggetto)}`,
+  ];
+  if (usaDominio) {
+    intestazioni.push(`From: "Mulino Vitaliti" <${MITTENTE_DOMINIO}>`);
+    intestazioni.push(`Reply-To: ${MITTENTE_DOMINIO}`);
+  }
+  intestazioni.push('Content-Type: text/html; charset=utf-8', 'MIME-Version: 1.0');
+
+  const raw = Buffer.from(intestazioni.join('\r\n') + '\r\n\r\n' + corpoHtml)
+    .toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
   await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
 }
 
@@ -8858,6 +8944,8 @@ app.get('/api/portale/diagnostica', async (req, res) => {
     const inAttesa = await pool.query(`SELECT COUNT(*) n FROM portale_accessi WHERE stato='in_attesa'`);
     res.json({
       gmail_collegato: !!gmailTokens,
+      casella_dominio_collegata: !!gmailDominioTokens,
+      mittente_usato: gmailDominioTokens ? MITTENTE_DOMINIO : 'account Gmail principale (ripiego)',
       destinatario_avvisi: dest,
       richieste_in_attesa: Number(inAttesa.rows[0].n),
       nota: gmailTokens ? 'Gmail risulta collegato.' :
@@ -9145,6 +9233,7 @@ initDB().then(async () => {
   console.log('[Avvio] Gmail principale OK, carico Gmail spedizioni...');
   await loadGmailSpedizioniTokens();
   await loadGmailInsiemeTokens();
+  await loadGmailDominioTokens();
   console.log('[Avvio] Gmail spedizioni OK, carico FIC...');
   await loadFicTokens();
   console.log('[Avvio] FIC OK, avvio server...');
