@@ -234,7 +234,7 @@ function showPage(id){
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
   if(id==='pipeline'){ initPipelinePage(); }
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
-  if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); }
+  if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); if(typeof aggiornaBadgePortale==='function')aggiornaBadgePortale(); }
   if(id==='contabilita'){ renderContab(); if(typeof caricaFormati==='function')caricaFormati(); }
   if(id==='dashboard'){ renderDash(); }
 
