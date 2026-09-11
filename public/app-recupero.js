@@ -1101,6 +1101,7 @@ function renderNonPagati(){
 }
 
 function renderOrdini(){
+  if(state.ordiniFilter === 'portale') return renderOrdiniPortale();
   const list=(state.ordini||[]).filter(o=>state.ordiniFilter==='tutti'||o.stato===state.ordiniFilter);
   const tb=document.getElementById('tbl-ordini'); if(!tb)return; tb.innerHTML='';
   if(!list.length){tb.innerHTML='<tr><td colspan="11"><div class="empty-state">Nessun ordine</div></td></tr>';return;}
@@ -1740,3 +1741,89 @@ window.gestisciFormati = gestisciFormati;
 window.aggiungiFormato = aggiungiFormato;
 window.eliminaFormato = eliminaFormato;
 window.aggiornaMenuFormati = aggiornaMenuFormati;
+
+
+// ── ORDINI ARRIVATI DAL PORTALE CLIENTI ──────────────────────────────────
+async function aggiornaBadgePortale(){
+  const b = document.getElementById('pill-portale-badge');
+  if(!b) return;
+  try{
+    const r = await api.get('/api/ordini/portale/conteggio');
+    const n = Number(r && r.n) || 0;
+    b.textContent = n; b.style.display = n ? 'inline-block' : 'none';
+  }catch(e){ b.style.display='none'; }
+}
+
+async function renderOrdiniPortale(){
+  const tb = document.getElementById('tbl-ordini');
+  if(!tb) return;
+  tb.innerHTML = '<tr><td colspan="11" style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</td></tr>';
+  try{
+    const dati = await api.get('/api/ordini/portale');
+    if(!Array.isArray(dati) || !dati.length){
+      tb.innerHTML = `<tr><td colspan="11"><div class="empty-state" style="padding:26px">
+        <p style="font-size:13px">Nessun ordine in arrivo dal portale.</p>
+        <p style="font-size:12px;color:var(--text-3)">Gli ordini inviati dai clienti compaiono qui, in attesa di conferma.</p>
+        </div></td></tr>`;
+      aggiornaBadgePortale(); return;
+    }
+    tb.innerHTML = dati.map(o => {
+      let righe = [];
+      try{ righe = Array.isArray(o.prodotti) ? o.prodotti : JSON.parse(o.prodotti||'[]'); }catch(e){}
+      const elenco = righe.length
+        ? righe.map(x=>`${x.sacchi} × ${x.kgSacco} kg — ${x.nome}`).join('<br>')
+        : (o.prodotto || '');
+      const noteCliente = (o.note||'').split('Note del cliente:')[1];
+      return `<tr><td colspan="11" style="padding:0">
+        <div style="border:1px solid var(--border);border-left:3px solid var(--brand);border-radius:10px;margin:10px 6px;padding:14px">
+          <div style="display:flex;align-items:flex-start;gap:14px;flex-wrap:wrap">
+            <div style="flex:1;min-width:220px">
+              <div style="font-weight:700;font-size:14px">${o.cliente_anagrafica || o.cliente}</div>
+              <div style="font-size:11px;color:var(--text-3);margin-bottom:8px">
+                ordine #${o.id} del ${new Date(o.data).toLocaleDateString('it-IT')}${o.citta ? ' · '+o.citta : ''}${o.tel ? ' · '+o.tel : ''}
+                ${o.cliente_id ? '' : ' · <span style="color:var(--orange)">non collegato a un cliente</span>'}
+              </div>
+              <div style="font-size:13px;line-height:1.7">${elenco}</div>
+              ${noteCliente ? `<div style="font-size:12px;color:var(--text-2);margin-top:7px;font-style:italic">Note: ${noteCliente.trim()}</div>` : ''}
+            </div>
+            <div style="min-width:150px;font-size:12px">
+              <div style="color:var(--text-3);font-size:10px;text-transform:uppercase">Totale</div>
+              <div style="font-size:17px;font-weight:700">${Number(o.peso_totale||0)} kg</div>
+              <div style="color:var(--text-3);font-size:10px;text-transform:uppercase;margin-top:8px">Consegna richiesta</div>
+              <div>${o.data_consegna ? new Date(o.data_consegna).toLocaleDateString('it-IT') : '—'}</div>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:12px;margin-top:12px;padding-top:11px;border-top:1px solid var(--border);flex-wrap:wrap">
+            <label style="display:flex;align-items:center;gap:6px;font-size:12.5px;cursor:pointer">
+              <input type="checkbox" id="ddt-${o.id}"> Crea anche il DDT su Fatture in Cloud
+            </label>
+            <div style="display:flex;gap:7px;margin-left:auto">
+              <button class="btn btn-sm" onclick="editOrdine(${o.id})"><i class="ti ti-pencil"></i>Modifica</button>
+              <button class="btn btn-sm btn-primary" onclick="confermaOrdinePortale(${o.id})"><i class="ti ti-check"></i>Conferma ordine</button>
+            </div>
+          </div>
+        </div></td></tr>`;
+    }).join('');
+    aggiornaBadgePortale();
+  }catch(e){
+    tb.innerHTML = '<tr><td colspan="11" style="padding:18px;color:var(--red)">Errore nel caricamento.</td></tr>';
+  }
+}
+
+async function confermaOrdinePortale(id){
+  const creaDDT = document.getElementById('ddt-'+id)?.checked || false;
+  if(!confirm(creaDDT
+      ? 'Confermare l\'ordine e creare il DDT su Fatture in Cloud?'
+      : 'Confermare l\'ordine? Il DDT non verrà creato.')) return;
+  const r = await api.post('/api/ordini/'+id+'/conferma-portale', {crea_ddt: creaDDT});
+  if(r.error) return alert('Errore: ' + r.error);
+  let msg = 'Ordine confermato.';
+  if(r.ddt) msg += ' DDT n. ' + r.numero + ' creato.';
+  if(r.avviso) msg += '\n' + r.avviso;
+  alert(msg);
+  try{ const o = await api.get('/api/ordini'); if(!o.error) state.ordini = o; }catch(e){}
+  renderOrdiniPortale();
+}
+window.renderOrdiniPortale = renderOrdiniPortale;
+window.confermaOrdinePortale = confermaOrdinePortale;
+window.aggiornaBadgePortale = aggiornaBadgePortale;
