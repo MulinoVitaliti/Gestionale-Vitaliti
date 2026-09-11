@@ -1415,12 +1415,14 @@ async function salvaLead(){
     const attToggle = document.getElementById('lead-att-toggle');
     if(attToggle?.checked){
       const tipo = document.getElementById('lead-att-tipo').value||'chiamata';
+      const titoloAtt = document.getElementById('lead-att-titolo')?.value.trim() || '';
+      if(titoloAtt && typeof registraTitolo==='function') registraTitolo('lead-att-titolo');
       const noteAtt = document.getElementById('lead-att-note').value.trim();
       const dataAtt = document.getElementById('lead-att-data').value;
       const oraAtt = document.getElementById('lead-att-ora').value;
       const titoliDefault={chiamata:'Chiamata',email:'Email',ordine:'Ordine',nota:'Nota'};
       if(noteAtt||dataAtt){
-        const attBody={tipo,titolo:titoliDefault[tipo]+' — '+nome,note:noteAtt,data_scadenza:dataAtt||null,ora:oraAtt||null,lead_id:data.id,pipeline_id:currentPipelineId,collegata_tipo:'lead',collegata_id:data.id,collegata_nome:nome,completata:false};
+        const attBody={tipo,titolo: titoloAtt || (titoliDefault[tipo]+' — '+nome),note:noteAtt,data_scadenza:dataAtt||null,ora:oraAtt||null,lead_id:data.id,pipeline_id:currentPipelineId,collegata_tipo:'lead',collegata_id:data.id,collegata_nome:nome,completata:false};
         const attData = await api.post('/api/attivita',attBody);
         if(!attData.error){ state.attivita=state.attivita||[]; state.attivita.unshift({...attData,lead_nome:nome}); }
       }
@@ -1428,7 +1430,7 @@ async function salvaLead(){
   }
   closeModal('modal-lead'); renderPipeline(); renderDash(); showSave();
   // Reset campi
-  ['lead-nome','lead-contatto','lead-tel','lead-tel2','lead-email','lead-indirizzo','lead-citta','lead-att-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
+  ['lead-nome','lead-contatto','lead-tel','lead-tel2','lead-email','lead-indirizzo','lead-citta','lead-att-titolo','lead-att-note'].forEach(id=>{const el=document.getElementById(id);if(el)el.value='';});
   document.getElementById('lead-tag').value='';
   const toggle=document.getElementById('lead-att-toggle');
   if(toggle){toggle.checked=false;toggleLeadAttivita(false);}
@@ -1854,3 +1856,59 @@ function filtraNonPagati(tipo){
   renderNonPagati();
 }
 window.filtraNonPagati = filtraNonPagati;
+
+
+// ── TITOLO DELLE NOTE: suggerimenti da quello che si e' gia' scritto ─────
+let _titoliCache = null;
+
+async function mostraTitoli(campoId){
+  const inp = document.getElementById(campoId);
+  const box = document.getElementById('sug-' + campoId);
+  if(!inp || !box) return;
+  const q = inp.value.trim();
+  try{
+    // l'elenco completo si carica una volta sola; se scrivo, filtro qui
+    if(!_titoliCache) _titoliCache = await api.get('/api/titoli-note');
+    let lista = Array.isArray(_titoliCache) ? _titoliCache : [];
+    if(q){
+      const k = q.toLowerCase();
+      lista = lista.filter(t => t.titolo.toLowerCase().includes(k));
+      if(!lista.length){
+        const remoti = await api.get('/api/titoli-note?q=' + encodeURIComponent(q));
+        lista = Array.isArray(remoti) ? remoti : [];
+      }
+    }
+    if(!lista.length){ box.style.display = 'none'; return; }
+    box.innerHTML = lista.slice(0,8).map(t =>
+      `<div onmousedown="scegliTitolo('${campoId}', ${JSON.stringify(t.titolo).replace(/"/g,'&quot;')})">
+         <i class="ti ti-tag" style="font-size:13px;color:var(--text-3)"></i>${t.titolo}
+         <span class="usi">${t.usi > 1 ? t.usi + ' volte' : ''}</span></div>`).join('');
+    box.style.display = 'block';
+  }catch(e){ box.style.display = 'none'; }
+}
+
+function scegliTitolo(campoId, titolo){
+  const inp = document.getElementById(campoId);
+  if(inp) inp.value = titolo;
+  const box = document.getElementById('sug-' + campoId);
+  if(box) box.style.display = 'none';
+}
+
+// Registra il titolo usato: e' cosi' che il gestionale impara
+async function registraTitolo(campoId){
+  const inp = document.getElementById(campoId);
+  const t = inp ? inp.value.trim() : '';
+  if(t.length < 2) return t;
+  try{ await api.post('/api/titoli-note', {titolo: t}); _titoliCache = null; }catch(e){}
+  return t;
+}
+
+// chiudo i suggerimenti cliccando altrove
+document.addEventListener('click', e => {
+  if(e.target.closest && e.target.closest('.sug-titoli')) return;
+  document.querySelectorAll('.sug-titoli').forEach(b => b.style.display = 'none');
+});
+
+window.mostraTitoli = mostraTitoli;
+window.scegliTitolo = scegliTitolo;
+window.registraTitolo = registraTitolo;
