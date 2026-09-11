@@ -1672,7 +1672,8 @@ function toggleProdottiSection(prefix){
   const section = document.getElementById(prefix+'-prodotti-section');
   const manualeWrap = document.getElementById(prefix+'-importo-netto-manuale-wrap');
   if(section) section.style.display='block';
-  if(manualeWrap) manualeWrap.style.display='block';
+  // l'imponibile non si scrive piu' a mano: lo calcola la somma delle righe
+  if(manualeWrap) manualeWrap.style.display='none';
   // l'etichetta cambia secondo il tipo, cosi' si capisce cosa si sta registrando
   const tipo = document.getElementById(prefix+'-tipo').value;
   const tit = document.getElementById(prefix+'-prodotti-titolo');
