@@ -363,6 +363,21 @@ async function initDB() {
         created_at TIMESTAMP DEFAULT NOW()
       );
 
+      -- Richieste di assistenza dal portale clienti
+      CREATE TABLE IF NOT EXISTS portale_assistenza (
+        id SERIAL PRIMARY KEY,
+        email TEXT,
+        cliente_id INTEGER,
+        cliente_nome TEXT,
+        referente TEXT,
+        telefono TEXT,
+        messaggio TEXT,
+        stato TEXT DEFAULT 'aperta',
+        gestita_da TEXT,
+        gestita_il TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Promemoria di riordino impostati dal cliente
       CREATE TABLE IF NOT EXISTS portale_promemoria (
         id SERIAL PRIMARY KEY,
@@ -8786,6 +8801,55 @@ async function inviaPromemoriaRiordino() {
 setInterval(() => {
   if (new Date().getHours() === 8) inviaPromemoriaRiordino();
 }, 60 * 60 * 1000);
+
+// Richiesta di assistenza dal portale
+app.post('/api/portale/assistenza', async (req, res) => {
+  const s = await portaleSessione(req);
+  if (!s) return res.status(401).json({ error: 'Sessione scaduta' });
+  const messaggio = String(req.body?.messaggio || '').trim().slice(0, 1000);
+  const telefono = String(req.body?.telefono || '').trim().slice(0, 40);
+  try {
+    const ins = await pool.query(
+      `INSERT INTO portale_assistenza (email, cliente_id, cliente_nome, referente, telefono, messaggio)
+       VALUES ($1,$2,$3,$4,$5,$6) RETURNING id`,
+      [s.email, s.cliente_id || null, s.cliente_nome || null, s.referente || null,
+       telefono || null, messaggio || null]);
+
+    // task nel gestionale, cosi' non si perde
+    await pool.query(
+      `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
+       VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Portale ordini')`,
+      [`Assistenza richiesta: ${s.cliente_nome || s.referente || s.email}`,
+       `${s.referente ? 'Referente: ' + s.referente + '\n' : ''}Email: ${s.email}\n` +
+       `${telefono ? 'Telefono indicato: ' + telefono + '\n' : ''}` +
+       `${messaggio ? '\nMessaggio:\n' + messaggio : '\n(nessun messaggio: ha solo chiesto di essere ricontattato)'}`]);
+
+    // avviso via email
+    const dest = await portaleDestinatarioAvvisi();
+    portaleInviaEmail(dest, `Assistenza richiesta — ${s.cliente_nome || s.referente || s.email}`,
+      `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
+       <p><strong>${s.cliente_nome || s.referente || s.email}</strong> ha chiesto di essere ricontattato dal portale ordini.</p>
+       <p>${s.referente ? '<strong>Referente:</strong> ' + s.referente + '<br>' : ''}
+       <strong>Email:</strong> ${s.email}${telefono ? '<br><strong>Telefono:</strong> ' + telefono : ''}</p>
+       ${messaggio ? `<p><strong>Messaggio:</strong><br>${messaggio.replace(/\n/g, '<br>')}</p>` : '<p style="color:#888">Nessun messaggio: ha solo chiesto di essere richiamato.</p>'}
+       </div>`).catch(e => console.error('[ASSISTENZA email]', e.message));
+
+    console.log(`[PORTALE] richiesta assistenza #${ins.rows[0].id} da ${s.email}`);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('[PORTALE assistenza]', e.message);
+    res.json({ error: 'Non sono riuscito a inviare la richiesta. Riprovi tra poco.' });
+  }
+});
+
+app.get('/api/portale/assistenza', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM portale_assistenza WHERE stato=$1 ORDER BY created_at DESC LIMIT 100`,
+      [req.query.stato || 'aperta']);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
 
 // Diagnostica del portale: serve a capire perche' un'email non parte
 app.get('/api/portale/diagnostica', async (req, res) => {
