@@ -278,6 +278,7 @@ async function initDB() {
       ON CONFLICT (figura) DO NOTHING;
 
       -- Memoria persistente di Steven
+      ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS riferimento_doc TEXT;
       ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
@@ -1981,11 +1982,11 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id , riferimento_doc } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti,fic_fattura_id) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, fic_fattura_id||null]
+      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti,fic_fattura_id,riferimento_doc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, fic_fattura_id||null, riferimento_doc||null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
@@ -2071,11 +2072,11 @@ app.put('/api/movimenti/:id/metodo-pagamento', async (req, res) => {
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato, fic_fattura_id } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato, fic_fattura_id , riferimento_doc } = req.body;
   try {
     await pool.query(
-      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13,fic_fattura_id=$14 WHERE id=$15',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, fic_fattura_id||null, req.params.id]
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13,fic_fattura_id=$14,riferimento_doc=$15 WHERE id=$16',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, fic_fattura_id||null, riferimento_doc||null, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -8197,6 +8198,59 @@ app.post('/api/ordini/:id/conferma-portale', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// ── STATISTICA GRANO: acquistato, pagato, da pagare ───────────────────────
+app.get('/api/analisi/grano', async (req, res) => {
+  const mesi = Number(req.query.mesi) || 12;
+  try {
+    const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
+    const par = [String(mesi), ...PAROLE_GRANO.map(p => '%' + p + '%')];
+
+    const tot = await pool.query(
+      `SELECT
+         COUNT(*) n,
+         COALESCE(SUM(importo),0) totale,
+         COALESCE(SUM(importo) FILTER (WHERE pagato = TRUE),0) pagato,
+         COALESCE(SUM(importo) FILTER (WHERE pagato = FALSE),0) da_pagare,
+         COUNT(*) FILTER (WHERE pagato = FALSE) n_da_pagare,
+         COALESCE(SUM(qty_kg),0) kg,
+         COALESCE(SUM(qty_kg) FILTER (WHERE pagato = FALSE),0) kg_da_pagare
+       FROM movimenti
+       WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})`, par);
+
+    const aperte = await pool.query(
+      `SELECT id, data, importo, qty_kg, prezzo_kg, descrizione, riferimento_doc,
+              (CURRENT_DATE - data) AS giorni
+       FROM movimenti
+       WHERE tipo='uscita' AND pagato = FALSE AND (${cond.replace(/\$(\d+)/g, (m, d) => '$' + (Number(d) - 1))})
+       ORDER BY data LIMIT 50`, PAROLE_GRANO.map(p => '%' + p + '%'));
+
+    const mese = await pool.query(
+      `SELECT to_char(data,'YYYY-MM') mese,
+              COALESCE(SUM(importo),0) spesa,
+              COALESCE(SUM(qty_kg),0) kg,
+              COALESCE(SUM(importo) FILTER (WHERE pagato=FALSE),0) da_pagare
+       FROM movimenti
+       WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})
+       GROUP BY 1 ORDER BY 1`, par);
+
+    const t = tot.rows[0];
+    const kg = Number(t.kg) || 0;
+    res.json({
+      mesi,
+      acquisti: Number(t.n),
+      totale: Number(t.totale),
+      pagato: Number(t.pagato),
+      da_pagare: Number(t.da_pagare),
+      n_da_pagare: Number(t.n_da_pagare),
+      kg,
+      kg_da_pagare: Number(t.kg_da_pagare),
+      prezzo_medio_kg: kg ? Number(t.totale) / kg : null,
+      aperte: aperte.rows,
+      per_mese: mese.rows
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
 app.get('/api/listini', async (req, res) => {
   try {
@@ -8471,6 +8525,8 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
         console.log(`[PORTALE] richiesta accesso da ${email} — avviso inviato a ${dest}`);
       } catch (err) {
         console.error(`[PORTALE] AVVISO NON INVIATO a ${dest}: ${err.message} — la richiesta resta comunque in elenco`);
+        return res.json({ ok: true, stato: 'in_attesa', invio_fallito: true,
+          messaggio: 'Richiesta registrata. Non siamo riusciti a inviare la notifica automatica: la contatteremo noi, oppure può chiamarci al 389 6066832.' });
       }
 
       return res.json({ ok: true, stato: 'in_attesa',
@@ -8508,6 +8564,8 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
           console.log(`[PORTALE] sollecito approvazione per ${email} inviato a ${dest}`);
         } catch (err) {
           console.error(`[PORTALE] SOLLECITO NON INVIATO a ${dest}: ${err.message}`);
+          return res.json({ ok: true, stato: 'in_attesa', invio_fallito: true, dettaglio: String(err.message).slice(0, 200),
+            messaggio: 'La sua richiesta è in attesa. Non siamo riusciti a inviare la notifica: può chiamarci al 389 6066832.' });
         }
       }
       return res.json({ ok: true, stato: 'in_attesa',
@@ -8958,6 +9016,7 @@ app.get('/api/portale/diagnostica', async (req, res) => {
 app.post('/api/portale/prova-email', async (req, res) => {
   try {
     const dest = req.body?.dest || await portaleDestinatarioAvvisi();
+    console.log(`[PORTALE] prova invio a ${dest} — mittente: ${gmailDominioTokens ? MITTENTE_DOMINIO : 'Gmail principale'}`);
     await portaleInviaEmail(dest, 'Prova invio — portale ordini',
       `<div style="font-family:Arial,sans-serif;font-size:14px">Se leggi questo messaggio, l'invio dal portale ordini funziona.</div>`);
     res.json({ ok: true, destinatario: dest });
