@@ -279,6 +279,7 @@ async function initDB() {
 
       -- Memoria persistente di Steven
       ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS riferimento_doc TEXT;
+      ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS materia_prima BOOLEAN DEFAULT FALSE;
       ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
@@ -1982,11 +1983,11 @@ app.get('/api/movimenti', async (req, res) => {
 });
 
 app.post('/api/movimenti', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id , riferimento_doc } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id , riferimento_doc, materia_prima } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti,fic_fattura_id,riferimento_doc) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, fic_fattura_id||null, riferimento_doc||null]
+      'INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,confezione,qty_kg,prezzo_kg,metodo_pagamento,prodotti,fic_fattura_id,riferimento_doc,materia_prima) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', pagato||false, aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, fic_fattura_id||null, riferimento_doc||null, materia_prima||false]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
@@ -2072,11 +2073,11 @@ app.put('/api/movimenti/:id/metodo-pagamento', async (req, res) => {
 });
 
 app.put('/api/movimenti/:id', async (req, res) => {
-  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato, fic_fattura_id , riferimento_doc } = req.body;
+  const { data, tipo, importo, cat, descrizione, fatturazione, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, pagato, fic_fattura_id , riferimento_doc, materia_prima } = req.body;
   try {
     await pool.query(
-      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13,fic_fattura_id=$14,riferimento_doc=$15 WHERE id=$16',
-      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, fic_fattura_id||null, riferimento_doc||null, req.params.id]
+      'UPDATE movimenti SET data=$1,tipo=$2,importo=$3,cat=$4,descrizione=$5,fatturazione=$6,aliquota_iva=$7,confezione=$8,qty_kg=$9,prezzo_kg=$10,metodo_pagamento=$11,prodotti=$12,pagato=$13,fic_fattura_id=$14,riferimento_doc=$15,materia_prima=$16 WHERE id=$17',
+      [data, tipo, importo, cat, descrizione, fatturazione||'non_applicabile', aliquota_iva||4, confezione||null, qty_kg||null, prezzo_kg||null, metodo_pagamento||null, prodotti?JSON.stringify(prodotti):null, pagato||false, fic_fattura_id||null, riferimento_doc||null, materia_prima||false, req.params.id]
     );
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -4319,7 +4320,8 @@ async function initCosti() {
 async function costoGranoDaAcquisti(mesi) {
   const m = Number(mesi) || 12;
   try {
-    const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
+    const cond = 'materia_prima = TRUE OR ' +
+      PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
     const par = [String(m), ...PAROLE_GRANO.map(p => '%' + p + '%')];
     const r = await pool.query(
       `SELECT
@@ -8202,7 +8204,11 @@ app.post('/api/ordini/:id/conferma-portale', async (req, res) => {
 app.get('/api/analisi/grano', async (req, res) => {
   const mesi = Number(req.query.mesi) || 12;
   try {
-    const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
+    // Un movimento entra nel conto del grano se lo dice il testo OPPURE se e'
+    // stato marcato come materia prima: i pagamenti in contanti o con assegno
+    // spesso non contengono la parola "grano" nella descrizione.
+    const cond = 'materia_prima = TRUE OR ' +
+      PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
     const par = [String(mesi), ...PAROLE_GRANO.map(p => '%' + p + '%')];
 
     // Il prezzo medio si calcola SOLO sugli acquisti che hanno i kg indicati:
@@ -8229,7 +8235,7 @@ app.get('/api/analisi/grano', async (req, res) => {
       `SELECT id, data, importo, qty_kg, prezzo_kg, descrizione, riferimento_doc,
               (CURRENT_DATE - data) AS giorni
        FROM movimenti
-       WHERE tipo='uscita' AND pagato = FALSE AND (${cond.replace(/\$(\d+)/g, (m, d) => '$' + (Number(d) - 1))})
+       WHERE tipo='uscita' AND pagato = FALSE AND (${'materia_prima = TRUE OR ' + PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 1} OR COALESCE(descrizione,'') ILIKE $${i + 1})`).join(' OR ')})
        ORDER BY data LIMIT 50`, PAROLE_GRANO.map(p => '%' + p + '%'));
 
     const mese = await pool.query(
