@@ -231,7 +231,7 @@ function renderGrano(box, g){
     const [anno, ms] = m.mese.split('-');
     return `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
       <span style="width:70px;color:var(--text-3)">${ms}/${anno.slice(2)}</span>
-      <span style="flex:1">${Math.round(m.kg).toLocaleString('it-IT')} kg</span>
+      <span style="flex:1">${Number(m.kg) > 0 ? Math.round(m.kg).toLocaleString('it-IT') + ' kg' : '<span style="color:var(--text-3)">kg non indicati</span>'}${Number(m.senza_kg) > 0 && Number(m.kg) > 0 ? `<span style="color:var(--orange);font-size:11px"> (${m.senza_kg} su ${m.acquisti} senza kg)</span>` : ''}</span>
       <span style="width:100px;text-align:right">${AM_EURO(m.spesa)}</span>
       <span style="width:100px;text-align:right;color:${Number(m.da_pagare)>0?'var(--red)':'var(--text-3)'}">${Number(m.da_pagare)>0?AM_EURO(m.da_pagare):'saldato'}</span>
     </div>`;
@@ -242,8 +242,15 @@ function renderGrano(box, g){
       ${card(AM_EURO(g.totale), 'Grano acquistato', 'var(--brand)', `${Math.round(g.kg).toLocaleString('it-IT')} kg in ${g.acquisti} acquisti`)}
       ${card(AM_EURO(g.pagato), 'Già pagato', 'var(--green)')}
       ${card(AM_EURO(g.da_pagare), 'Ancora da pagare', Number(g.da_pagare) > 0 ? 'var(--red)' : 'var(--text-3)', `${g.n_da_pagare} fatture`)}
-      ${card(g.prezzo_medio_kg ? '€ ' + Number(g.prezzo_medio_kg).toFixed(3) : '—', 'Prezzo medio al kg', 'var(--text)')}
+      ${card(g.prezzo_medio_kg ? '€ ' + Number(g.prezzo_medio_kg).toFixed(3) : '—', 'Prezzo medio al kg',
+             g.prezzo_medio_kg ? 'var(--text)' : 'var(--text-3)',
+             g.prezzo_medio_kg ? 'imponibile, sui soli acquisti con kg' : 'nessun acquisto ha i kg indicati')}
     </div>
+    ${Number(g.n_senza_kg) > 0 ? `<div style="background:rgba(230,150,60,.12);border-radius:8px;padding:11px 13px;margin-bottom:14px;font-size:12.5px">
+        <strong>${g.n_senza_kg} acquisti su ${g.acquisti} non hanno i chilogrammi indicati</strong> (${AM_EURO(g.spesa_senza_kg)}).<br>
+        <span style="color:var(--text-3)">Restano fuori dal prezzo medio e dalle quantità mensili: senza kg non sono calcolabili.
+        Per le fatture importate da Fatture in Cloud usa "Rileggi i kg dalle fatture" nella scheda Costi; per quelle registrate a mano, aprile e compila la quantità.</span>
+      </div>` : ''}
     ${aperte ? `<div style="font-weight:600;font-size:13px;margin:16px 0 6px">Acquisti da pagare</div>${aperte}` : ''}
     <div style="font-weight:600;font-size:13px;margin:20px 0 6px">Andamento mensile</div>
     <div style="display:flex;gap:12px;padding:4px 0;font-size:10.5px;color:var(--text-3);text-transform:uppercase">
