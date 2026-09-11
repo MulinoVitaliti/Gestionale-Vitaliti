@@ -83,6 +83,7 @@ async function aggiornaMovimento(){
     importo:parseFloat(document.getElementById('edit-mov-importo').value)||0,
     cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),
     descrizione:document.getElementById('edit-mov-desc').value,
+    riferimento_doc:document.getElementById('edit-mov-riferimento')?.value||null,
     fatturazione,
     aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4,
     prodotti: prodotti.length ? prodotti : null,
@@ -538,6 +539,8 @@ function editMovimento(id){
   const aliq = (parseInt(m.aliquota_iva)||4)/100;
   const netto = aliq>0 ? (parseFloat(m.importo)||0)/(1+aliq) : parseFloat(m.importo)||0;
   document.getElementById('edit-mov-importo-netto').value = netto.toFixed(2);
+  const rifEl = document.getElementById('edit-mov-riferimento');
+  if(rifEl) rifEl.value = m.riferimento_doc || '';
   document.getElementById('edit-mov-importo').value = parseFloat(m.importo)||0;
   document.getElementById('edit-mov-importo-preview').textContent = fmt(parseFloat(m.importo)||0);
   populateCatSelect('edit-mov-cat', m.cat||'');
@@ -1066,19 +1069,28 @@ function renderNonPagati(){
   const totaleEl = document.getElementById('nonpagati-totale');
   if(!tbody) return;
 
-  // Prendi solo le entrate non pagate, dal più recente al più vecchio
+  // Entrate da incassare E uscite da pagare: la vista le mostra entrambe
+  const solo = window._nonPagatiTipo || 'tutti';
   const nonPagati = (state.movimenti||[])
-    .filter(m => m.tipo === 'entrata' && !m.pagato)
+    .filter(m => !m.pagato && (solo === 'tutti' || m.tipo === solo))
     .sort((a,b) => new Date(b.data) - new Date(a.data));
 
   if(!nonPagati.length){
-    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--green);font-size:14px"><i class="ti ti-circle-check" style="font-size:24px;display:block;margin-bottom:8px"></i>Tutti i clienti hanno pagato!</td></tr>`;
+    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;padding:32px;color:var(--green);font-size:14px"><i class="ti ti-circle-check" style="font-size:24px;display:block;margin-bottom:8px"></i>Nessun pagamento in sospeso.</td></tr>`;
     if(totaleEl) totaleEl.textContent = '';
     return;
   }
 
-  const totale = nonPagati.reduce((s,m) => s + (Number(m.importo)||0), 0);
-  if(totaleEl) totaleEl.innerHTML = `Da incassare: <strong style="color:var(--orange)">€${totale.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2})}</strong>`;
+  const daIncassare = nonPagati.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(Number(m.importo)||0),0);
+  const daPagare = nonPagati.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(Number(m.importo)||0),0);
+  const eur = n => '€' + n.toLocaleString('it-IT',{minimumFractionDigits:2,maximumFractionDigits:2});
+  if(totaleEl) totaleEl.innerHTML =
+    `<span style="margin-right:16px">Da incassare: <strong style="color:var(--green)">${eur(daIncassare)}</strong></span>` +
+    `<span>Da pagare: <strong style="color:var(--red)">${eur(daPagare)}</strong></span>` +
+    `<span style="margin-left:16px;font-size:12px">
+       <a href="#" onclick="filtraNonPagati('tutti');return false">tutti</a> ·
+       <a href="#" onclick="filtraNonPagati('entrata');return false">solo entrate</a> ·
+       <a href="#" onclick="filtraNonPagati('uscita');return false">solo uscite</a></span>`;
 
   const oggi = new Date(); oggi.setHours(0,0,0,0);
 
@@ -1437,6 +1449,7 @@ async function salvaMovimento(){
       importo:imp,
       cat:getCatValue('mov-cat','mov-cat-custom'),
       descrizione,
+      riferimento_doc:document.getElementById('mov-riferimento')?.value||null,
       fatturazione,
       aliquota_iva: parseInt(document.getElementById('mov-iva').value)||4,
       prodotti: prodotti.length ? prodotti : null,
@@ -1828,3 +1841,10 @@ async function confermaOrdinePortale(id){
 window.renderOrdiniPortale = renderOrdiniPortale;
 window.confermaOrdinePortale = confermaOrdinePortale;
 window.aggiornaBadgePortale = aggiornaBadgePortale;
+
+
+function filtraNonPagati(tipo){
+  window._nonPagatiTipo = tipo;
+  renderNonPagati();
+}
+window.filtraNonPagati = filtraNonPagati;
