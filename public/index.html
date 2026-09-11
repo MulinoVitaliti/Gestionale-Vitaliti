@@ -1792,6 +1792,12 @@ window.addEventListener('unhandledrejection', function(e) {
       <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
       <div class="form-group"><label class="form-label">Documento di riferimento</label><input type="text" id="mov-riferimento" placeholder="DDT o fattura n."></div>
     </div>
+    <div class="form-group" id="mov-materia-wrap">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="mov-materia-prima"> Acquisto di materia prima (grano)
+      </label>
+      <div style="font-size:11px;color:var(--text-3);margin-top:3px;margin-left:24px">Spuntalo anche per contanti e assegni: serve a far entrare l'acquisto nel calcolo del costo del grano.</div>
+    </div>
     <div class="form-row">
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov(); syncFatturazioneDaIva('mov')"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
@@ -1842,6 +1848,11 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="form-row">
       <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
       <div class="form-group"><label class="form-label">Documento di riferimento</label><input type="text" id="edit-mov-riferimento" placeholder="DDT o fattura n."></div>
+    </div>
+    <div class="form-group">
+      <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+        <input type="checkbox" id="edit-mov-materia-prima"> Acquisto di materia prima (grano)
+      </label>
     </div>
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
