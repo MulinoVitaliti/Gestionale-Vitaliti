@@ -164,14 +164,13 @@ function aggiungiRigaProdotto(prefix, valori){
   riga.innerHTML = `
     <div class="form-group" style="margin-bottom:0;flex:1.3">
       <label class="form-label" style="font-size:11px">Confezione</label>
-      <select class="prod-confezione" onchange="calcolaImporto${prefix==='mov'?'Mov':'EditMov'}()">
-        <option value="">— Nessuna —</option>
-        <option value="sacco 5kg">Sacco 5 kg</option>
-        <option value="sacco 10kg">Sacco 10 kg</option>
-        <option value="sacco 30kg">Sacco 30 kg</option>
-        <option value="sfuso">Sfuso</option>
-        <option value="altro">Altro</option>
-      </select>
+      <div style="display:flex;gap:5px">
+        <select class="prod-confezione" style="flex:1" onchange="calcolaImporto${prefix==='mov'?'Mov':'EditMov'}()">
+          <option value="">— Nessuna —</option>
+          ${(window._formatiConfezione||[]).map(f=>`<option value="${f.nome}">${f.nome}</option>`).join('')}
+        </select>
+        <button type="button" class="btn btn-icon btn-sm" onclick="gestisciFormati()" title="Aggiungi o elimina formati"><i class="ti ti-settings" style="font-size:13px"></i></button>
+      </div>
     </div>
     <div class="form-group" style="margin-bottom:0;flex:0.8">
       <label class="form-label" style="font-size:11px">Quantità (kg)</label>
@@ -1667,15 +1666,77 @@ function toggleMetodoPagamentoVisibility(prefix){
 }
 
 function toggleProdottiSection(prefix){
-  const tipo = document.getElementById(prefix+'-tipo').value;
+  // Entrate e uscite hanno gli stessi campi: anche un acquisto ha confezione,
+  // quantita' e prezzo al kg — servono per calcolare il costo della materia prima.
   const section = document.getElementById(prefix+'-prodotti-section');
   const manualeWrap = document.getElementById(prefix+'-importo-netto-manuale-wrap');
-  if(tipo==='entrata'){
-    section.style.display='block';
-    manualeWrap.style.display='none';
-  } else {
-    section.style.display='none';
-    manualeWrap.style.display='block';
-  }
+  if(section) section.style.display='block';
+  if(manualeWrap) manualeWrap.style.display='block';
+  // l'etichetta cambia secondo il tipo, cosi' si capisce cosa si sta registrando
+  const tipo = document.getElementById(prefix+'-tipo').value;
+  const tit = document.getElementById(prefix+'-prodotti-titolo');
+  if(tit) tit.textContent = tipo === 'entrata' ? 'Prodotti venduti' : 'Merce acquistata';
   if(prefix==='mov') calcolaImportoMov(); else calcolaImportoEditMov();
 }
+
+
+// ── FORMATI DI CONFEZIONE: elenco, aggiunta, eliminazione ────────────────
+window._formatiConfezione = [];
+
+async function caricaFormati(){
+  try{
+    const f = await api.get('/api/formati');
+    if(Array.isArray(f)) window._formatiConfezione = f;
+  }catch(e){}
+}
+
+function gestisciFormati(){
+  const box = document.getElementById('fm-lista');
+  openModal('modal-formati');
+  renderFormati();
+}
+
+function renderFormati(){
+  const box = document.getElementById('fm-lista');
+  if(!box) return;
+  const f = window._formatiConfezione || [];
+  box.innerHTML = f.length ? f.map(x => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;font-size:13px">${x.nome}${x.kg ? ` <span style="color:var(--text-3);font-size:11px">${x.kg} kg</span>` : ''}</div>
+      <button class="btn btn-sm btn-danger" onclick="eliminaFormato(${x.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+    </div>`).join('')
+    : '<div style="font-size:12px;color:var(--text-3)">Nessun formato registrato.</div>';
+}
+
+async function aggiungiFormato(){
+  const nome = document.getElementById('fm-nome').value.trim();
+  const kg = document.getElementById('fm-kg').value;
+  if(!nome) return alert('Scrivi il nome del formato, es. "Sacco 15 kg".');
+  const r = await api.post('/api/formati', {nome, kg: kg || null});
+  if(r.error) return alert('Errore: ' + r.error);
+  document.getElementById('fm-nome').value = '';
+  document.getElementById('fm-kg').value = '';
+  await caricaFormati(); renderFormati(); aggiornaMenuFormati(); showSave();
+}
+
+async function eliminaFormato(id){
+  if(!confirm('Eliminare questo formato? I movimenti già registrati non cambiano.')) return;
+  await fetch('/api/formati/'+id, {method:'DELETE'});
+  await caricaFormati(); renderFormati(); aggiornaMenuFormati();
+}
+
+// Aggiorna i menù già presenti a schermo senza perdere quanto selezionato
+function aggiornaMenuFormati(){
+  document.querySelectorAll('select.prod-confezione').forEach(sel => {
+    const scelto = sel.value;
+    sel.innerHTML = '<option value="">— Nessuna —</option>' +
+      (window._formatiConfezione||[]).map(f=>`<option value="${f.nome}">${f.nome}</option>`).join('');
+    if(scelto) sel.value = scelto;
+  });
+}
+
+window.caricaFormati = caricaFormati;
+window.gestisciFormati = gestisciFormati;
+window.aggiungiFormato = aggiungiFormato;
+window.eliminaFormato = eliminaFormato;
+window.aggiornaMenuFormati = aggiornaMenuFormati;
