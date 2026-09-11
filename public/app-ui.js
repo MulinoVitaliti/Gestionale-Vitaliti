@@ -652,6 +652,7 @@ async function salvaAttivita(){
   const id=document.getElementById('att-id').value;
   const titolo=document.getElementById('att-titolo').value.trim();
   if(!titolo) return alert('Inserisci un titolo');
+  if(typeof registraTitolo==='function') registraTitolo('att-titolo');
   const leadId = parseInt(document.getElementById('att-lead').value)||null;
   const pipelineId = document.getElementById('att-pipeline').value||null;
   if(!leadId) return alert('Seleziona un lead dalla pipeline');
