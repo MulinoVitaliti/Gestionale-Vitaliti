@@ -1788,7 +1788,10 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
 
     <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="mov-cat" onchange="onCatChange('mov-cat','mov-cat-custom')"></select><input type="text" id="mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
-    <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="mov-desc"></div>
+      <div class="form-group"><label class="form-label">Documento di riferimento</label><input type="text" id="mov-riferimento" placeholder="DDT o fattura n."></div>
+    </div>
     <div class="form-row">
       <div class="form-group" id="mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="mov-iva" onchange="calcolaImportoMov(); syncFatturazioneDaIva('mov')"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
@@ -1836,7 +1839,10 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
 
     <div class="form-row"><div class="form-group"><label class="form-label">Categoria</label><select id="edit-mov-cat" onchange="onCatChange('edit-mov-cat','edit-mov-cat-custom')"></select><input type="text" id="edit-mov-cat-custom" placeholder="Scrivi categoria..." style="display:none;margin-top:5px;width:100%;padding:8px 11px;border-radius:var(--r);border:1px solid var(--border-strong);font-size:13px;font-family:var(--font)"></div></div>
-    <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
+    <div class="form-row">
+      <div class="form-group"><label class="form-label">Descrizione *</label><input type="text" id="edit-mov-desc"></div>
+      <div class="form-group"><label class="form-label">Documento di riferimento</label><input type="text" id="edit-mov-riferimento" placeholder="DDT o fattura n."></div>
+    </div>
     <div class="form-row">
       <div class="form-group" id="edit-mov-fatturazione-row"><label class="form-label">Stato fatturazione</label><select id="edit-mov-fatturazione"><option value="fatturato">Fatturato</option><option value="da_fatturare">Black</option><option value="non_applicabile">— Non applicabile</option></select></div>
       <div class="form-group"><label class="form-label">Aliquota IVA</label><select id="edit-mov-iva" onchange="calcolaImportoEditMov(); syncFatturazioneDaIva('edit-mov')"><option value="4">4%</option><option value="10">10%</option><option value="22">22%</option><option value="0">Esente</option></select></div>
@@ -2021,6 +2027,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <button class="pill" onclick="tabAnalisi('cassa',this)">Previsione cassa</button>
         <button class="pill" onclick="tabAnalisi('anomalie',this)">Anomalie</button>
         <button class="pill" onclick="tabAnalisi('commercialista',this)">Per il commercialista</button>
+        <button class="pill" onclick="tabAnalisi('grano',this)">Grano</button>
         <button class="pill" onclick="tabAnalisi('costi',this)">Costi e impegni</button>
       </div>
       <div id="am-contenuto" style="min-height:260px;max-height:460px;overflow:auto"></div>
