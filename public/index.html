@@ -740,6 +740,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="pill" onclick="filterOrdini('confermato',this)"><span class="status-dot" style="background:var(--blue)"></span>Confermati</div>
         <div class="pill" onclick="filterOrdini('spedito',this)"><span class="status-dot" style="background:var(--orange)"></span>Spediti</div>
         <div class="pill" onclick="filterOrdini('consegnato',this)"><span class="status-dot" style="background:var(--green)"></span>Consegnati</div>
+        <div class="pill" onclick="filterOrdini('portale',this)" id="pill-ord-portale"><i class="ti ti-device-mobile" style="font-size:12px;vertical-align:-1px;margin-right:3px"></i>Dal portale<span id="pill-portale-badge" style="display:none;background:var(--brand);color:#fff;border-radius:10px;padding:1px 7px;font-size:10px;font-weight:700;margin-left:6px"></span></div>
       </div>
       <div class="table-wrap"><table><thead><tr><th>N°</th><th>Cliente</th><th>Prodotti</th><th>Bancali</th><th>Peso kg</th><th>Importo</th><th>Data</th><th>Canale</th><th>Stato</th><th>DDT</th><th></th></tr></thead><tbody id="tbl-ordini"></tbody></table></div>
     </div>
