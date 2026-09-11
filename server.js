@@ -355,6 +355,25 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Titoli delle note: il gestionale impara quelli che vengono usati
+      CREATE TABLE IF NOT EXISTS titoli_note (
+        id SERIAL PRIMARY KEY,
+        chiave TEXT UNIQUE NOT NULL,     -- versione normalizzata, per raggruppare
+        titolo TEXT NOT NULL,            -- la forma piu' usata, quella che si propone
+        usi INTEGER DEFAULT 1,
+        ultimo_uso TIMESTAMP DEFAULT NOW(),
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      -- varianti: quante volte ogni forma e' stata scritta. Vince la piu' usata.
+      CREATE TABLE IF NOT EXISTS titoli_varianti (
+        id SERIAL PRIMARY KEY,
+        chiave TEXT NOT NULL,
+        forma TEXT NOT NULL,
+        usi INTEGER DEFAULT 1,
+        UNIQUE (chiave, forma)
+      );
+
       -- Formati di confezione usati nei movimenti (modificabili dall'utente)
       CREATE TABLE IF NOT EXISTS formati_confezione (
         id SERIAL PRIMARY KEY,
@@ -8083,6 +8102,54 @@ app.post('/api/impegni', async (req, res) => {
 app.delete('/api/impegni/:id', async (req, res) => {
   try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── TITOLI DELLE NOTE: suggeriti in base a quello che scrivete ────────────
+// Nessun elenco prestabilito: il gestionale impara le etichette che usate.
+// Le varianti dello stesso titolo (maiuscole, accenti, spazi) vengono raggruppate
+// e viene proposta la forma scritta piu' spesso.
+function chiaveTitolo(t) {
+  return String(t || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')   // via gli accenti
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+async function registraTitoloNota(titolo) {
+  const t = String(titolo || '').trim();
+  if (t.length < 2 || t.length > 60) return;
+  const k = chiaveTitolo(t);
+  if (!k) return;
+  try {
+    await pool.query(
+      `INSERT INTO titoli_varianti (chiave, forma) VALUES ($1,$2)
+       ON CONFLICT (chiave, forma) DO UPDATE SET usi = titoli_varianti.usi + 1`, [k, t]);
+    // la forma vincente e' quella scritta piu' volte
+    const v = await pool.query(
+      `SELECT forma FROM titoli_varianti WHERE chiave=$1 ORDER BY usi DESC, forma LIMIT 1`, [k]);
+    await pool.query(
+      `INSERT INTO titoli_note (chiave, titolo) VALUES ($1,$2)
+       ON CONFLICT (chiave) DO UPDATE SET usi = titoli_note.usi + 1,
+         titolo = $2, ultimo_uso = NOW()`, [k, v.rows[0]?.forma || t]);
+  } catch (e) { console.error('[TITOLI]', e.message); }
+}
+
+app.get('/api/titoli-note', async (req, res) => {
+  try {
+    const q = String(req.query.q || '').trim();
+    const r = q
+      ? await pool.query(
+          `SELECT titolo, usi FROM titoli_note WHERE chiave LIKE $1
+           ORDER BY usi DESC, ultimo_uso DESC LIMIT 8`, ['%' + chiaveTitolo(q) + '%'])
+      : await pool.query(
+          `SELECT titolo, usi FROM titoli_note
+           ORDER BY usi DESC, ultimo_uso DESC LIMIT 8`);
+    res.json(r.rows);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/titoli-note', async (req, res) => {
+  await registraTitoloNota(req.body?.titolo);
+  res.json({ ok: true });
 });
 
 // ── FORMATI DI CONFEZIONE ─────────────────────────────────────────────────
