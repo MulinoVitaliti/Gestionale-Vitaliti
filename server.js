@@ -8205,6 +8205,9 @@ app.get('/api/analisi/grano', async (req, res) => {
     const cond = PAROLE_GRANO.map((_, i) => `(COALESCE(cat,'') ILIKE $${i + 2} OR COALESCE(descrizione,'') ILIKE $${i + 2})`).join(' OR ');
     const par = [String(mesi), ...PAROLE_GRANO.map(p => '%' + p + '%')];
 
+    // Il prezzo medio si calcola SOLO sugli acquisti che hanno i kg indicati:
+    // dividere la spesa di tutti per i kg di alcuni dava un valore gonfiato.
+    // E si usa l'imponibile, non l'importo con IVA.
     const tot = await pool.query(
       `SELECT
          COUNT(*) n,
@@ -8213,7 +8216,12 @@ app.get('/api/analisi/grano', async (req, res) => {
          COALESCE(SUM(importo) FILTER (WHERE pagato = FALSE),0) da_pagare,
          COUNT(*) FILTER (WHERE pagato = FALSE) n_da_pagare,
          COALESCE(SUM(qty_kg),0) kg,
-         COALESCE(SUM(qty_kg) FILTER (WHERE pagato = FALSE),0) kg_da_pagare
+         COALESCE(SUM(qty_kg) FILTER (WHERE pagato = FALSE),0) kg_da_pagare,
+         COUNT(*) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0) n_senza_kg,
+         COALESCE(SUM(importo) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0),0) spesa_senza_kg,
+         -- imponibile dei soli acquisti con quantita' nota
+         COALESCE(SUM( (importo / (1 + COALESCE(aliquota_iva,4)::numeric/100)) )
+                  FILTER (WHERE qty_kg > 0), 0) netto_con_kg
        FROM movimenti
        WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})`, par);
 
@@ -8228,6 +8236,8 @@ app.get('/api/analisi/grano', async (req, res) => {
       `SELECT to_char(data,'YYYY-MM') mese,
               COALESCE(SUM(importo),0) spesa,
               COALESCE(SUM(qty_kg),0) kg,
+              COUNT(*) FILTER (WHERE qty_kg IS NULL OR qty_kg = 0) senza_kg,
+              COUNT(*) acquisti,
               COALESCE(SUM(importo) FILTER (WHERE pagato=FALSE),0) da_pagare
        FROM movimenti
        WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})
@@ -8235,6 +8245,7 @@ app.get('/api/analisi/grano', async (req, res) => {
 
     const t = tot.rows[0];
     const kg = Number(t.kg) || 0;
+    const nettoConKg = Number(t.netto_con_kg) || 0;
     res.json({
       mesi,
       acquisti: Number(t.n),
@@ -8244,7 +8255,12 @@ app.get('/api/analisi/grano', async (req, res) => {
       n_da_pagare: Number(t.n_da_pagare),
       kg,
       kg_da_pagare: Number(t.kg_da_pagare),
-      prezzo_medio_kg: kg ? Number(t.totale) / kg : null,
+      // prezzo medio calcolato solo dove i kg ci sono, e sull'imponibile
+      prezzo_medio_kg: (kg > 0 && nettoConKg > 0) ? nettoConKg / kg : null,
+      // trasparenza sul dato mancante: e' l'informazione che spiega il resto
+      n_senza_kg: Number(t.n_senza_kg),
+      spesa_senza_kg: Number(t.spesa_senza_kg),
+      copertura_kg: Number(t.n) ? (Number(t.n) - Number(t.n_senza_kg)) / Number(t.n) : 0,
       aperte: aperte.rows,
       per_mese: mese.rows
     });
