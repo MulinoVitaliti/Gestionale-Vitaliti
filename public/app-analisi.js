@@ -4,23 +4,34 @@
 
 const AM_EURO = n => '€ ' + Number(n || 0).toLocaleString('it-IT', {minimumFractionDigits: 2, maximumFractionDigits: 2});
 
+let _amTab = 'margini';
+let _amTimer = null;
+
 async function apriAnalisiMirko(){
   openModal('modal-analisi-mirko');
   document.querySelectorAll('#modal-analisi-mirko .pill').forEach((p,i)=>p.classList.toggle('active', i===0));
   tabAnalisi('margini');
+  // Le analisi si aggiornano da sole ogni 15 minuti finche' la finestra resta aperta
+  clearInterval(_amTimer);
+  _amTimer = setInterval(() => {
+    const aperta = document.getElementById('modal-analisi-mirko')?.classList.contains('open');
+    if(!aperta){ clearInterval(_amTimer); _amTimer = null; return; }
+    tabAnalisi(_amTab);
+  }, 15 * 60 * 1000);
 }
 
 async function tabAnalisi(quale, el){
+  _amTab = quale;
   if(el){ document.querySelectorAll('#modal-analisi-mirko .pill').forEach(p=>p.classList.remove('active')); el.classList.add('active'); }
   const box = document.getElementById('am-contenuto');
   box.innerHTML = '<div style="padding:20px;color:var(--text-3);font-size:13px">Calcolo in corso...</div>';
   try{
-    if(quale === 'margini') return renderMargini(box, await api.get('/api/analisi/margini?mesi=6'));
-    if(quale === 'cassa') return renderCassa(box, await api.get('/api/analisi/cassa?giorni=60'));
-    if(quale === 'anomalie') return renderAnomalie(box, await api.get('/api/analisi/anomalie'));
-    if(quale === 'commercialista') return renderCommercialista(box, await api.get('/api/analisi/commercialista'));
-    if(quale === 'grano') return renderGrano(box, await api.get('/api/analisi/grano?mesi=12'));
-    if(quale === 'costi') return renderCosti(box);
+    if(quale === 'margini') { renderMargini(box, await api.get('/api/analisi/margini?mesi=6')); return segnaAggiornamento(); }
+    if(quale === 'cassa') { renderCassa(box, await api.get('/api/analisi/cassa?giorni=60')); return segnaAggiornamento(); }
+    if(quale === 'anomalie') { renderAnomalie(box, await api.get('/api/analisi/anomalie')); return segnaAggiornamento(); }
+    if(quale === 'commercialista') { renderCommercialista(box, await api.get('/api/analisi/commercialista')); return segnaAggiornamento(); }
+    if(quale === 'grano') { renderGrano(box, await api.get('/api/analisi/grano?mesi=12')); return segnaAggiornamento(); }
+    if(quale === 'costi') { await renderCosti(box); return segnaAggiornamento(); }
   }catch(e){ box.innerHTML = '<div style="padding:20px;color:var(--red)">Errore: ' + e.message + '</div>'; }
 }
 
@@ -260,3 +271,19 @@ function renderGrano(box, g){
     ${mesi}`;
 }
 window.renderGrano = renderGrano;
+
+
+// Mostra l'ora dell'ultimo calcolo: serve a sapere quanto e' fresco il dato
+function segnaAggiornamento(){
+  const p = document.querySelector('#modal-analisi-mirko .modal-body > div:last-child');
+  const el = document.getElementById('am-aggiornato');
+  const testo = 'Aggiornato alle ' + new Date().toLocaleTimeString('it-IT',{hour:'2-digit',minute:'2-digit'}) +
+                ' · si ricalcola da solo ogni 15 minuti';
+  if(el){ el.textContent = testo; return; }
+  const nota = document.createElement('div');
+  nota.id = 'am-aggiornato';
+  nota.style.cssText = 'font-size:11px;color:var(--text-3);margin-top:4px';
+  nota.textContent = testo;
+  if(p) p.appendChild(nota);
+}
+window.segnaAggiornamento = segnaAggiornamento;
