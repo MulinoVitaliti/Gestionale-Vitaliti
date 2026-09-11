@@ -19,6 +19,7 @@ async function tabAnalisi(quale, el){
     if(quale === 'cassa') return renderCassa(box, await api.get('/api/analisi/cassa?giorni=60'));
     if(quale === 'anomalie') return renderAnomalie(box, await api.get('/api/analisi/anomalie'));
     if(quale === 'commercialista') return renderCommercialista(box, await api.get('/api/analisi/commercialista'));
+    if(quale === 'grano') return renderGrano(box, await api.get('/api/analisi/grano?mesi=12'));
     if(quale === 'costi') return renderCosti(box);
   }catch(e){ box.innerHTML = '<div style="padding:20px;color:var(--red)">Errore: ' + e.message + '</div>'; }
 }
@@ -197,3 +198,58 @@ window.aggiungiDomanda = aggiungiDomanda;
 window.salvaCosto = salvaCosto;
 window.aggiungiImpegno = aggiungiImpegno;
 window.eliminaImpegno = eliminaImpegno;
+
+
+// ── STATISTICA GRANO ─────────────────────────────────────────────────────
+function renderGrano(box, g){
+  if(g.error) return box.innerHTML = '<div style="padding:20px">Dati non disponibili.</div>';
+  if(!g.acquisti) return box.innerHTML = `<div style="padding:26px;text-align:center;color:var(--text-3);font-size:13px">
+      Nessun acquisto di grano registrato negli ultimi ${g.mesi} mesi.<br>
+      <span style="font-size:12px">Vengono riconosciuti i movimenti di uscita che parlano di grano, frumento o cereali.</span></div>`;
+
+  const card = (n, t, col, sotto) => `<div class="card" style="padding:14px 16px">
+      <div style="font-size:21px;font-weight:700;color:${col}">${n}</div>
+      <div style="font-size:11px;color:var(--text-3);margin-top:2px">${t}</div>
+      ${sotto ? `<div style="font-size:11px;color:var(--text-3);margin-top:3px">${sotto}</div>` : ''}
+    </div>`;
+
+  const aperte = (g.aperte||[]).map(a => {
+    const col = a.giorni > 90 ? 'var(--red)' : a.giorni > 60 ? 'var(--orange)' : 'var(--text-2)';
+    return `<div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <div style="flex:1;min-width:0">
+        <div style="font-size:13px">${(a.descrizione||'—').slice(0,70)}</div>
+        <div style="font-size:11px;color:var(--text-3)">${new Date(a.data).toLocaleDateString('it-IT')}${a.riferimento_doc ? ' · doc. ' + a.riferimento_doc : ''}${a.qty_kg ? ' · ' + Math.round(a.qty_kg).toLocaleString('it-IT') + ' kg' : ''}</div>
+      </div>
+      <div style="text-align:right">
+        <div style="font-weight:600;font-size:13px">${AM_EURO(a.importo)}</div>
+        <div style="font-size:11px;color:${col}">${a.giorni} giorni</div>
+      </div>
+    </div>`;
+  }).join('');
+
+  const mesi = (g.per_mese||[]).slice(-8).map(m => {
+    const [anno, ms] = m.mese.split('-');
+    return `<div style="display:flex;gap:12px;padding:6px 0;border-bottom:1px solid var(--border);font-size:12.5px">
+      <span style="width:70px;color:var(--text-3)">${ms}/${anno.slice(2)}</span>
+      <span style="flex:1">${Math.round(m.kg).toLocaleString('it-IT')} kg</span>
+      <span style="width:100px;text-align:right">${AM_EURO(m.spesa)}</span>
+      <span style="width:100px;text-align:right;color:${Number(m.da_pagare)>0?'var(--red)':'var(--text-3)'}">${Number(m.da_pagare)>0?AM_EURO(m.da_pagare):'saldato'}</span>
+    </div>`;
+  }).join('');
+
+  box.innerHTML = `
+    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:16px">
+      ${card(AM_EURO(g.totale), 'Grano acquistato', 'var(--brand)', `${Math.round(g.kg).toLocaleString('it-IT')} kg in ${g.acquisti} acquisti`)}
+      ${card(AM_EURO(g.pagato), 'Già pagato', 'var(--green)')}
+      ${card(AM_EURO(g.da_pagare), 'Ancora da pagare', Number(g.da_pagare) > 0 ? 'var(--red)' : 'var(--text-3)', `${g.n_da_pagare} fatture`)}
+      ${card(g.prezzo_medio_kg ? '€ ' + Number(g.prezzo_medio_kg).toFixed(3) : '—', 'Prezzo medio al kg', 'var(--text)')}
+    </div>
+    ${aperte ? `<div style="font-weight:600;font-size:13px;margin:16px 0 6px">Acquisti da pagare</div>${aperte}` : ''}
+    <div style="font-weight:600;font-size:13px;margin:20px 0 6px">Andamento mensile</div>
+    <div style="display:flex;gap:12px;padding:4px 0;font-size:10.5px;color:var(--text-3);text-transform:uppercase">
+      <span style="width:70px">mese</span><span style="flex:1">quantità</span>
+      <span style="width:100px;text-align:right">spesa</span><span style="width:100px;text-align:right">da pagare</span>
+    </div>
+    ${mesi}`;
+}
+window.renderGrano = renderGrano;
