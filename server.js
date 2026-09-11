@@ -353,6 +353,16 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Formati di confezione usati nei movimenti (modificabili dall'utente)
+      CREATE TABLE IF NOT EXISTS formati_confezione (
+        id SERIAL PRIMARY KEY,
+        nome TEXT UNIQUE NOT NULL,
+        kg NUMERIC,
+        ordine INTEGER DEFAULT 100,
+        attivo BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Promemoria di riordino impostati dal cliente
       CREATE TABLE IF NOT EXISTS portale_promemoria (
         id SERIAL PRIMARY KEY,
@@ -5999,7 +6009,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -7970,6 +7980,51 @@ app.post('/api/impegni', async (req, res) => {
 app.delete('/api/impegni/:id', async (req, res) => {
   try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── FORMATI DI CONFEZIONE ─────────────────────────────────────────────────
+const FORMATI_DEFAULT = [
+  ['Sacco 5 kg', 5, 10], ['Sacco 10 kg', 10, 20], ['Sacco 25 kg', 25, 30],
+  ['Sacco 30 kg', 30, 40], ['Sfuso', null, 90],
+];
+
+async function initFormati() {
+  try {
+    for (const [nome, kg, ordine] of FORMATI_DEFAULT) {
+      await pool.query(
+        `INSERT INTO formati_confezione (nome, kg, ordine) VALUES ($1,$2,$3)
+         ON CONFLICT (nome) DO NOTHING`, [nome, kg, ordine]);
+    }
+  } catch (e) { console.error('[FORMATI]', e.message); }
+}
+
+app.get('/api/formati', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM formati_confezione WHERE attivo=TRUE ORDER BY ordine, nome`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/formati', async (req, res) => {
+  const nome = String(req.body?.nome || '').trim();
+  const kg = req.body?.kg ? Number(req.body.kg) : null;
+  if (!nome) return res.json({ error: 'Serve il nome del formato' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO formati_confezione (nome, kg) VALUES ($1,$2)
+       ON CONFLICT (nome) DO UPDATE SET attivo=TRUE, kg=COALESCE($2, formati_confezione.kg)
+       RETURNING *`, [nome, kg]);
+    res.json({ ok: true, formato: r.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.delete('/api/formati/:id', async (req, res) => {
+  try {
+    // non cancello: disattivo, cosi' i movimenti gia' registrati restano leggibili
+    await pool.query(`UPDATE formati_confezione SET attivo=FALSE WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
