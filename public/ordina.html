@@ -124,6 +124,25 @@
       <p style="font-size:12px;color:#8a7a6a;margin:7px 0 0">Ti scriviamo una email quando è il momento di riordinare. Puoi cambiare idea quando vuoi.</p>
       <div id="promemoria-attivo" style="display:none;margin-top:12px;padding:11px 13px;background:var(--crema);border-radius:10px;font-size:13px"></div>
     </div>
+    <div class="card" id="box-assistenza">
+      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+        <div style="flex:1;min-width:180px">
+          <div style="font-weight:600;font-size:14px">Hai bisogno di aiuto?</div>
+          <div style="font-size:12.5px;color:#8a7a6a">Ti ricontattiamo noi il prima possibile.</div>
+        </div>
+        <button class="sec" style="width:auto;padding:11px 20px" onclick="apriAssistenza()">Contatta assistenza</button>
+      </div>
+      <div id="form-assistenza" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--bordo)">
+        <label for="ass-tel">Il tuo numero di telefono</label>
+        <input type="tel" id="ass-tel" placeholder="Per essere richiamato" inputmode="tel">
+        <div style="height:12px"></div>
+        <label for="ass-msg">Di cosa hai bisogno? (facoltativo)</label>
+        <textarea id="ass-msg" rows="3" placeholder="Scrivi qui se vuoi anticiparci qualcosa"></textarea>
+        <div style="height:12px"></div>
+        <button onclick="inviaAssistenza()" id="btn-assistenza">Invia richiesta</button>
+      </div>
+    </div>
+
     <p class="pie">Riceverà la nostra conferma con i prezzi prima della spedizione.<br>
       <a href="#" onclick="esci();return false" style="color:#a08e7c">Esci</a></p>
   </div>
@@ -335,6 +354,33 @@ async function annullaPromemoria(){
   const pa = document.getElementById('promemoria-attivo');
   if(pa){ pa.innerHTML = 'Promemoria annullato.'; setTimeout(()=>{ pa.style.display='none'; }, 2500); }
 }
+
+function apriAssistenza(){
+  const f = document.getElementById('form-assistenza');
+  f.style.display = f.style.display === 'none' ? '' : 'none';
+  if(f.style.display === '') document.getElementById('ass-tel').focus();
+}
+
+async function inviaAssistenza(){
+  const b = document.getElementById('btn-assistenza');
+  b.disabled = true; b.textContent = 'Invio...';
+  try{
+    const r = await chiamata('/api/portale/assistenza', {method:'POST', body: JSON.stringify({
+      telefono: document.getElementById('ass-tel').value.trim(),
+      messaggio: document.getElementById('ass-msg').value.trim()
+    })});
+    if(r.error){ alert(r.error); return; }
+    document.getElementById('box-assistenza').innerHTML =
+      `<div style="text-align:center;padding:14px 6px">
+         <div style="font-size:30px">📞</div>
+         <div style="font-weight:600;font-size:15px;color:#2f6320;margin-top:6px">Richiesta inviata</div>
+         <div style="font-size:13px;color:#6b5a4a;margin-top:4px">Ti ricontattiamo il prima possibile.</div>
+       </div>`;
+  }catch(e){ alert('Problema di collegamento, riprova.'); }
+  finally{ b.disabled = false; b.textContent = 'Invia richiesta'; }
+}
+window.apriAssistenza = apriAssistenza;
+window.inviaAssistenza = inviaAssistenza;
 
 function esci(){ localStorage.removeItem(T); location.reload(); }
 
