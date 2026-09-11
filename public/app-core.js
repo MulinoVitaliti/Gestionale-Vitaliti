@@ -235,7 +235,7 @@ function showPage(id){
   if(id==='pipeline'){ initPipelinePage(); }
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); }
-  if(id==='contabilita')renderContab();
+  if(id==='contabilita'){ renderContab(); if(typeof caricaFormati==='function')caricaFormati(); }
   if(id==='dashboard'){ renderDash(); }
 
   if(id==='email')checkGmailStatus();
