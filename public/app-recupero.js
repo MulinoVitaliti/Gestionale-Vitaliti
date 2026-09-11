@@ -84,6 +84,7 @@ async function aggiornaMovimento(){
     cat:getCatValue('edit-mov-cat','edit-mov-cat-custom'),
     descrizione:document.getElementById('edit-mov-desc').value,
     riferimento_doc:document.getElementById('edit-mov-riferimento')?.value||null,
+    materia_prima:document.getElementById('edit-mov-materia-prima')?.checked||false,
     fatturazione,
     aliquota_iva:parseInt(document.getElementById('edit-mov-iva').value)||4,
     prodotti: prodotti.length ? prodotti : null,
@@ -541,6 +542,8 @@ function editMovimento(id){
   document.getElementById('edit-mov-importo-netto').value = netto.toFixed(2);
   const rifEl = document.getElementById('edit-mov-riferimento');
   if(rifEl) rifEl.value = m.riferimento_doc || '';
+  const mpEl = document.getElementById('edit-mov-materia-prima');
+  if(mpEl) mpEl.checked = !!m.materia_prima;
   document.getElementById('edit-mov-importo').value = parseFloat(m.importo)||0;
   document.getElementById('edit-mov-importo-preview').textContent = fmt(parseFloat(m.importo)||0);
   populateCatSelect('edit-mov-cat', m.cat||'');
@@ -1450,6 +1453,7 @@ async function salvaMovimento(){
       cat:getCatValue('mov-cat','mov-cat-custom'),
       descrizione,
       riferimento_doc:document.getElementById('mov-riferimento')?.value||null,
+      materia_prima:document.getElementById('mov-materia-prima')?.checked||false,
       fatturazione,
       aliquota_iva: parseInt(document.getElementById('mov-iva').value)||4,
       prodotti: prodotti.length ? prodotti : null,
@@ -1691,6 +1695,8 @@ function toggleProdottiSection(prefix){
   const tipo = document.getElementById(prefix+'-tipo').value;
   const tit = document.getElementById(prefix+'-prodotti-titolo');
   if(tit) tit.textContent = tipo === 'entrata' ? 'Prodotti venduti' : 'Merce acquistata';
+  const mpWrap = document.getElementById(prefix+'-materia-wrap');
+  if(mpWrap) mpWrap.style.display = tipo === 'uscita' ? 'block' : 'none';
   if(prefix==='mov') calcolaImportoMov(); else calcolaImportoEditMov();
 }
 
