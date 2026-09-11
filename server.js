@@ -5197,6 +5197,20 @@ DA GUARDARE (margine piu' basso):
 ${peggiori.map(r => `- ${r.cliente} (${r.zona}): margine €${r.margine.toFixed(0)} (${r.margine_pct.toFixed(1)}%), €${r.prezzo_medio_kg.toFixed(3)}/kg`).join('\n')}
 NOTA: sono stime sui costi impostati in Impostazioni, non dati contabili.`;
     }
+    if (tipo === 'grano' || tipo === 'grano_metodo') {
+      const g = await (await fetch('http://127.0.0.1:' + (process.env.PORT || 3000) + '/api/analisi/grano?mesi=12')).json().catch(() => null);
+      if (!g || g.error || !g.acquisti) return 'Nessun dato disponibile sugli acquisti di grano.';
+      return `GRANO — ultimi ${g.mesi} mesi
+Totale acquistato: €${g.totale.toFixed(2)} · pagato €${g.pagato.toFixed(2)} · da pagare €${g.da_pagare.toFixed(2)}
+${g.kg ? 'Quantita\' con kg indicati: ' + Math.round(g.kg).toLocaleString('it-IT') + ' kg' : ''}
+${g.prezzo_medio_kg ? 'Prezzo medio: €' + g.prezzo_medio_kg.toFixed(3) + '/kg (imponibile)' : ''}
+DIVISO PER METODO DI PAGAMENTO:
+${(g.per_metodo || []).map(m => `- ${m.metodo}: ${m.acquisti} acquisti per €${m.spesa.toFixed(2)}` +
+  (m.kg ? ` · ${Math.round(m.kg).toLocaleString('it-IT')} kg` : '') +
+  (m.prezzo_medio_kg ? ` · €${m.prezzo_medio_kg.toFixed(3)}/kg` : '') +
+  (m.da_pagare > 0 ? ` · ancora da pagare €${m.da_pagare.toFixed(2)}` : '')).join('\n')}
+${g.n_senza_kg ? `\nATTENZIONE: ${g.n_senza_kg} acquisti su ${g.acquisti} non hanno i kg indicati (€${g.spesa_senza_kg.toFixed(2)}): restano fuori dai prezzi medi.` : ''}`;
+    }
     if (tipo === 'costo_grano') {
       const g = await costoGranoDaAcquisti(Number(q) || 12);
       if (!g.disponibile) return `Costo del grano non calcolabile dagli acquisti: ${g.motivo}`;
@@ -5373,6 +5387,7 @@ Quando ti serve un dato che non hai gia' davanti, scrivi il comando su una riga:
 [CERCA:tipo="prezzo",q="Torino 510"]               → prezzo di listino e prezzo MINIMO per quella localita' e quantita'
 [CERCA:tipo="margini",q="6"]                      → margine stimato per cliente sugli ultimi N mesi
 [CERCA:tipo="costo_grano",q="12"]                 → costo reale del grano ricavato dalle fatture di acquisto
+[CERCA:tipo="grano",q=""]                         → grano acquistato, pagato e da pagare, diviso per metodo (contanti, assegni, bonifici)
 [CERCA:tipo="cassa",q="60"]                       → previsione entrate/uscite dei prossimi N giorni
 [CERCA:tipo="anomalie",q=""]                      → prezzi in calo, insoluti, concentrazione, vendite sotto il minimo
 [CERCA:tipo="commercialista",q=""]                → cosa preparare per lo studio e domande aperte
@@ -8249,6 +8264,20 @@ app.get('/api/analisi/grano', async (req, res) => {
        WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})
        GROUP BY 1 ORDER BY 1`, par);
 
+    // Separazione per metodo di pagamento: contanti, assegni, bonifici, resto
+    const metodi = await pool.query(
+      `SELECT COALESCE(NULLIF(metodo_pagamento,''),'Non indicato') metodo,
+              COUNT(*) n,
+              COALESCE(SUM(importo),0) spesa,
+              COALESCE(SUM(qty_kg),0) kg,
+              COALESCE(SUM(importo) FILTER (WHERE pagato=FALSE),0) da_pagare,
+              COALESCE(SUM( importo / (1 + COALESCE(aliquota_iva,4)::numeric/100) )
+                       FILTER (WHERE qty_kg > 0), 0) netto_con_kg,
+              COALESCE(SUM(qty_kg) FILTER (WHERE qty_kg > 0),0) kg_validi
+       FROM movimenti
+       WHERE tipo='uscita' AND data >= CURRENT_DATE - ($1 || ' months')::interval AND (${cond})
+       GROUP BY 1 ORDER BY SUM(importo) DESC`, par);
+
     const t = tot.rows[0];
     const kg = Number(t.kg) || 0;
     const nettoConKg = Number(t.netto_con_kg) || 0;
@@ -8267,6 +8296,14 @@ app.get('/api/analisi/grano', async (req, res) => {
       n_senza_kg: Number(t.n_senza_kg),
       spesa_senza_kg: Number(t.spesa_senza_kg),
       copertura_kg: Number(t.n) ? (Number(t.n) - Number(t.n_senza_kg)) / Number(t.n) : 0,
+      per_metodo: metodi.rows.map(m => ({
+        metodo: m.metodo,
+        acquisti: Number(m.n),
+        spesa: Number(m.spesa),
+        kg: Number(m.kg),
+        da_pagare: Number(m.da_pagare),
+        prezzo_medio_kg: Number(m.kg_validi) > 0 ? Number(m.netto_con_kg) / Number(m.kg_validi) : null
+      })),
       aperte: aperte.rows,
       per_mese: mese.rows
     });
