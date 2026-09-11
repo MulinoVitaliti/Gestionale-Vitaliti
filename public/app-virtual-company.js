@@ -658,13 +658,9 @@ function sendChat(){
 
 function calcolaImportoMov(){
   const aliq = (parseInt(document.getElementById('mov-iva').value)||0)/100;
-  const tipo = document.getElementById('mov-tipo').value;
-  let netto;
-  if(tipo==='entrata'){
-    netto = sommaProdotti('mov');
-  } else {
-    netto = parseFloat(document.getElementById('mov-importo-netto').value)||0;
-  }
+  // Il totale nasce sempre dalle righe: quantita' per prezzo al kg.
+  // Vale per le entrate e per le uscite allo stesso modo.
+  const netto = sommaProdotti('mov');
   const ivato = netto * (1 + aliq);
   document.getElementById('mov-importo').value = ivato.toFixed(2);
   document.getElementById('mov-importo-preview').textContent = fmt(ivato);
@@ -672,13 +668,7 @@ function calcolaImportoMov(){
 
 function calcolaImportoEditMov(){
   const aliq = (parseInt(document.getElementById('edit-mov-iva').value)||0)/100;
-  const tipo = document.getElementById('edit-mov-tipo').value;
-  let netto;
-  if(tipo==='entrata'){
-    netto = sommaProdotti('edit-mov');
-  } else {
-    netto = parseFloat(document.getElementById('edit-mov-importo-netto').value)||0;
-  }
+  const netto = sommaProdotti('edit-mov');
   const ivato = netto * (1 + aliq);
   document.getElementById('edit-mov-importo').value = ivato.toFixed(2);
   document.getElementById('edit-mov-importo-preview').textContent = fmt(ivato);
