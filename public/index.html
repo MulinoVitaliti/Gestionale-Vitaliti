@@ -55,6 +55,12 @@ html,body{height:100%;font-family:var(--font);font-size:16px;color:var(--text);b
 .login-divider{display:flex;align-items:center;gap:12px;margin:14px 0;color:var(--text-3);font-size:12px}
 .login-divider::before,.login-divider::after{content:"";flex:1;height:1px;background:var(--border)}
 .app{display:flex;height:100vh;overflow:hidden}
+.sug-titoli{display:none;position:absolute;left:0;right:0;top:100%;z-index:60;background:#fff;
+  border:1px solid var(--border);border-radius:9px;box-shadow:0 8px 22px rgba(0,0,0,.13);
+  max-height:210px;overflow-y:auto;margin-top:3px}
+.sug-titoli div{padding:9px 12px;font-size:13px;cursor:pointer;display:flex;align-items:center;gap:8px}
+.sug-titoli div:hover{background:var(--surface-2)}
+.sug-titoli .usi{margin-left:auto;font-size:10.5px;color:var(--text-3)}
 .sidebar{width:228px;flex-shrink:0;background:#fff;border-right:1px solid var(--border);display:flex;flex-direction:column;overflow-y:auto;transition:width .18s ease,margin .18s ease}
 /* Barra nascosta: la pagina occupa tutto. Si riapre con la linguetta a sinistra. */
 .app.barra-chiusa .sidebar{width:0;min-width:0;border-right:0;overflow:hidden}
@@ -1459,6 +1465,12 @@ window.addEventListener('unhandledrejection', function(e) {
         </button>
       </div>
       <input type="hidden" id="lead-att-tipo" value="chiamata">
+      <div class="form-group" style="position:relative">
+        <label class="form-label">Titolo</label>
+        <input type="text" id="lead-att-titolo" placeholder="Es. Richiesta campione" autocomplete="off"
+               onfocus="mostraTitoli('lead-att-titolo')" oninput="mostraTitoli('lead-att-titolo')">
+        <div id="sug-lead-att-titolo" class="sug-titoli"></div>
+      </div>
       <div class="form-group"><label class="form-label">Descrizione</label><textarea id="lead-att-note" style="min-height:60px" placeholder="Es. Ha mostrato interesse per la semola rimacinata, richiedere campione..."></textarea></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">Data</label><input type="date" id="lead-att-data"></div>
@@ -2362,7 +2374,7 @@ window.addEventListener('unhandledrejection', function(e) {
         </select>
       </div>
     </div>
-    <div class="form-group"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" placeholder="Es. Chiamata di follow-up"></div>
+    <div class="form-group" style="position:relative"><label class="form-label">Titolo *</label><input type="text" id="att-titolo" autocomplete="off" onfocus="mostraTitoli('att-titolo')" oninput="mostraTitoli('att-titolo')" placeholder="Es. Chiamata di follow-up"><div id="sug-att-titolo" class="sug-titoli"></div></div>
     <div class="form-row">
       <div class="form-group"><label class="form-label">Data</label><input type="date" id="att-data"></div>
       <div class="form-group"><label class="form-label">Orario</label><input type="time" id="att-ora"></div>
