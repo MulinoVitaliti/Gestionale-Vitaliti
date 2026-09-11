@@ -262,7 +262,27 @@ function renderGrano(box, g){
         <span style="color:var(--text-3)">Restano fuori dal prezzo medio e dalle quantità mensili: senza kg non sono calcolabili.
         Per le fatture importate da Fatture in Cloud usa "Rileggi i kg dalle fatture" nella scheda Costi; per quelle registrate a mano, aprile e compila la quantità.</span>
       </div>` : ''}
-    ${aperte ? `<div style="font-weight:600;font-size:13px;margin:16px 0 6px">Acquisti da pagare</div>${aperte}` : ''}
+    ${(g.per_metodo||[]).length ? `
+      <div style="font-weight:600;font-size:13px;margin:18px 0 6px">Come è stato pagato</div>
+      <div style="display:flex;gap:11px;padding:5px 0;font-size:10.5px;color:var(--text-3);text-transform:uppercase">
+        <span style="width:110px">metodo</span><span style="width:70px;text-align:right">acquisti</span>
+        <span style="flex:1;text-align:right">quantità</span>
+        <span style="width:105px;text-align:right">spesa</span>
+        <span style="width:85px;text-align:right">€/kg</span>
+        <span style="width:100px;text-align:right">da pagare</span>
+      </div>
+      ${g.per_metodo.map(m => {
+        const col = m.metodo === 'Contanti' ? 'var(--orange)' : m.metodo === 'Assegno' ? 'var(--blue)' : 'var(--text-2)';
+        return `<div style="display:flex;gap:11px;padding:7px 0;border-bottom:1px solid var(--border);font-size:12.5px;align-items:center">
+          <span style="width:110px;font-weight:600;color:${col}">${m.metodo}</span>
+          <span style="width:70px;text-align:right">${m.acquisti}</span>
+          <span style="flex:1;text-align:right">${m.kg ? Math.round(m.kg).toLocaleString('it-IT') + ' kg' : '<span style="color:var(--text-3)">—</span>'}</span>
+          <span style="width:105px;text-align:right;font-weight:600">${AM_EURO(m.spesa)}</span>
+          <span style="width:85px;text-align:right">${m.prezzo_medio_kg ? '€ ' + Number(m.prezzo_medio_kg).toFixed(3) : '<span style="color:var(--text-3)">—</span>'}</span>
+          <span style="width:100px;text-align:right;color:${m.da_pagare > 0 ? 'var(--red)' : 'var(--text-3)'}">${m.da_pagare > 0 ? AM_EURO(m.da_pagare) : 'saldato'}</span>
+        </div>`;
+      }).join('')}` : ''}
+    ${aperte ? `<div style="font-weight:600;font-size:13px;margin:18px 0 6px">Acquisti da pagare</div>${aperte}` : ''}
     <div style="font-weight:600;font-size:13px;margin:20px 0 6px">Andamento mensile</div>
     <div style="display:flex;gap:12px;padding:4px 0;font-size:10.5px;color:var(--text-3);text-transform:uppercase">
       <span style="width:70px">mese</span><span style="flex:1">quantità</span>
