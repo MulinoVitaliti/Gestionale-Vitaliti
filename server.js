@@ -8027,6 +8027,91 @@ app.delete('/api/formati/:id', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// Ordini in arrivo dal portale, in attesa di conferma
+app.get('/api/ordini/portale', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT o.*, c.nome AS cliente_anagrafica, c.citta, c.tel, c.email
+       FROM ordini o LEFT JOIN clienti c ON c.id = o.cliente_id
+       WHERE o.canale = 'portale cliente' AND o.stato = 'bozza'
+       ORDER BY o.created_at DESC NULLS LAST, o.id DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/ordini/portale/conteggio', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT COUNT(*) n FROM ordini WHERE canale='portale cliente' AND stato='bozza'`);
+    res.json({ n: Number(r.rows[0].n) });
+  } catch (e) { res.json({ n: 0 }); }
+});
+
+// Conferma l'ordine. Se richiesto, emette anche il DDT su Fatture in Cloud.
+app.post('/api/ordini/:id/conferma-portale', async (req, res) => {
+  const creaDDT = req.body?.crea_ddt === true;
+  try {
+    const o = await pool.query(`SELECT * FROM ordini WHERE id=$1`, [req.params.id]);
+    if (!o.rows.length) return res.json({ error: 'Ordine non trovato' });
+    const ord = o.rows[0];
+
+    await pool.query(`UPDATE ordini SET stato='confermato' WHERE id=$1`, [ord.id]);
+    if (!creaDDT) return res.json({ ok: true, ddt: false });
+
+    if (!ficTokens || !ficCompanyId) {
+      return res.json({ ok: true, ddt: false, avviso: 'Ordine confermato, ma Fatture in Cloud non e\' collegato: il DDT non e\' stato creato.' });
+    }
+    if (ord.fic_ddt_id) return res.json({ ok: true, ddt: false, avviso: `L'ordine ha gia' il DDT n. ${ord.fic_ddt_numero}` });
+
+    const c = await pool.query(`SELECT * FROM clienti WHERE id=$1`, [ord.cliente_id]);
+    const cl = c.rows[0] || {};
+    let righe = [];
+    try { righe = Array.isArray(ord.prodotti) ? ord.prodotti : JSON.parse(ord.prodotti || '[]'); } catch (e) {}
+
+    const ficProdMap = await getFicProducts();
+    const items = (righe.length ? righe : [{ nome: ord.prodotto, sacchi: 1, kgSacco: ord.peso_totale }]).map(r => {
+      const prod = scegliVarianteProdotto(ficProdMap, r.nome, r.kgSacco);
+      const item = {
+        name: prod?.name || r.nome,
+        description: r.sacchi ? `${r.sacchi} sacchi da ${r.kgSacco}kg (tot. ${r.kg || (r.sacchi * r.kgSacco)}kg)` : '',
+        qty: Number(r.sacchi) || 1,
+        measure: prod?.measure || 'Sacchi',
+        net_price: 0,
+        vat: prod?.default_vat ? { id: prod.default_vat.id } : { id: 0 }
+      };
+      if (prod?.id) item.product_id = prod.id;
+      if (prod?.code) item.code = prod.code;
+      return item;
+    });
+
+    const payload = {
+      type: 'delivery_note',
+      entity: { ...(cl.fic_id ? { id: cl.fic_id } : {}), name: ord.cliente,
+                ...(cl.ind_consegna || cl.ind_legale ? { address_street: cl.ind_consegna || cl.ind_legale } : {}),
+                ...(cl.citta ? { address_city: cl.citta } : {}) },
+      date: new Date().toISOString().slice(0, 10),
+      items_list: items,
+      notes: ord.note || '',
+      delivery_note: true,
+      dn_ai_causal: 'Vendita',
+      dn_ai_weight: String(ord.peso_totale || ''),
+      dn_ai_transporter: 'Corriere'
+    };
+    const r2 = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+      method: 'POST', body: JSON.stringify({ data: payload })
+    });
+    if (!r2.ok) {
+      const t = await r2.text();
+      return res.json({ ok: true, ddt: false, avviso: 'Ordine confermato, ma il DDT non e\' stato creato: ' + t.slice(0, 160) });
+    }
+    const d = await r2.json();
+    await pool.query(`UPDATE ordini SET fic_ddt_id=$1, fic_ddt_numero=$2 WHERE id=$3`,
+      [d.data?.id || null, d.data?.number ? String(d.data.number) : null, ord.id]);
+    console.log(`[PORTALE] ordine #${ord.id} confermato con DDT n.${d.data?.number}`);
+    res.json({ ok: true, ddt: true, numero: d.data?.number });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
 app.get('/api/listini', async (req, res) => {
   try {
