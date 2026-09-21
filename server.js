@@ -8377,6 +8377,94 @@ app.get('/api/analisi/grano', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// ── MAPPA CLIENTI PER REGIONE ─────────────────────────────────────────────
+// La regione si ricava dalla citta' in anagrafica, incrociandola con l'elenco
+// dei comuni italiani (data/comuni-regioni.json).
+let _comuniRegioni = null;
+function comuniRegioni() {
+  if (_comuniRegioni) return _comuniRegioni;
+  try {
+    _comuniRegioni = JSON.parse(require('fs').readFileSync(path.join(__dirname, 'data', 'comuni-regioni.json'), 'utf8'));
+  } catch (e) { _comuniRegioni = {}; }
+  return _comuniRegioni;
+}
+
+function normalizzaComune(c) {
+  return String(c || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\([a-z]{2}\)\s*$/i, '')      // toglie la sigla "(CT)"
+    .replace(/[''`]/g, "'").replace(/\s+/g, ' ');
+}
+
+// Nomi che nell'uso comune differiscono da quelli ufficiali dell'elenco
+const ALIAS_COMUNI = {
+  'reggio calabria': 'reggio di calabria',
+  'reggio emilia': "reggio nell'emilia",
+  'bolzano': 'bolzano', 'aosta': 'aosta',
+  'forli': 'forlì', 'forli cesena': 'forlì',
+};
+
+// Chiave di confronto: minuscole, senza accenti, senza punteggiatura.
+// Si applica sia al nome del cliente sia ai nomi dell'elenco, cosi' "Cefalu"
+// e "Cefalù" coincidono.
+function chiaveComune(c) {
+  return String(c || '').toLowerCase().trim()
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s*\([a-z]{2}\)\s*$/i, '')
+    .replace(/[^a-z0-9 ]/g, ' ').replace(/\s+/g, ' ').trim();
+}
+
+let _indiceComuni = null;
+function indiceComuni() {
+  if (_indiceComuni) return _indiceComuni;
+  _indiceComuni = {};
+  const mappa = comuniRegioni();
+  for (const [nome, reg] of Object.entries(mappa)) _indiceComuni[chiaveComune(nome)] = reg;
+  for (const [alias, ufficiale] of Object.entries(ALIAS_COMUNI)) {
+    const reg = mappa[ufficiale];
+    if (reg) _indiceComuni[chiaveComune(alias)] = reg;
+  }
+  return _indiceComuni;
+}
+
+function regioneDaCitta(citta) {
+  const k = chiaveComune(citta);
+  if (!k) return null;
+  return indiceComuni()[k] || null;
+}
+
+app.get('/api/clienti/per-regione', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT c.id, c.nome, c.citta,
+              COUNT(o.id) AS n_ordini,
+              COALESCE(SUM(o.importo),0) AS fatturato,
+              MAX(o.data) AS ultimo_ordine
+       FROM clienti c LEFT JOIN ordini o ON o.cliente_id = c.id
+       WHERE c.tipo = 'cliente'
+       GROUP BY c.id, c.nome, c.citta`);
+    const regioni = {};
+    const nonTrovati = [];
+    for (const c of r.rows) {
+      const reg = regioneDaCitta(c.citta);
+      if (!reg) { nonTrovati.push({ id: c.id, nome: c.nome, citta: c.citta || '' }); continue; }
+      if (!regioni[reg]) regioni[reg] = { regione: reg, clienti: 0, fatturato: 0, elenco: [] };
+      regioni[reg].clienti++;
+      regioni[reg].fatturato += Number(c.fatturato) || 0;
+      regioni[reg].elenco.push({ id: c.id, nome: c.nome, citta: c.citta, ordini: Number(c.n_ordini),
+                                 fatturato: Number(c.fatturato), ultimo: c.ultimo_ordine });
+    }
+    for (const k of Object.keys(regioni)) {
+      regioni[k].elenco.sort((a, b) => b.fatturato - a.fatturato);
+    }
+    res.json({
+      regioni: Object.values(regioni).sort((a, b) => b.clienti - a.clienti),
+      totale: r.rows.length,
+      non_localizzati: nonTrovati
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
 app.get('/api/listini', async (req, res) => {
   try {
