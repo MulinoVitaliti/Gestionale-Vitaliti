@@ -695,7 +695,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div style="display:flex;gap:8px" id="contatti-header-actions">
           <input type="file" id="import-csv-quick" accept=".csv" style="display:none" onchange="importaCSVVeloce(this)">
           <button class="btn btn-primary" onclick="document.getElementById('import-csv-quick').click()"><i class="ti ti-file-import"></i>Aggiorna da CSV</button>
-          <button class="btn" onclick="importaClientiDaFic()"><i class="ti ti-cloud-download"></i>Importa da FIC</button>
+          <button class="btn" onclick="apriMappaClienti()"><i class="ti ti-map-2"></i>Mappa clienti</button>
           <button class="btn" id="btn-export-contatti" onclick="esportaContatti()"><i class="ti ti-download"></i>Esporta</button>
           <button class="btn btn-primary" id="btn-nuovo-contatto" onclick="openModal('modal-cliente')"><i class="ti ti-plus"></i>Nuovo cliente</button>
         </div>
@@ -2138,6 +2138,23 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-mappa-clienti">
+  <div class="modal" style="max-width:1000px;width:96vw">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-map-2" style="color:var(--brand)"></i>Dove sono i tuoi clienti</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-mappa-clienti')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body" style="padding:0">
+      <div style="display:flex;min-height:560px;flex-wrap:wrap">
+        <div id="mc-mappa" style="flex:1 1 520px;min-height:560px;background:#eef3f6"></div>
+        <div style="flex:0 0 330px;max-width:100%;border-left:1px solid var(--border);display:flex;flex-direction:column">
+          <div id="mc-riepilogo" style="padding:14px 16px;border-bottom:1px solid var(--border)"></div>
+          <div id="mc-lista" style="flex:1;overflow-y:auto;max-height:470px"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-listini">
   <div class="modal" style="max-width:840px">
     <div class="modal-header">
@@ -2600,6 +2617,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <script src="app-mirko.js"></script>
 <script src="app-followup.js"></script>
 <script src="app-analisi.js"></script>
+<script src="app-mappa.js"></script>
 <script src="app-etichetta.js"></script>
 <script src="app-ui.js"></script>
 
