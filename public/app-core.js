@@ -232,7 +232,7 @@ function showPage(id){
   }
   if(id==='statistiche')renderStatistiche();
   if(id==='automazioni'){ renderAutomazioni(); caricaLogAutomazioni(); }
-  if(id==='pipeline'){ initPipelinePage(); }
+  if(id==='pipeline'){ if(typeof caricaEtichette==='function')caricaEtichette().then(()=>{ if(typeof renderPipeline==='function')renderPipeline(); }); initPipelinePage(); }
   if(id==='contatti'){ renderClienti(); renderFornitori(); }
   if(id==='ordini'){ renderOrdini(); if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); if(typeof aggiornaBadgePortale==='function')aggiornaBadgePortale(); }
   if(id==='contabilita'){ renderContab(); if(typeof caricaFormati==='function')caricaFormati(); }
