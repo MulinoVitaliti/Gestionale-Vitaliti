@@ -1258,6 +1258,29 @@ app.post('/api/whatsapp/start-chat', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// Diagnostica della ricerca aziende: dice se la chiave funziona e, se no, perche'
+app.get('/api/places/diagnostica', async (req, res) => {
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!apiKey) return res.json({ chiave_presente: false, nota: 'GOOGLE_PLACES_API_KEY non impostata su Railway' });
+  try {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey,
+                 'X-Goog-FieldMask': 'places.displayName' },
+      body: JSON.stringify({ textQuery: 'panificio Catania', languageCode: 'it', regionCode: 'IT' })
+    });
+    const d = await r.json();
+    res.json({
+      chiave_presente: true,
+      chiave_inizia_con: String(apiKey).slice(0, 8) + '…',
+      http: r.status,
+      funziona: !d.error && Array.isArray(d.places),
+      risultati_trovati: Array.isArray(d.places) ? d.places.length : 0,
+      errore: d.error ? { stato: d.error.status, messaggio: d.error.message } : null
+    });
+  } catch (e) { res.json({ chiave_presente: true, errore: { messaggio: e.message } }); }
+});
+
 app.get('/api/places/search', async (req, res) => {
   const query = req.query.q;
   if (!query) return res.json({ error: 'Query mancante' });
@@ -1274,7 +1297,24 @@ app.get('/api/places/search', async (req, res) => {
       body: JSON.stringify({ textQuery: query, languageCode: 'it', regionCode: 'IT' })
     });
     const data = await response.json();
-    if (data.error) return res.json({ error: data.error.message });
+    if (data.error) {
+      // L'errore arriva da Google: lo registro per intero e lo traduco in
+      // qualcosa di comprensibile, con l'indicazione di cosa sistemare.
+      console.error('[PLACES] Google ha rifiutato la richiesta:', JSON.stringify(data.error).slice(0, 500));
+      const stato = data.error.status || '';
+      const msg = String(data.error.message || '');
+      let spiegazione = msg;
+      if (stato === 'PERMISSION_DENIED' || /permission/i.test(msg)) {
+        spiegazione = "Google rifiuta la chiave. Nella Google Cloud Console verifica tre cose: " +
+          "che sia attiva l'API «Places API (New)», che il progetto abbia un account di fatturazione collegato, " +
+          "e che la chiave non abbia restrizioni che escludono questa API.";
+      } else if (/API key not valid|API_KEY_INVALID/i.test(msg)) {
+        spiegazione = 'La chiave API non e\' valida: controlla il valore di GOOGLE_PLACES_API_KEY su Railway.';
+      } else if (stato === 'RESOURCE_EXHAUSTED' || /quota/i.test(msg)) {
+        spiegazione = 'Quota Google esaurita per oggi: la ricerca tornera\' a funzionare domani.';
+      }
+      return res.json({ error: spiegazione, dettaglio_tecnico: msg, stato });
+    }
     const risultati = (data.places || []).map(p => {
       const comp = p.addressComponents || [];
       const get = (type) => (comp.find(c => c.types.includes(type)) || {}).longText || '';
