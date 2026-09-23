@@ -960,7 +960,7 @@ async function initPaginaSpedizioni(){
     if(connesso) connesso.style.display = 'block';
     if(headerActions) headerActions.innerHTML = `
       <div style="display:flex;gap:8px">
-        <button class="btn btn-primary" id="btn-sync-spedizioni" onclick="sincronizzaSpedizioni()"><i class="ti ti-refresh"></i>Sincronizza da email</button>
+
         <button class="btn btn-sm" onclick="disconnettiCasellaSpedizioni()"><i class="ti ti-plug-off"></i></button>
       </div>`;
     await caricaSpedizioni();
@@ -999,7 +999,7 @@ function renderSpedizioni(lista){
   const cont = document.getElementById('spedizioni-list');
   if(!cont) return;
   if(!lista.length){
-    cont.innerHTML = '<div class="empty-state" style="padding:30px"><i class="ti ti-truck-delivery" style="font-size:32px"></i><p>Nessuna spedizione trovata. Clicca "Sincronizza da email" per cercare le notifiche di One Express.</p></div>';
+    cont.innerHTML = '<div class="empty-state" style="padding:30px"><i class="ti ti-truck-delivery" style="font-size:32px"></i><p>Nessuna spedizione registrata.</p><p style="font-size:12px;color:var(--text-3)">Compaiono da sole quando arrivano le email di One Express.</p></div>';
     return;
   }
   cont.innerHTML = lista.map(s=>{
@@ -1033,6 +1033,8 @@ function renderSpedizioni(lista){
   }).join('');
 }
 
+// La lettura della posta avviene da sola ogni 20 minuti: questa funzione non ha
+// piu' un bottone in pagina, resta per eventuali richiami manuali.
 async function sincronizzaSpedizioni(){
   const btn = document.getElementById('btn-sync-spedizioni');
   if(btn){ btn.disabled=true; btn.innerHTML='<i class="ti ti-loader"></i> Ricerca in corso...'; }
