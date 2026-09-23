@@ -1470,6 +1470,10 @@ window.addEventListener('unhandledrejection', function(e) {
         </button>
       </div>
       <input type="hidden" id="lead-att-tipo" value="chiamata">
+      <div class="form-group">
+        <label class="form-label">Etichette</label>
+        <div id="lead-etichette"></div>
+      </div>
       <div class="form-group" style="position:relative">
         <label class="form-label">Titolo</label>
         <input type="text" id="lead-att-titolo" placeholder="Es. Richiesta campione" autocomplete="off"
@@ -1504,6 +1508,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="form-row"><div class="form-group"><label class="form-label">Nome *</label><input type="text" id="edit-lead-nome"></div><div class="form-group"><label class="form-label">Referente</label><input type="text" id="edit-lead-contatto"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Telefono</label><input type="text" id="edit-lead-tel" placeholder="principale"></div><div class="form-group"><label class="form-label">Secondo telefono</label><input type="text" id="edit-lead-tel2" placeholder="facoltativo"></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="edit-lead-indirizzo" placeholder="Via, numero civico"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-lead-citta" placeholder="serve per il listino"></div></div>
+    <div class="form-group"><label class="form-label">Etichette</label><div id="edit-lead-etichette"></div></div>
     <div class="form-group"><label class="form-label">Prodotto</label><select id="edit-lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="edit-lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="edit-lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-lead-note"></textarea></div>
