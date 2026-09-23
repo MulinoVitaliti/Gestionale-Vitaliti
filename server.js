@@ -283,12 +283,15 @@ async function initDB() {
       ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS etichette JSONB DEFAULT '[]';
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
       ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS ordini_ids JSONB;
       ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS email_inviata BOOLEAN DEFAULT FALSE;
       ALTER TABLE IF EXISTS bandi_visti ADD COLUMN IF NOT EXISTS chiave TEXT;
       CREATE UNIQUE INDEX IF NOT EXISTS idx_bandi_chiave ON bandi_visti (chiave) WHERE chiave IS NOT NULL;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS tipo_spedizione TEXT DEFAULT 'bancale';
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS corriere_id TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
@@ -355,6 +358,15 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Etichette colorate applicabili ai lead (preventivo, campionatura, ...)
+      CREATE TABLE IF NOT EXISTS etichette (
+        id SERIAL PRIMARY KEY,
+        nome TEXT UNIQUE NOT NULL,
+        colore TEXT DEFAULT '#973D37',
+        ordine INTEGER DEFAULT 100,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Titoli delle note: il gestionale impara quelli che vengono usati
       CREATE TABLE IF NOT EXISTS titoli_note (
         id SERIAL PRIMARY KEY,
@@ -1333,17 +1345,17 @@ app.get('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/leads', async (req, res) => {
-  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette } = req.body;
   try {
-    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,tel2,indirizzo,citta,prodotto,stato,note,tag) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null]);
+    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,tel2,indirizzo,citta,prodotto,stato,note,tag,etichette) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, JSON.stringify(etichette||[])]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/leads/:id', async (req, res) => {
-  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette } = req.body;
   try {
-    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,tel2=$4,indirizzo=$5,citta=$6,prodotto=$7,stato=$8,note=$9,tag=$10,updated_at=NOW() WHERE id=$11', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, req.params.id]);
+    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,tel2=$4,indirizzo=$5,citta=$6,prodotto=$7,stato=$8,note=$9,tag=$10,etichette=COALESCE($12,etichette),updated_at=NOW() WHERE id=$11', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, req.params.id, etichette?JSON.stringify(etichette):null]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
@@ -4169,6 +4181,25 @@ const FUP_MODELLI_DEFAULT = [
 <p>e' passato circa un mese dall'ultima fornitura del {{data_ddt}}.</p>
 <p>Se sta per finire le scorte possiamo prepararle un nuovo carico: ci basta sapere <strong>quantita'</strong> e <strong>giorno di consegna</strong> preferito.</p>
 <p>Restiamo a disposizione,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p>` },
+  // ── Campionature: percorso diverso, l'obiettivo e' il primo ordine ──
+  { tipo: 'camp_partenza', giorni: 0, automatica: true,
+    oggetto: 'Il campione e\' partito — Mulino Vitaliti',
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>le abbiamo spedito il campione della nostra semola. {{tracking_riga}}</p>
+<p>Quando lo prova ci faccia sapere com'\u00e8 andata in lavorazione: per noi il parere di chi impasta ogni giorno vale pi\u00f9 di qualsiasi scheda tecnica.</p>
+<p>Un cordiale saluto,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br><em>Noi la maciniamo, tu la impasti!</em></p>` },
+  { tipo: 'camp_prova', giorni: 7, automatica: false,
+    oggetto: 'Come e\' andata la prova?',
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>ha avuto modo di provare il campione che le abbiamo inviato?</p>
+<p>Ci interessa sapere come si \u00e8 comportata la semola con i suoi impasti: assorbimento, tenuta, resa al forno. Se qualcosa non l'ha convinta ce lo dica pure, ci serve per migliorare.</p>
+<p>Grazie,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p>` },
+  { tipo: 'camp_offerta', giorni: 21, automatica: false,
+    oggetto: 'Vuole provare con una prima fornitura?',
+    corpo: `<p>Gentile <strong>{{cliente}}</strong>,</p>
+<p>se il campione l'ha convinta, possiamo prepararle una prima fornitura su misura delle sue esigenze.</p>
+<p>Ci dica quantit\u00e0 e giorno di consegna preferito e le facciamo avere la nostra proposta.</p>
+<p>Restiamo a disposizione,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p>` },
 ];
 
 async function fupInitModelli() {
@@ -4189,7 +4220,8 @@ async function fupEvento(followupId, evento, dettaglio, utente) {
 }
 
 // Crea il percorso a partire da un DDT (chiamata dalla sincronizzazione FIC)
-async function fupCreaDaDDT({ cliente_nome, cliente_id, ddt_numero, ddt_data, ddt_id, importo, email, tracking, corriere }) {
+// tipo: 'bancale' (One Express) oppure 'campionatura' (Spedire Pro)
+async function fupCreaDaDDT({ cliente_nome, cliente_id, ddt_numero, ddt_data, ddt_id, importo, email, tracking, corriere, tipo_spedizione, corriere_id }) {
   try {
     const gia = await pool.query(
       `SELECT id FROM followup_spedizioni WHERE ddt_numero=$1 AND cliente_nome=$2 LIMIT 1`,
@@ -4206,14 +4238,20 @@ async function fupCreaDaDDT({ cliente_nome, cliente_id, ddt_numero, ddt_data, dd
     }
 
     const imp = importo || null;
+    const tipoSped = tipo_spedizione === 'campionatura' ? 'campionatura' : 'bancale';
     const r = await pool.query(
-      `INSERT INTO followup_spedizioni (cliente_id, cliente_nome, email_dest, ddt_numero, ddt_data, ddt_id, importo, tracking, corriere)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9) RETURNING id`,
+      `INSERT INTO followup_spedizioni (cliente_id, cliente_nome, email_dest, ddt_numero, ddt_data, ddt_id, importo, tracking, corriere, tipo_spedizione, corriere_id)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING id`,
       [cid, cliente_nome, dest || null, ddt_numero || null, ddt_data || new Date(), ddt_id || null, imp,
-       tracking || null, corriere || null]);
+       tracking || null, corriere || null, tipoSped, corriere_id || null]);
     const fid = r.rows[0].id;
 
-    const modelli = await pool.query(`SELECT tipo, giorni FROM followup_modelli WHERE attiva=TRUE`);
+    // i campioni seguono modelli propri: prova e proposta di primo ordine
+    const prefisso = tipoSped === 'campionatura' ? 'camp_' : '';
+    const modelli = await pool.query(
+      tipoSped === 'campionatura'
+        ? `SELECT tipo, giorni FROM followup_modelli WHERE attiva=TRUE AND tipo LIKE 'camp\\_%'`
+        : `SELECT tipo, giorni FROM followup_modelli WHERE attiva=TRUE AND tipo NOT LIKE 'camp\\_%'`);
     const base = new Date(ddt_data || Date.now());
     for (const m of modelli.rows) {
       const quando = new Date(base);
@@ -6171,7 +6209,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -7081,7 +7119,9 @@ async function fupAggiornaStato(riferimento, nuovoStato, testoNota) {
   try {
     const r = await pool.query(
       `SELECT id, cliente_nome, stato_consegna FROM followup_spedizioni
-       WHERE tracking=$1 OR ddt_numero=$1 ORDER BY id DESC LIMIT 1`, [riferimento]);
+       WHERE tracking=$1 OR ddt_numero=$1 OR corriere_id=$1
+          OR ($1 ~ '^[0-9]+$' AND id = NULLIF($1,'')::int)
+       ORDER BY id DESC LIMIT 1`, [String(riferimento)]);
     if (!r.rows.length) return false;
     const f = r.rows[0];
     if (f.stato_consegna === nuovoStato) return false;
@@ -7657,15 +7697,19 @@ app.delete('/api/conoscenza/:id', async (req, res) => {
 app.get('/api/followup', async (req, res) => {
   try {
     const stato = req.query.stato;
-    const cond = stato && stato !== 'tutti' ? `WHERE f.stato=$1` : '';
+    const tipo = req.query.tipo;   // bancale | campionatura
+    const parti = [];
+    const par = [];
+    if (stato && stato !== 'tutti') { par.push(stato); parti.push(`f.stato=$${par.length}`); }
+    if (tipo && tipo !== 'tutti') { par.push(tipo); parti.push(`COALESCE(f.tipo_spedizione,'bancale')=$${par.length}`); }
+    const cond = parti.length ? 'WHERE ' + parti.join(' AND ') : '';
     const r = await pool.query(
       `SELECT f.*,
               (SELECT COUNT(*) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato='inviata') AS inviate,
               (SELECT COUNT(*) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato='in_attesa_ok') AS da_approvare,
               (SELECT MIN(t.programmata_per) FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato IN ('programmata','in_attesa_ok')) AS prossima_data,
               (SELECT t.tipo FROM followup_tappe t WHERE t.followup_id=f.id AND t.stato IN ('programmata','in_attesa_ok') ORDER BY t.programmata_per LIMIT 1) AS prossima_tappa
-       FROM followup_spedizioni f ${cond} ORDER BY f.ddt_data DESC NULLS LAST, f.id DESC LIMIT 200`,
-      stato && stato !== 'tutti' ? [stato] : []);
+       FROM followup_spedizioni f ${cond} ORDER BY f.ddt_data DESC NULLS LAST, f.id DESC LIMIT 200`, par);
     res.json(r.rows);
   } catch (e) { res.json({ error: e.message }); }
 });
@@ -7686,7 +7730,12 @@ app.get('/api/followup/riepilogo', async (req, res) => {
          SELECT c.id FROM clienti c JOIN ordini o ON o.cliente_id=c.id
          WHERE c.tipo='cliente' GROUP BY c.id
          HAVING MAX(o.data) <= CURRENT_DATE - INTERVAL '30 days') x`);
-    res.json({ ...r.rows[0], da_ricontattare: Number(dr.rows[0].n) });
+    const tp = await pool.query(
+      `SELECT COALESCE(tipo_spedizione,'bancale') tipo, COUNT(*) n
+       FROM followup_spedizioni WHERE stato='in_corso' GROUP BY 1`);
+    const perTipo = {};
+    for (const x of tp.rows) perTipo[x.tipo] = Number(x.n);
+    res.json({ ...r.rows[0], da_ricontattare: Number(dr.rows[0].n), per_tipo: perTipo });
   } catch (e) { res.json({ error: e.message }); }
 });
 
@@ -8142,6 +8191,67 @@ app.post('/api/impegni', async (req, res) => {
 app.delete('/api/impegni/:id', async (req, res) => {
   try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── ETICHETTE DEI LEAD ────────────────────────────────────────────────────
+const ETICHETTE_DEFAULT = [
+  ['PREVENTIVO', '#4F46E5', 10],
+  ['CAMPIONATURA', '#D3A64B', 20],
+  ['EMAIL', '#3B6D11', 30],
+  ['ORDINE', '#E06C2A', 40],
+];
+
+async function initEtichette() {
+  for (const [nome, colore, ordine] of ETICHETTE_DEFAULT) {
+    await pool.query(
+      `INSERT INTO etichette (nome, colore, ordine) VALUES ($1,$2,$3)
+       ON CONFLICT (nome) DO NOTHING`, [nome, colore, ordine]).catch(() => {});
+  }
+}
+
+app.get('/api/etichette', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM etichette ORDER BY ordine, nome`);
+    res.json(r.rows);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/etichette', async (req, res) => {
+  const nome = String(req.body?.nome || '').trim().toUpperCase().slice(0, 24);
+  const colore = String(req.body?.colore || '#973D37');
+  if (!nome) return res.json({ error: 'Serve il nome dell\'etichetta' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO etichette (nome, colore) VALUES ($1,$2)
+       ON CONFLICT (nome) DO UPDATE SET colore=$2 RETURNING *`, [nome, colore]);
+    res.json({ ok: true, etichetta: r.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.delete('/api/etichette/:id', async (req, res) => {
+  try {
+    const e = await pool.query(`SELECT nome FROM etichette WHERE id=$1`, [req.params.id]);
+    await pool.query(`DELETE FROM etichette WHERE id=$1`, [req.params.id]);
+    // la tolgo anche dai lead che ce l'avevano
+    if (e.rows[0]) {
+      await pool.query(
+        `UPDATE leads SET etichette = (
+           SELECT COALESCE(jsonb_agg(x), '[]'::jsonb) FROM jsonb_array_elements_text(etichette) x
+           WHERE x <> $1)
+         WHERE etichette @> to_jsonb(ARRAY[$1]::text[])`, [e.rows[0].nome]).catch(() => {});
+    }
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Applica o toglie le etichette di un lead
+app.patch('/api/leads/:id/etichette', async (req, res) => {
+  const et = Array.isArray(req.body?.etichette) ? req.body.etichette : [];
+  try {
+    await pool.query(`UPDATE leads SET etichette=$1, updated_at=NOW() WHERE id=$2`,
+      [JSON.stringify(et), req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ── TITOLI DELLE NOTE: suggeriti in base a quello che scrivete ────────────
@@ -9287,6 +9397,95 @@ app.post('/api/portale/destinatario', async (req, res) => {
       `INSERT INTO impostazioni (chiave, valore) VALUES ('portale_email_avvisi',$1)
        ON CONFLICT (chiave) DO UPDATE SET valore=$1`, [email]);
     res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// SPEDIRE PRO — eventi delle spedizioni dei campioni
+// Indirizzo da configurare nel loro pannello:
+//   https://<gestionale>/api/spedirepro/webhook
+// Ogni messaggio ricevuto viene registrato per intero: serve a capire com'e'
+// fatto il loro tracciato senza dover indovinare i nomi dei campi.
+// ══════════════════════════════════════════════════════════════════════════
+
+const STATI_SPEDIREPRO = {
+  consegnata: ['consegnat', 'delivered', 'consegna effettuata'],
+  in_consegna: ['in consegna', 'out for delivery', 'in distribuzione'],
+  giacenza: ['giacenza', 'mancato recapito', 'destinatario assente', 'exception'],
+  problema: ['anomalia', 'errore', 'danneggiat', 'smarrit', 'reso', 'returned', 'cancell'],
+  in_viaggio: ['transit', 'in transito', 'preso in carico', 'ritirat', 'picked', 'spedit', 'shipped', 'accettat'],
+};
+
+function statoDaSpedirePro(testo) {
+  const t = String(testo || '').toLowerCase();
+  for (const [stato, parole] of Object.entries(STATI_SPEDIREPRO)) {
+    if (parole.some(p => t.includes(p))) return stato;
+  }
+  return null;
+}
+
+app.all('/api/spedirepro/webhook', async (req, res) => {
+  try {
+    const dati = { ...(req.body || {}), ...(req.query || {}) };
+    console.log('[SPEDIREPRO] evento ricevuto:', JSON.stringify(dati).slice(0, 1200));
+
+    // registro sempre il messaggio integrale, anche se non lo so interpretare
+    await pool.query(
+      `INSERT INTO crm4_chiamate (telefono, nome, esito, campagna, note, payload)
+       VALUES (NULL,$1,$2,'spedirepro',$3,$4)`,
+      [campo(dati, 'destinatario', 'recipient', 'ragione_sociale', 'nome') || 'spedizione',
+       campo(dati, 'stato', 'status', 'evento', 'event', 'descrizione') || 'evento',
+       'Evento Spedire Pro', JSON.stringify(dati)]).catch(() => {});
+
+    const tracking = campo(dati, 'tracking', 'tracking_number', 'ldv', 'lettera_di_vettura', 'codice_spedizione', 'shipment_id', 'id_spedizione');
+    const statoTesto = campo(dati, 'stato', 'status', 'evento', 'event', 'descrizione', 'description');
+    const stato = statoDaSpedirePro(statoTesto);
+    const destinatario = campo(dati, 'destinatario', 'recipient_name', 'ragione_sociale', 'nome', 'company');
+    const email = campo(dati, 'email', 'recipient_email', 'mail');
+
+    if (!tracking && !destinatario) return res.json({ ok: true, nota: 'evento registrato, nessun riferimento riconosciuto' });
+
+    // cerco la spedizione gia' seguita
+    let f = null;
+    if (tracking) {
+      const r = await pool.query(
+        `SELECT id, cliente_nome, stato_consegna FROM followup_spedizioni
+         WHERE tracking = $1 OR corriere_id = $1 ORDER BY id DESC LIMIT 1`, [tracking]);
+      f = r.rows[0] || null;
+    }
+
+    // se non esiste, la creo come CAMPIONATURA: Spedire Pro serve per i campioni
+    if (!f && destinatario) {
+      const id = await fupCreaDaDDT({
+        cliente_nome: destinatario,
+        ddt_data: new Date(),
+        tracking: tracking || null,
+        corriere: 'Spedire Pro',
+        corriere_id: tracking || null,
+        email: email || null,
+        tipo_spedizione: 'campionatura'
+      });
+      if (id) {
+        console.log(`[SPEDIREPRO] campionatura seguita per ${destinatario} (tracking ${tracking || '-'})`);
+        f = { id, cliente_nome: destinatario, stato_consegna: 'in_viaggio' };
+      }
+    }
+
+    if (f && stato) await fupAggiornaStato(tracking || String(f.id), stato, statoTesto);
+    res.json({ ok: true, seguita: !!f, stato_riconosciuto: stato || null });
+  } catch (e) {
+    console.error('[SPEDIREPRO]', e.message);
+    res.json({ ok: false, errore: e.message });
+  }
+});
+
+// Ultimi eventi ricevuti: serve a vedere com'e' fatto il loro tracciato
+app.get('/api/spedirepro/eventi', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, nome, esito, note, payload, created_at FROM crm4_chiamate
+       WHERE campagna='spedirepro' ORDER BY id DESC LIMIT 20`);
+    res.json(r.rows);
   } catch (e) { res.json({ error: e.message }); }
 });
 
