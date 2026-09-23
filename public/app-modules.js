@@ -241,7 +241,15 @@ function renderPipeline(){
       // Conta attività pendenti per questo lead
       const nAtt = (state.attivita||[]).filter(a=>!a.completata&&(a.lead_id===l.id||a.collegata_id===l.id)).length;
       const attBadge = nAtt>0 ? `<span style="background:var(--brand);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px">${nAtt}</span>` : '';
+      const etichette = Array.isArray(l.etichette) ? l.etichette : [];
+      const etHtml = etichette.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">` +
+        etichette.map(n => {
+          const e = (window._etichette||[]).find(x => x.nome === n);
+          const col = e ? e.colore : '#973D37';
+          return `<span style="background:${col};color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:4px">${n}</span>`;
+        }).join('') + `</div>` : '';
       c.innerHTML=`
+        ${etHtml}
         ${tagHtml}
         <div class="pl-card-name">${l.nome}${attBadge}</div>
         <div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div>
