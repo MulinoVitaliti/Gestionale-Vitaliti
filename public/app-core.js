@@ -280,5 +280,12 @@ function openModal(id){
   if(id==='modal-lead'||id==='modal-edit-lead') populateFasiSelects();
   document.getElementById(id).classList.add('open');
 }
-function closeModal(id){document.getElementById(id).classList.remove('open');}
+function closeModal(id){
+  const ov = document.getElementById(id);
+  if(!ov) return;
+  ov.classList.remove('open');
+  // ripristino la larghezza normale e le aree di testo
+  ov.querySelectorAll('.modal').forEach(m => m.classList.remove('scrittura'));
+  ov.querySelectorAll('textarea').forEach(t => { t.classList.remove('grande'); t.style.height=''; });
+}
 
