@@ -2170,6 +2170,36 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-nuova-etichetta">
+  <div class="modal" style="max-width:420px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-tag" style="color:var(--brand)"></i>Nuova etichetta</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-nuova-etichetta')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div class="form-group">
+        <label class="form-label">Nome</label>
+        <input type="text" id="ne-nome" maxlength="24" placeholder="Es. RICHIAMARE" autocomplete="off"
+               oninput="anteprimaEtichetta()" onkeydown="if(event.key==='Enter')salvaNuovaEtichetta()">
+        <div style="font-size:11px;color:var(--text-3);margin-top:4px">Poche lettere, in stampatello: si legge meglio sulle schede.</div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Colore</label>
+        <div id="ne-colori" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      </div>
+      <div class="form-group">
+        <label class="form-label">Anteprima</label>
+        <div style="background:var(--surface-2);border-radius:9px;padding:14px;text-align:center">
+          <span id="ne-anteprima" style="background:#4F46E5;color:#fff;font-size:10.5px;font-weight:700;letter-spacing:.3px;padding:3px 9px;border-radius:5px">ETICHETTA</span>
+        </div>
+      </div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:6px">
+        <button class="btn" onclick="closeModal('modal-nuova-etichetta')">Annulla</button>
+        <button class="btn btn-primary" onclick="salvaNuovaEtichetta()"><i class="ti ti-check"></i>Crea etichetta</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-listini">
   <div class="modal" style="max-width:840px">
     <div class="modal-header">
