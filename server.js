@@ -9408,21 +9408,87 @@ app.post('/api/portale/destinatario', async (req, res) => {
 // fatto il loro tracciato senza dover indovinare i nomi dei campi.
 // ══════════════════════════════════════════════════════════════════════════
 
-const STATI_SPEDIREPRO = {
-  consegnata: ['consegnat', 'delivered', 'consegna effettuata'],
-  in_consegna: ['in consegna', 'out for delivery', 'in distribuzione'],
-  giacenza: ['giacenza', 'mancato recapito', 'destinatario assente', 'exception'],
-  problema: ['anomalia', 'errore', 'danneggiat', 'smarrit', 'reso', 'returned', 'cancell'],
-  in_viaggio: ['transit', 'in transito', 'preso in carico', 'ritirat', 'picked', 'spedit', 'shipped', 'accettat'],
+// Spedire Pro codifica lo stato con una lettera (documentazione ufficiale).
+// Qui ogni lettera viene tradotta negli stati che usa il monitoraggio.
+const LETTERE_SPEDIREPRO = {
+  N: 'in_viaggio',   // convalida in corso
+  O: 'in_viaggio',   // etichetta in elaborazione
+  B: 'in_viaggio',   // creata
+  G: 'in_viaggio',   // in lavorazione dal trasportatore
+  T: 'in_viaggio',   // partita dalla filiale
+  S: 'in_viaggio',   // in transito
+  Y: 'in_consegna',  // in consegna
+  D: 'consegnata',   // consegnata
+  P: 'consegnata',   // ritirata al punto di ritiro
+  L: 'problema',     // in ritardo
+  X: 'problema',     // problematica in corso (vedi exception_code)
+  E: 'problema',     // errore indirizzo
+  K: 'problema',     // rientrata al mittente
+  R: 'problema',     // rimborsata e annullata
 };
 
-function statoDaSpedirePro(testo) {
-  const t = String(testo || '').toLowerCase();
-  for (const [stato, parole] of Object.entries(STATI_SPEDIREPRO)) {
-    if (parole.some(p => t.includes(p))) return stato;
+// Quando lo stato e' "problematica", il dettaglio dice di che si tratta
+const ECCEZIONI_SPEDIREPRO = {
+  '1': 'giacenza',   // in giacenza, attende istruzioni
+  '2': 'problema',   // rifiutata, torna al mittente
+  '3': 'problema',   // danneggiata
+  '4': 'problema',   // smarrita
+  '5': 'giacenza',   // consegna fallita, si ritenta
+};
+
+const DESCRIZIONI_SPEDIREPRO = {
+  N: 'Convalida in corso', O: 'Etichetta in elaborazione', B: 'Creata', E: 'Errore indirizzo',
+  S: 'In transito', D: 'Consegnata', R: 'Rimborsata', Y: 'In consegna', T: 'Partita dalla filiale',
+  X: 'Problematica in corso', G: 'In lavorazione', L: 'In ritardo', P: 'Consegnata al punto di ritiro',
+  K: 'Rientrata al mittente',
+};
+
+function statoDaSpedirePro(codice, exceptionCode) {
+  const c = String(codice || '').trim().toUpperCase();
+  if (c.length === 1 && LETTERE_SPEDIREPRO[c]) {
+    // se c'e' un dettaglio sull'eccezione, e' piu' preciso della lettera
+    const ec = String(exceptionCode ?? '').trim();
+    if (c === 'X' && ECCEZIONI_SPEDIREPRO[ec]) return ECCEZIONI_SPEDIREPRO[ec];
+    return LETTERE_SPEDIREPRO[c];
   }
+  // ripiego sul testo, se il messaggio non usa i codici
+  const t = String(codice || '').toLowerCase();
+  if (/consegnat|delivered/.test(t)) return 'consegnata';
+  if (/in consegna|out for delivery/.test(t)) return 'in_consegna';
+  if (/giacenz|mancato recapito|assente/.test(t)) return 'giacenza';
+  if (/anomali|errore|danneggiat|smarrit|reso|rientrat/.test(t)) return 'problema';
+  if (/transit|partit|ritirat|preso in carico|spedit/.test(t)) return 'in_viaggio';
   return null;
 }
+
+function descrizioneSpedirePro(codice) {
+  const c = String(codice || '').trim().toUpperCase();
+  return DESCRIZIONI_SPEDIREPRO[c] || String(codice || '');
+}
+
+// Interroga Spedire Pro su una spedizione. La chiave sta nelle variabili di
+// Railway (SPEDIREPRO_API_KEY) e viaggia nell'intestazione X-Api-Key.
+async function spedireProChiedi(percorso) {
+  const key = process.env.SPEDIREPRO_API_KEY;
+  if (!key) throw new Error('SPEDIREPRO_API_KEY non impostata');
+  const base = process.env.SPEDIREPRO_API_URL || 'https://api.spedirepro.com';
+  const r = await fetch(base.replace(/\/$/, '') + percorso, {
+    headers: { 'X-Api-Key': key, 'Accept': 'application/json' }
+  });
+  const testo = await r.text();
+  let dati; try { dati = JSON.parse(testo); } catch (e) { dati = { raw: testo.slice(0, 500) }; }
+  return { ok: r.ok, http: r.status, dati };
+}
+
+app.get('/api/spedirepro/stato', async (req, res) => {
+  const key = process.env.SPEDIREPRO_API_KEY;
+  res.json({
+    chiave_presente: !!key,
+    indirizzo_webhook: `https://${req.get('host')}/api/spedirepro/webhook`,
+    nota: key ? 'Chiave presente. Gli eventi arrivano sul webhook qui sopra.'
+              : 'Chiave non impostata: aggiungi SPEDIREPRO_API_KEY tra le variabili di Railway.'
+  });
+});
 
 app.all('/api/spedirepro/webhook', async (req, res) => {
   try {
@@ -9437,9 +9503,11 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
        campo(dati, 'stato', 'status', 'evento', 'event', 'descrizione') || 'evento',
        'Evento Spedire Pro', JSON.stringify(dati)]).catch(() => {});
 
-    const tracking = campo(dati, 'tracking', 'tracking_number', 'ldv', 'lettera_di_vettura', 'codice_spedizione', 'shipment_id', 'id_spedizione');
-    const statoTesto = campo(dati, 'stato', 'status', 'evento', 'event', 'descrizione', 'description');
-    const stato = statoDaSpedirePro(statoTesto);
+    const tracking = campo(dati, 'tracking', 'tracking_number', 'ldv', 'lettera_di_vettura', 'codice_spedizione', 'shipment_id', 'id_spedizione', 'reference');
+    const codice = campo(dati, 'status', 'stato', 'state', 'shipment_status', 'evento', 'event');
+    const eccezione = campo(dati, 'exception_code', 'exceptioncode', 'codice_eccezione');
+    const stato = statoDaSpedirePro(codice, eccezione);
+    const statoTesto = descrizioneSpedirePro(codice) + (eccezione ? ` (dettaglio ${eccezione})` : '');
     const destinatario = campo(dati, 'destinatario', 'recipient_name', 'ragione_sociale', 'nome', 'company');
     const email = campo(dati, 'email', 'recipient_email', 'mail');
 
