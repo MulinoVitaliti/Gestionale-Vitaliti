@@ -31,7 +31,7 @@ async function aggiornaContatoreBozze(){
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
   const nuovoStato = document.getElementById('edit-lead-stato').value;
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
 
   if(currentPipelineId === 'default'){
     body.stato = nuovoStato;
@@ -494,6 +494,8 @@ function editLead(id){
   document.getElementById('edit-lead-tel').value=l.tel||'';
   document.getElementById('edit-lead-tel2').value=l.tel2||'';
   document.getElementById('edit-lead-indirizzo').value=l.indirizzo||'';
+  if(typeof renderSelettoreEtichette==='function')
+    renderSelettoreEtichette('edit-lead-etichette', Array.isArray(l.etichette)?l.etichette:[]);
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
   const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
@@ -1397,6 +1399,7 @@ async function salvaLead(){
     tel:document.getElementById('lead-tel').value,
     tel2:document.getElementById('lead-tel2').value,
     indirizzo:document.getElementById('lead-indirizzo').value,
+    etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():[]),
     email:document.getElementById('lead-email')?.value||'',
     citta:document.getElementById('lead-citta').value,
     prodotto:document.getElementById('lead-prodotto').value,
@@ -1912,3 +1915,83 @@ document.addEventListener('click', e => {
 window.mostraTitoli = mostraTitoli;
 window.scegliTitolo = scegliTitolo;
 window.registraTitolo = registraTitolo;
+
+
+// ── ETICHETTE DEI LEAD ───────────────────────────────────────────────────
+window._etichette = [];
+let _etSelezionate = [];
+
+async function caricaEtichette(){
+  try{
+    const e = await api.get('/api/etichette');
+    if(Array.isArray(e)) window._etichette = e;
+  }catch(err){}
+}
+
+// Disegna i chip cliccabili dentro un contenitore
+function renderSelettoreEtichette(contenitoreId, selezionate){
+  const box = document.getElementById(contenitoreId);
+  if(!box) return;
+  _etSelezionate = Array.isArray(selezionate) ? [...selezionate] : [];
+  const dis = () => {
+    box.innerHTML = (window._etichette||[]).map(e => {
+      const on = _etSelezionate.includes(e.nome);
+      return `<span onclick="toggleEtichetta('${e.nome.replace(/'/g,"\\'")}','${contenitoreId}')"
+        style="cursor:pointer;user-select:none;background:${on?e.colore:'transparent'};color:${on?'#fff':e.colore};
+        border:1.5px solid ${e.colore};font-size:10.5px;font-weight:700;letter-spacing:.3px;
+        padding:3px 9px;border-radius:5px;display:inline-flex;align-items:center;gap:4px">
+        ${on?'<i class="ti ti-check" style="font-size:11px"></i>':''}${e.nome}</span>`;
+    }).join('') +
+    `<span onclick="nuovaEtichetta('${contenitoreId}')" style="cursor:pointer;font-size:10.5px;color:var(--text-3);
+      border:1.5px dashed var(--border);padding:3px 9px;border-radius:5px">+ nuova</span>`;
+  };
+  box.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap';
+  dis();
+  box._ridisegna = dis;
+}
+
+function toggleEtichetta(nome, contenitoreId){
+  const i = _etSelezionate.indexOf(nome);
+  if(i >= 0) _etSelezionate.splice(i, 1); else _etSelezionate.push(nome);
+  const box = document.getElementById(contenitoreId);
+  if(box && box._ridisegna) box._ridisegna();
+}
+
+function etichetteSelezionate(){ return [..._etSelezionate]; }
+
+async function nuovaEtichetta(contenitoreId){
+  const nome = prompt('Nome della nuova etichetta (es. RICHIAMARE)');
+  if(!nome || !nome.trim()) return;
+  const colori = ['#4F46E5','#D3A64B','#3B6D11','#E06C2A','#973D37','#1976d2','#8e24aa','#00897b'];
+  const colore = colori[(window._etichette||[]).length % colori.length];
+  const r = await api.post('/api/etichette', {nome: nome.trim(), colore});
+  if(r.error) return alert(r.error);
+  await caricaEtichette();
+  _etSelezionate.push(nome.trim().toUpperCase().slice(0,24));
+  renderSelettoreEtichette(contenitoreId, _etSelezionate);
+}
+
+window.caricaEtichette = caricaEtichette;
+window.renderSelettoreEtichette = renderSelettoreEtichette;
+window.toggleEtichetta = toggleEtichetta;
+window.etichetteSelezionate = etichetteSelezionate;
+window.nuovaEtichetta = nuovaEtichetta;
+
+
+// ── DOPPIO CLIC SULLE NOTE: si allargano per scrivere meglio ─────────────
+// Vale ovunque, anche nel pannello di dettaglio del lead: doppio clic sul
+// campo e diventa alto; doppio clic di nuovo (o clic fuori) torna piccolo.
+document.addEventListener('dblclick', e => {
+  const ta = e.target;
+  if (!ta || ta.tagName !== 'TEXTAREA') return;
+  const grande = ta.classList.toggle('grande');
+  const m = ta.closest ? ta.closest('.modal') : null;
+  if (m) m.classList.toggle('scrittura', grande);
+  if (grande) {
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight + 4, Math.round(window.innerHeight * 0.6)) + 'px';
+    ta.focus();
+  } else {
+    ta.style.height = '';
+  }
+});
