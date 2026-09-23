@@ -1586,3 +1586,47 @@ window.azzeraBandi = azzeraBandi;
 window.controllaBandiOra = controllaBandiOra;
 window.inviaRiepilogoBandi = inviaRiepilogoBandi;
 window.vediBandiTrovati = vediBandiTrovati;
+
+
+// ── AREE DI TESTO: la finestra si allarga mentre si scrive ───────────────
+// Al primo clic in un campo note la finestra si allarga e il campo diventa
+// alto, per vedere tutto il testo. Salvando o uscendo dal campo torna com'era.
+(function(){
+  function modalDi(el){ return el.closest ? el.closest('.modal') : null; }
+
+  function allarga(ta){
+    const m = modalDi(ta);
+    if (m) m.classList.add('scrittura');
+    ta.classList.add('grande');
+    adatta(ta);
+  }
+
+  function stringi(ta){
+    const m = modalDi(ta);
+    // resto allargato se il cursore e' andato in un'altra area di testo della stessa finestra
+    setTimeout(() => {
+      const a = document.activeElement;
+      if (a && a.tagName === 'TEXTAREA' && modalDi(a) === m) return;
+      if (m) m.classList.remove('scrittura');
+      ta.classList.remove('grande');
+      ta.style.height = '';
+    }, 60);
+  }
+
+  // il campo cresce con il testo, fino a un'altezza ragionevole
+  function adatta(ta){
+    if (!ta.classList.contains('grande')) return;
+    ta.style.height = 'auto';
+    ta.style.height = Math.min(ta.scrollHeight + 4, Math.round(window.innerHeight * 0.55)) + 'px';
+  }
+
+  document.addEventListener('focusin', e => {
+    if (e.target.tagName === 'TEXTAREA' && modalDi(e.target)) allarga(e.target);
+  });
+  document.addEventListener('focusout', e => {
+    if (e.target.tagName === 'TEXTAREA' && modalDi(e.target)) stringi(e.target);
+  });
+  document.addEventListener('input', e => {
+    if (e.target.tagName === 'TEXTAREA') adatta(e.target);
+  });
+})();
