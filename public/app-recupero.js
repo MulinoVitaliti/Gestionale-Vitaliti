@@ -1929,9 +1929,11 @@ async function caricaEtichette(){
 }
 
 // Disegna i chip cliccabili dentro un contenitore
-function renderSelettoreEtichette(contenitoreId, selezionate){
+async function renderSelettoreEtichette(contenitoreId, selezionate){
   const box = document.getElementById(contenitoreId);
   if(!box) return;
+  // se l'elenco non e' ancora stato scaricato lo prendo adesso
+  if(!(window._etichette||[]).length) await caricaEtichette();
   _etSelezionate = Array.isArray(selezionate) ? [...selezionate] : [];
   const dis = () => {
     box.innerHTML = (window._etichette||[]).map(e => {
