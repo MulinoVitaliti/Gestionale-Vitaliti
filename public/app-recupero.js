@@ -1961,17 +1961,62 @@ function toggleEtichetta(nome, contenitoreId){
 
 function etichetteSelezionate(){ return [..._etSelezionate]; }
 
-async function nuovaEtichetta(contenitoreId){
-  const nome = prompt('Nome della nuova etichetta (es. RICHIAMARE)');
-  if(!nome || !nome.trim()) return;
-  const colori = ['#4F46E5','#D3A64B','#3B6D11','#E06C2A','#973D37','#1976d2','#8e24aa','#00897b'];
-  const colore = colori[(window._etichette||[]).length % colori.length];
-  const r = await api.post('/api/etichette', {nome: nome.trim(), colore});
-  if(r.error) return alert(r.error);
-  await caricaEtichette();
-  _etSelezionate.push(nome.trim().toUpperCase().slice(0,24));
-  renderSelettoreEtichette(contenitoreId, _etSelezionate);
+const COLORI_ETICHETTE = ['#4F46E5','#D3A64B','#3B6D11','#E06C2A','#973D37','#1976d2','#8e24aa','#00897b','#546e7a','#c2185b'];
+let _neColore = COLORI_ETICHETTE[0];
+let _neContenitore = null;
+
+function nuovaEtichetta(contenitoreId){
+  _neContenitore = contenitoreId;
+  _neColore = COLORI_ETICHETTE[(window._etichette||[]).length % COLORI_ETICHETTE.length];
+  document.getElementById('ne-nome').value = '';
+  renderColoriEtichetta();
+  anteprimaEtichetta();
+  openModal('modal-nuova-etichetta');
+  setTimeout(()=>document.getElementById('ne-nome').focus(), 120);
 }
+
+function renderColoriEtichetta(){
+  const box = document.getElementById('ne-colori');
+  if(!box) return;
+  box.innerHTML = COLORI_ETICHETTE.map(c => `
+    <span onclick="scegliColoreEtichetta('${c}')" title="${c}"
+      style="width:30px;height:30px;border-radius:8px;background:${c};cursor:pointer;display:inline-flex;
+      align-items:center;justify-content:center;border:2px solid ${c === _neColore ? 'var(--text)' : 'transparent'};
+      box-shadow:0 1px 3px rgba(0,0,0,.18)">
+      ${c === _neColore ? '<i class="ti ti-check" style="color:#fff;font-size:15px"></i>' : ''}</span>`).join('');
+}
+
+function scegliColoreEtichetta(c){
+  _neColore = c;
+  renderColoriEtichetta();
+  anteprimaEtichetta();
+}
+
+function anteprimaEtichetta(){
+  const a = document.getElementById('ne-anteprima');
+  if(!a) return;
+  const nome = (document.getElementById('ne-nome').value || '').trim().toUpperCase();
+  a.textContent = nome || 'ETICHETTA';
+  a.style.background = _neColore;
+}
+
+async function salvaNuovaEtichetta(){
+  const nome = (document.getElementById('ne-nome').value || '').trim();
+  if(nome.length < 2) return alert('Scrivi il nome dell\'etichetta.');
+  const r = await api.post('/api/etichette', {nome, colore: _neColore});
+  if(r.error) return alert('Errore: ' + r.error);
+  await caricaEtichette();
+  const nomeOk = nome.toUpperCase().slice(0,24);
+  if(!_etSelezionate.includes(nomeOk)) _etSelezionate.push(nomeOk);
+  closeModal('modal-nuova-etichetta');
+  if(_neContenitore) renderSelettoreEtichette(_neContenitore, _etSelezionate);
+  showSave();
+}
+
+window.renderColoriEtichetta = renderColoriEtichetta;
+window.scegliColoreEtichetta = scegliColoreEtichetta;
+window.anteprimaEtichetta = anteprimaEtichetta;
+window.salvaNuovaEtichetta = salvaNuovaEtichetta;
 
 window.caricaEtichette = caricaEtichette;
 window.renderSelettoreEtichette = renderSelettoreEtichette;
