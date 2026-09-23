@@ -3,6 +3,7 @@
 // Le email partono dall'account Gmail "spedizioni".
 
 let _fupFiltro = 'in_corso';
+let _fupTipo = 'tutti';
 
 const FUP_ETICHETTE = {
   partenza: 'Avviso partenza merce',
@@ -42,7 +43,7 @@ async function caricaFollowup(){
   box.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
   try{
     const [righe, ries] = await Promise.all([
-      api.get('/api/followup?stato=' + _fupFiltro),
+      api.get('/api/followup?stato=' + _fupFiltro + '&tipo=' + _fupTipo),
       api.get('/api/followup/riepilogo')
     ]);
     renderFupRiepilogo(ries);
@@ -63,7 +64,11 @@ async function caricaFollowup(){
         ? '<i class="ti ti-mail-off" title="Nessuna email in anagrafica" style="color:var(--red);margin-left:6px"></i>' : '';
       return `<div onclick="apriFollowup(${r.id})" style="display:flex;align-items:center;gap:14px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
         <div style="flex:1;min-width:0">
-          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${r.cliente_nome}${allarmeEmail}</div>
+          <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
+            ${(r.tipo_spedizione === 'campionatura')
+              ? '<span style="background:var(--gold,#C9A84C);color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px">CAMPIONE</span>'
+              : '<span style="background:var(--brand);color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px">BANCALE</span>'}
+            ${r.cliente_nome}${allarmeEmail}</div>
           <div style="font-size:11px;color:var(--text-3)">DDT ${r.ddt_numero || '—'} del ${fupData(r.ddt_data)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
         </div>
         <div style="width:130px">${(() => { const c = FUP_CONSEGNA[r.stato_consegna] || FUP_CONSEGNA.in_viaggio;
@@ -329,6 +334,14 @@ async function sincronizzaFollowup(btn){
   finally{ if(btn){ btn.disabled = false; btn.innerHTML = testoOrig; } }
 }
 window.sincronizzaFollowup = sincronizzaFollowup;
+
+function filtraTipoSped(tipo, el){
+  _fupTipo = tipo;
+  document.querySelectorAll('#fup-tipi .pill').forEach(p=>p.classList.remove('active'));
+  if(el) el.classList.add('active');
+  caricaFollowup();
+}
+window.filtraTipoSped = filtraTipoSped;
 
 window.caricaFollowup = caricaFollowup;
 window.filtraFollowup = filtraFollowup;
