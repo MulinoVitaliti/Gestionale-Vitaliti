@@ -2164,5 +2164,4 @@ window.prodottiSelezionati = prodottiSelezionati;
 window.mostraNuovoProdotto = mostraNuovoProdotto;
 window.caricaProdottiInteresse = caricaProdottiInteresse;
 window.popolaProdottiLead = popolaProdottiLead;
-window.onProdottoLead = onProdottoLead;
 window.salvaProdottoInteresse = salvaProdottoInteresse;
