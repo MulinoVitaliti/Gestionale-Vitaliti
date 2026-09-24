@@ -8615,6 +8615,54 @@ app.get('/api/clienti/per-regione', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// ── STATISTICHE SPEDIZIONI: bancali e pacchi a confronto ──────────────────
+app.get('/api/spedizioni/statistiche', async (req, res) => {
+  try {
+    const q = async (tipo) => {
+      const r = await pool.query(
+        `SELECT
+           COUNT(*) totale,
+           COUNT(*) FILTER (WHERE stato='in_corso') in_corso,
+           COUNT(*) FILTER (WHERE stato_consegna='consegnata') consegnate,
+           COUNT(*) FILTER (WHERE stato_consegna IN ('giacenza','problema')) problemi,
+           COUNT(*) FILTER (WHERE ddt_data >= date_trunc('month', CURRENT_DATE)) mese_corrente,
+           COUNT(*) FILTER (WHERE ddt_data >= date_trunc('month', CURRENT_DATE - INTERVAL '1 month')
+                              AND ddt_data < date_trunc('month', CURRENT_DATE)) mese_scorso,
+           COUNT(*) FILTER (WHERE ddt_data >= CURRENT_DATE - INTERVAL '7 days') ultimi_7,
+           COALESCE(SUM(importo) FILTER (WHERE ddt_data >= date_trunc('year', CURRENT_DATE)),0) valore_anno,
+           COUNT(DISTINCT cliente_id) clienti,
+           AVG(NULLIF(consegnata_il,NULL) - ddt_data) giorni_medi
+         FROM followup_spedizioni
+         WHERE COALESCE(tipo_spedizione,'bancale') = $1`, [tipo]);
+      const x = r.rows[0];
+      return {
+        totale: Number(x.totale), in_corso: Number(x.in_corso), consegnate: Number(x.consegnate),
+        problemi: Number(x.problemi), mese_corrente: Number(x.mese_corrente),
+        mese_scorso: Number(x.mese_scorso), ultimi_7: Number(x.ultimi_7),
+        valore_anno: Number(x.valore_anno), clienti: Number(x.clienti),
+        giorni_medi: x.giorni_medi !== null ? Math.round(Number(x.giorni_medi)) : null
+      };
+    };
+    const [pallet, pacchi] = await Promise.all([q('bancale'), q('campionatura')]);
+
+    // per i pacchi conta quanti sono diventati un ordine: e' il dato che serve
+    const conv = await pool.query(
+      `SELECT COUNT(DISTINCT f.cliente_id) FILTER (WHERE EXISTS (
+                SELECT 1 FROM ordini o WHERE o.cliente_id=f.cliente_id AND o.data > f.ddt_data)) con_ordine,
+              COUNT(DISTINCT f.cliente_id) totali
+       FROM followup_spedizioni f
+       WHERE COALESCE(f.tipo_spedizione,'bancale')='campionatura' AND f.cliente_id IS NOT NULL`);
+    pacchi.clienti_con_ordine_dopo = Number(conv.rows[0].con_ordine);
+    pacchi.clienti_totali = Number(conv.rows[0].totali);
+
+    // spedizioni assicurate, che restano nel mondo bancali
+    const ass = await pool.query(`SELECT COUNT(*) n FROM assicurazioni`).catch(() => ({ rows: [{ n: 0 }] }));
+    pallet.assicurate = Number(ass.rows[0].n);
+
+    res.json({ pallet, pacchi });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 // ── LISTINI PREZZI ────────────────────────────────────────────────────────
 app.get('/api/listini', async (req, res) => {
   try {
