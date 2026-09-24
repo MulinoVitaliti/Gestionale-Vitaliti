@@ -1460,7 +1460,8 @@ window.addEventListener('unhandledrejection', function(e) {
         </div>
         <div style="font-size:11px;color:var(--text-3);margin-top:3px">Verrà aggiunto all'elenco per le prossime volte.</div>
       </div></div></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="lead-stato"></select></div><div class="form-group"><label class="form-label">Stato cliente</label><select id="lead-tag"><option value="">— Nessuno —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
+    <div class="form-group"><label class="form-label">Etichette</label><div id="lead-etichette"></div></div>
 
     <!-- Divider prima attività -->
     <div style="margin:16px -20px;border-top:1px solid var(--border)"></div>
@@ -1488,10 +1489,6 @@ window.addEventListener('unhandledrejection', function(e) {
         </button>
       </div>
       <input type="hidden" id="lead-att-tipo" value="chiamata">
-      <div class="form-group">
-        <label class="form-label">Etichette</label>
-        <div id="lead-etichette"></div>
-      </div>
       <div class="form-group" style="position:relative">
         <label class="form-label">Titolo</label>
         <input type="text" id="lead-att-titolo" placeholder="Es. Richiesta campione" autocomplete="off"
