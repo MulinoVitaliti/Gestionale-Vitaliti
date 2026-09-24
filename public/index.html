@@ -2189,6 +2189,39 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-converti-lead">
+  <div class="modal" style="max-width:620px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-user-check" style="color:var(--green)"></i>Diventa cliente</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-converti-lead')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div id="cv-riepilogo" style="background:var(--surface-2);border-radius:10px;padding:13px 15px;margin-bottom:16px;font-size:13px"></div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:9px">Dati per la fatturazione</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Partita IVA *</label><input type="text" id="cv-piva" placeholder="11 cifre"></div>
+        <div class="form-group"><label class="form-label">Codice fiscale</label><input type="text" id="cv-cf" placeholder="se diverso dalla P.IVA"></div>
+      </div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Codice destinatario SDI</label><input type="text" id="cv-sdi" placeholder="7 caratteri" maxlength="7"></div>
+        <div class="form-group"><label class="form-label">PEC</label><input type="text" id="cv-pec" placeholder="in alternativa al codice SDI"></div>
+      </div>
+      <div style="font-size:11.5px;color:var(--text-3);margin:-4px 0 16px">Senza codice SDI o PEC la fattura elettronica potrebbe non essere recapitata.</div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:9px">Indirizzi</div>
+      <div class="form-group"><label class="form-label">Sede legale</label><input type="text" id="cv-ind-legale"></div>
+      <div class="form-group"><label class="form-label">Indirizzo di consegna</label><input type="text" id="cv-ind-consegna" placeholder="lascia vuoto se coincide con la sede"></div>
+      <div class="form-group"><label class="form-label">Note per la scheda cliente</label><textarea id="cv-note" rows="2" placeholder="Es. consegna al mattino, scarico con muletto..."></textarea></div>
+
+      <div id="cv-errore" style="display:none;background:#fdecea;color:#8c2f26;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="closeModal('modal-converti-lead')">Annulla</button>
+        <button class="btn btn-primary" onclick="confermaConversione()" id="cv-btn"><i class="ti ti-user-check"></i>Crea la scheda cliente</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-nuova-etichetta">
   <div class="modal" style="max-width:420px">
     <div class="modal-header">
