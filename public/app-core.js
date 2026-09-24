@@ -242,8 +242,8 @@ function showPage(id){
   if(id==='fatture'){ initPaginaFatture(); if(typeof aggiornaBadgeDocumenti==='function')aggiornaBadgeDocumenti(); }
   if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='spedizioni'){ if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); 
-    // Reset alla tab Spedizioni ogni volta che si apre la pagina
-    switchSpedizioniTab('spedizioni', document.querySelector('#sped-tabs .pill'));
+    // La pagina si apre sempre sulla panoramica: pallet o pacchi
+    switchSpedizioniTab('hub');
     initPaginaSpedizioni(); 
   }
   if(id==='followup')caricaFollowup();
@@ -278,6 +278,8 @@ function openModal(id){
     document.getElementById('edit-mov-cat-custom').style.display='none';
   }
   if(id==='modal-lead'||id==='modal-edit-lead') populateFasiSelects();
+  // chip delle etichette: il nuovo lead parte pulito, la modifica li carica da sola
+  if(id==='modal-lead' && typeof renderSelettoreEtichette==='function') renderSelettoreEtichette('lead-etichette', []);
   document.getElementById(id).classList.add('open');
 }
 function closeModal(id){
