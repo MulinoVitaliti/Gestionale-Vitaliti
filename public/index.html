@@ -1024,6 +1024,8 @@ window.addEventListener('unhandledrejection', function(e) {
           Monitoraggio spedizioni
         </div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-sm" id="fup-btn-spedizioni" onclick="switchSpedizioniTab('spedizioni')" style="display:none"><i class="ti ti-truck-delivery"></i>Spedizioni</button>
+          <button class="btn btn-sm" id="fup-btn-assicurazioni" onclick="switchSpedizioniTab('assicurazioni')" style="display:none"><i class="ti ti-shield-check"></i>Assicurazioni</button>
           <button class="btn btn-sm" onclick="apriModelliFollowup()"><i class="ti ti-mail-cog"></i>Modelli email</button>
           <button class="btn btn-sm btn-primary" onclick="sincronizzaFollowup(this)"><i class="ti ti-refresh"></i>Leggi nuove spedizioni</button>
         </div>
