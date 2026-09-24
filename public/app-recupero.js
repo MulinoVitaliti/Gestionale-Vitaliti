@@ -498,7 +498,8 @@ function editLead(id){
     renderSelettoreEtichette('edit-lead-etichette', Array.isArray(l.etichette)?l.etichette:[]);
   popolaProdottiLead('edit-lead', l.prodotto || '');
   svuotaTelefoniExtra('edit-lead');
-  (Array.isArray(l.telefoni_extra)?l.telefoni_extra:[]).forEach(t => aggiungiTelefono('edit-lead', t));
+  [l.tel2, ...(Array.isArray(l.telefoni_extra)?l.telefoni_extra:[])]
+    .filter(Boolean).forEach(t => aggiungiTelefono('edit-lead', t));
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
   // i prodotti sono ora a selezione multipla: li disegna popolaProdottiLead
@@ -2057,7 +2058,7 @@ function aggiungiTelefono(prefix, valore){
   riga.style.cssText = 'display:flex;gap:7px;align-items:flex-end;margin-bottom:10px';
   riga.innerHTML = `
     <div style="flex:1">
-      <label class="form-label">Altro numero</label>
+      <label class="form-label">Altro telefono</label>
       <input type="text" class="tel-extra" placeholder="es. cellulare del titolare" value="${(valore||'').replace(/"/g,'&quot;')}">
     </div>
     <button type="button" class="btn btn-icon btn-sm btn-danger" onclick="this.parentElement.remove()" title="Togli"><i class="ti ti-x"></i></button>`;
@@ -2068,7 +2069,12 @@ function aggiungiTelefono(prefix, valore){
 function telefoniExtra(prefix){
   const box = document.getElementById(prefix + '-tel-extra');
   if(!box) return [];
-  return [...box.querySelectorAll('input.tel-extra')].map(i => i.value.trim()).filter(Boolean);
+  const tutti = [...box.querySelectorAll('input.tel-extra')].map(i => i.value.trim()).filter(Boolean);
+  // il primo numero aggiunto finisce nel campo tel2, che esiste gia' in archivio:
+  // cosi' resta leggibile anche da chi guarda i dati vecchi
+  const t2 = document.getElementById(prefix + '-tel2');
+  if(t2) t2.value = tutti[0] || '';
+  return tutti.slice(1);
 }
 
 function svuotaTelefoniExtra(prefix){
