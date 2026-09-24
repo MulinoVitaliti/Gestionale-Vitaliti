@@ -6229,7 +6229,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); initProdottiInteresse().catch(()=>{}); initFasePrimoOrdine().catch(()=>{}); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); initProdottiInteresse().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -8261,21 +8261,52 @@ app.delete('/api/prodotti-interesse/:id', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
-// ── PASSO 1: dati anagrafici sul lead, poi in fase "Primo ordine" ─────────
+// ── PASSO 1: dati anagrafici, poi il lead passa alla pipeline "Primo ordine" ──
+// La trattativa finisce qui: da adesso in poi il lead vive nell'altra pipeline,
+// posizionato sulla fase "Ricezione ordine".
+async function trovaPipelinePrimoOrdine() {
+  let p = await pool.query(`SELECT id FROM pipelines WHERE lower(nome) LIKE '%primo ordine%' LIMIT 1`);
+  if (!p.rows.length) {
+    const ord = await pool.query(`SELECT COALESCE(MAX(ordine),0) m FROM pipelines`);
+    await pool.query(
+      `INSERT INTO pipelines (id, nome, colore, ordine) VALUES ('primo_ordine','Primo ordine','#C9A84C',$1)
+       ON CONFLICT (id) DO NOTHING`, [Number(ord.rows[0].m) + 1]);
+    p = { rows: [{ id: 'primo_ordine' }] };
+    console.log('✅ Pipeline "Primo ordine" creata');
+  }
+  const pid = p.rows[0].id;
+
+  let f = await pool.query(
+    `SELECT id FROM fasi WHERE pipeline_id=$1 AND lower(label) LIKE '%ricezione%' LIMIT 1`, [pid]);
+  if (!f.rows.length) {
+    await pool.query(
+      `INSERT INTO fasi (id, label, color, ordine, pipeline_id)
+       VALUES ('ricezione_ordine','Ricezione ordine','var(--blue)',0,$1) ON CONFLICT (id) DO NOTHING`, [pid]);
+    f = { rows: [{ id: 'ricezione_ordine' }] };
+    console.log('✅ Fase "Ricezione ordine" creata');
+  }
+  return { pipeline: pid, fase: f.rows[0].id };
+}
+
 app.patch('/api/leads/:id/anagrafica', async (req, res) => {
   const d = req.body || {};
   const piva = String(d.piva || '').trim();
   const cf = String(d.cf || '').trim();
   if (!piva && !cf) return res.json({ error: 'Serve la partita IVA o il codice fiscale: senza non si puo\' fatturare.' });
   try {
-    const fase = await pool.query(`SELECT id FROM fasi WHERE lower(label) LIKE '%primo ordine%' LIMIT 1`);
-    const faseId = fase.rows[0]?.id || 'primo_ordine';
     await pool.query(
-      `UPDATE leads SET piva=$1, cf=$2, sdi=$3, pec=$4, ind_legale=$5, ind_consegna=$6,
-              stato=$7, updated_at=NOW() WHERE id=$8`,
+      `UPDATE leads SET piva=$1, cf=$2, sdi=$3, pec=$4, ind_legale=$5, ind_consegna=$6, updated_at=NOW()
+       WHERE id=$7`,
       [piva || null, cf || null, d.sdi || null, d.pec || null,
-       d.ind_legale || null, d.ind_consegna || null, faseId, req.params.id]);
-    res.json({ ok: true, fase: faseId });
+       d.ind_legale || null, d.ind_consegna || null, req.params.id]);
+
+    const dest = await trovaPipelinePrimoOrdine();
+    await pool.query(
+      `INSERT INTO lead_pipeline_stato (lead_id, pipeline_id, stato) VALUES ($1,$2,$3)
+       ON CONFLICT (lead_id, pipeline_id) DO UPDATE SET stato=$3`,
+      [req.params.id, dest.pipeline, dest.fase]);
+
+    res.json({ ok: true, ...dest });
   } catch (e) { res.json({ error: e.message }); }
 });
 
@@ -8340,23 +8371,6 @@ const ETICHETTE_DEFAULT = [
   ['EMAIL', '#3B6D11', 30],
   ['ORDINE', '#E06C2A', 40],
 ];
-
-// La fase "Primo ordine" sta fra la trattativa e il cliente acquisito:
-// e' li' che si ferma il lead dopo aver raccolto i dati fiscali.
-async function initFasePrimoOrdine() {
-  try {
-    const c = await pool.query(
-      `SELECT id FROM fasi WHERE lower(label) LIKE '%primo ordine%' LIMIT 1`);
-    if (c.rows.length) return;
-    const ord = await pool.query(
-      `SELECT COALESCE(MAX(ordine),0) m FROM fasi WHERE COALESCE(pipeline_id,'default')='default'`);
-    await pool.query(
-      `INSERT INTO fasi (id, label, color, ordine, pipeline_id)
-       VALUES ('primo_ordine','Primo ordine','var(--gold)',$1,'default')
-       ON CONFLICT (id) DO NOTHING`, [Number(ord.rows[0].m) + 1]);
-    console.log('✅ Fase "Primo ordine" creata nella pipeline');
-  } catch (e) { console.error('[FASE primo ordine]', e.message); }
-}
 
 async function initEtichette() {
   for (const [nome, colore, ordine] of ETICHETTE_DEFAULT) {
