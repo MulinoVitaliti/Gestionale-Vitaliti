@@ -1576,6 +1576,18 @@ function apriDettaglioLead(id){
     l.tag ? `<span style="background:${tagBg[l.tag]||'#f3f4f6'};color:${tagColors[l.tag]||'var(--text-2)'};padding:1px 8px;border-radius:99px;font-size:11px;font-weight:700">${tagLabels[l.tag]||l.tag}</span>` : ''
   ].filter(Boolean).join(' · ');
 
+  const btnConv = document.getElementById('lead-detail-converti-btn');
+  if(btnConv){
+    btnConv.onclick = ()=>convertiLead(id);
+    // se e' gia' cliente il bottone resta, ma si capisce che e' stato fatto
+    const gia = String(l.tag||'') === 'cliente';
+    btnConv.innerHTML = gia
+      ? '<i class="ti ti-check"></i>Già cliente'
+      : (leadInPrimoOrdine(l) && (l.piva || l.cf)
+          ? '<i class="ti ti-user-check"></i>Porta in Contatti'
+          : '<i class="ti ti-id"></i>Dati anagrafici');
+    btnConv.style.opacity = gia ? '.6' : '1';
+  }
   document.getElementById('lead-detail-edit-btn').onclick = ()=>editLead(id);
   document.getElementById('lead-detail-delete-btn').onclick = ()=>eliminaLead(id);
 
@@ -2295,10 +2307,24 @@ window.salvaEditUtente = salvaEditUtente;
 // ── CONVERSIONE LEAD → CLIENTE ───────────────────────────────────────────
 let _leadDaConvertire = null;
 
+// La fase in cui il lead si ferma dopo aver raccolto i dati anagrafici
+function fasePrimoOrdine(){
+  const f = (state.fasi||[]).find(x => /primo\s*ordine/i.test(x.label||''));
+  return f ? f.id : 'primo_ordine';
+}
+
+function leadInPrimoOrdine(l){
+  return String(l.stato||'') === fasePrimoOrdine();
+}
+
 function convertiLead(id){
   const l = (state.leads||[]).find(x => x.id === id);
   if(!l) return;
   if(String(l.tag||'') === 'cliente' && !confirm('Questo lead risulta già diventato cliente. Vuoi crearne comunque una nuova scheda?')) return;
+
+  // secondo passaggio: i dati ci sono già, si crea la scheda cliente
+  if(leadInPrimoOrdine(l) && (l.piva || l.cf)) return creaSchedaCliente(l);
+
   _leadDaConvertire = l;
 
   const tel = [l.tel, l.tel2, ...(Array.isArray(l.telefoni_extra)?l.telefoni_extra:[])].filter(Boolean);
@@ -2330,6 +2356,29 @@ function convertiLead(id){
   setTimeout(()=>document.getElementById('cv-piva').focus(), 120);
 }
 
+// Passo 2: dalla fase "Primo ordine" si crea la scheda in anagrafica
+async function creaSchedaCliente(l){
+  const tel = [l.tel, l.tel2, ...(Array.isArray(l.telefoni_extra)?l.telefoni_extra:[])].filter(Boolean);
+  if(!confirm(`Creare la scheda cliente per ${l.nome}?\n\n` +
+      `P.IVA: ${l.piva || l.cf || '—'}\n` +
+      (tel.length ? `Telefono: ${tel.join(' · ')}\n` : '') +
+      (l.prodotto ? `Prodotti: ${l.prodotto}\n` : '') +
+      `\nDa quel momento lo trovi in Contatti e puoi fargli un ordine.`)) return;
+  const r = await api.post('/api/leads/' + l.id + '/converti', {});
+  if(r.error) return alert(r.error);
+  try{
+    const [cl, ld] = await Promise.all([api.get('/api/clienti'), api.get('/api/leads')]);
+    if(Array.isArray(cl)) state.clienti = cl;
+    if(Array.isArray(ld)) state.leads = ld;
+  }catch(e){}
+  renderPipeline(); showSave();
+  if(confirm(`${r.cliente?.nome || l.nome} è ora in Contatti.\n\nVuoi inserire subito il primo ordine?`)){
+    showPage('ordini');
+    setTimeout(()=>{ if(typeof apriNuovoOrdine === 'function') apriNuovoOrdine(); }, 300);
+  }
+}
+window.creaSchedaCliente = creaSchedaCliente;
+
 async function confermaConversione(){
   const l = _leadDaConvertire;
   if(!l) return;
@@ -2343,33 +2392,33 @@ async function confermaConversione(){
     return;
   }
   err.style.display = 'none';
-  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Creo la scheda...';
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Salvo...';
   try{
-    const r = await api.post('/api/leads/' + l.id + '/converti', {
+    const r = await api.patch('/api/leads/' + l.id + '/anagrafica', {
       piva: v('cv-piva'), cf: v('cv-cf'), sdi: v('cv-sdi'), pec: v('cv-pec'),
-      ind_legale: v('cv-ind-legale'), ind_consegna: v('cv-ind-consegna'), note: v('cv-note')
+      ind_legale: v('cv-ind-legale'), ind_consegna: v('cv-ind-consegna')
     });
-    if(r.error){
-      err.textContent = r.error; err.style.display = 'block';
-      return;
+    if(r.error){ err.textContent = r.error; err.style.display = 'block'; return; }
+
+    if(v('cv-note')){
+      await api.put('/api/leads/' + l.id, {
+        nome: l.nome, contatto: l.contatto, tel: l.tel, tel2: l.tel2, indirizzo: l.indirizzo,
+        citta: l.citta, prodotto: l.prodotto, stato: r.fase,
+        note: [l.note, v('cv-note')].filter(Boolean).join('\n'), tag: l.tag || null
+      }).catch(()=>{});
     }
     closeModal('modal-converti-lead');
-    // ricarico clienti e lead per vedere subito il risultato
     try{
-      const [cl, ld] = await Promise.all([api.get('/api/clienti'), api.get('/api/leads')]);
-      if(Array.isArray(cl)) state.clienti = cl;
+      const ld = await api.get('/api/leads');
       if(Array.isArray(ld)) state.leads = ld;
     }catch(e){}
-    renderPipeline();
-    showSave();
-    if(confirm('Scheda cliente creata.\n\nVuoi inserire subito un ordine per ' + (r.cliente?.nome || l.nome) + '?')){
-      showPage('ordini');
-      setTimeout(()=>{ if(typeof apriNuovoOrdine === 'function') apriNuovoOrdine(); }, 300);
-    }
+    renderPipeline(); showSave();
+    alert(`${l.nome} è passato in "Primo ordine" con i dati anagrafici completi.\n\n` +
+          `Quando avrà ordinato, premi di nuovo il pulsante verde: lo porterà in Contatti.`);
   }catch(e){
     err.textContent = 'Errore: ' + e.message; err.style.display = 'block';
   }finally{
-    btn.disabled = false; btn.innerHTML = '<i class="ti ti-user-check"></i>Crea la scheda cliente';
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-arrow-right"></i>Salva e passa a Primo ordine';
   }
 }
 
