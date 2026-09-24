@@ -2307,14 +2307,13 @@ window.salvaEditUtente = salvaEditUtente;
 // ── CONVERSIONE LEAD → CLIENTE ───────────────────────────────────────────
 let _leadDaConvertire = null;
 
-// La fase in cui il lead si ferma dopo aver raccolto i dati anagrafici
-function fasePrimoOrdine(){
-  const f = (state.fasi||[]).find(x => /primo\s*ordine/i.test(x.label||''));
-  return f ? f.id : 'primo_ordine';
-}
-
+// Un lead e' passato al primo ordine se ha i dati fiscali e si trova nella
+// pipeline "Primo ordine"
 function leadInPrimoOrdine(l){
-  return String(l.stato||'') === fasePrimoOrdine();
+  if(!l || (!l.piva && !l.cf)) return false;
+  const p = (state.pipelines||[]).find(x => /primo\s*ordine/i.test(x.nome||''));
+  if(!p) return !!(l.piva || l.cf);
+  return (state.leadPipelineStato||[]).some(s => s.lead_id === l.id && s.pipeline_id === p.id);
 }
 
 function convertiLead(id){
@@ -2403,7 +2402,7 @@ async function confermaConversione(){
     if(v('cv-note')){
       await api.put('/api/leads/' + l.id, {
         nome: l.nome, contatto: l.contatto, tel: l.tel, tel2: l.tel2, indirizzo: l.indirizzo,
-        citta: l.citta, prodotto: l.prodotto, stato: r.fase,
+        citta: l.citta, prodotto: l.prodotto, stato: l.stato,
         note: [l.note, v('cv-note')].filter(Boolean).join('\n'), tag: l.tag || null
       }).catch(()=>{});
     }
@@ -2412,9 +2411,15 @@ async function confermaConversione(){
       const ld = await api.get('/api/leads');
       if(Array.isArray(ld)) state.leads = ld;
     }catch(e){}
+    // ricarico anche pipeline e posizioni, la scheda si è spostata
+    try{
+      const [pl, st] = await Promise.all([api.get('/api/pipelines'), api.get('/api/lead-pipeline-stato')]);
+      if(Array.isArray(pl)) state.pipelines = pl;
+      if(Array.isArray(st)) state.leadPipelineStato = st;
+    }catch(e){}
     renderPipeline(); showSave();
-    alert(`${l.nome} è passato in "Primo ordine" con i dati anagrafici completi.\n\n` +
-          `Quando avrà ordinato, premi di nuovo il pulsante verde: lo porterà in Contatti.`);
+    alert(`${l.nome} è stato spostato nella pipeline "Primo ordine", fase "Ricezione ordine".\n\n` +
+          `Quando l'ordine è confermato, premi di nuovo il pulsante verde: lo porterà in Contatti.`);
   }catch(e){
     err.textContent = 'Errore: ' + e.message; err.style.display = 'block';
   }finally{
