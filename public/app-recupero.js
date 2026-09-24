@@ -31,7 +31,7 @@ async function aggiornaContatoreBozze(){
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
   const nuovoStato = document.getElementById('edit-lead-stato').value;
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('edit-lead'):undefined),citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
 
   if(currentPipelineId === 'default'){
     body.stato = nuovoStato;
@@ -496,6 +496,8 @@ function editLead(id){
   document.getElementById('edit-lead-indirizzo').value=l.indirizzo||'';
   if(typeof renderSelettoreEtichette==='function')
     renderSelettoreEtichette('edit-lead-etichette', Array.isArray(l.etichette)?l.etichette:[]);
+  svuotaTelefoniExtra('edit-lead');
+  (Array.isArray(l.telefoni_extra)?l.telefoni_extra:[]).forEach(t => aggiungiTelefono('edit-lead', t));
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
   const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
@@ -1400,6 +1402,7 @@ async function salvaLead(){
     tel2:document.getElementById('lead-tel2').value,
     indirizzo:document.getElementById('lead-indirizzo').value,
     etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():[]),
+    telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('lead'):[]),
     email:document.getElementById('lead-email')?.value||'',
     citta:document.getElementById('lead-citta').value,
     prodotto:document.getElementById('lead-prodotto').value,
@@ -2042,3 +2045,36 @@ document.addEventListener('dblclick', e => {
     ta.style.height = '';
   }
 });
+
+
+// ── NUMERI DI TELEFONO IN PIU' (facoltativi) ─────────────────────────────
+function aggiungiTelefono(prefix, valore){
+  const box = document.getElementById(prefix + '-tel-extra');
+  if(!box) return;
+  const riga = document.createElement('div');
+  riga.className = 'form-group';
+  riga.style.cssText = 'display:flex;gap:7px;align-items:flex-end;margin-bottom:10px';
+  riga.innerHTML = `
+    <div style="flex:1">
+      <label class="form-label">Altro numero</label>
+      <input type="text" class="tel-extra" placeholder="es. cellulare del titolare" value="${(valore||'').replace(/"/g,'&quot;')}">
+    </div>
+    <button type="button" class="btn btn-icon btn-sm btn-danger" onclick="this.parentElement.remove()" title="Togli"><i class="ti ti-x"></i></button>`;
+  box.appendChild(riga);
+  if(!valore) riga.querySelector('input').focus();
+}
+
+function telefoniExtra(prefix){
+  const box = document.getElementById(prefix + '-tel-extra');
+  if(!box) return [];
+  return [...box.querySelectorAll('input.tel-extra')].map(i => i.value.trim()).filter(Boolean);
+}
+
+function svuotaTelefoniExtra(prefix){
+  const box = document.getElementById(prefix + '-tel-extra');
+  if(box) box.innerHTML = '';
+}
+
+window.aggiungiTelefono = aggiungiTelefono;
+window.telefoniExtra = telefoniExtra;
+window.svuotaTelefoniExtra = svuotaTelefoniExtra;
