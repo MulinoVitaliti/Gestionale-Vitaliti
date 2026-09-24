@@ -31,7 +31,7 @@ async function aggiornaContatoreBozze(){
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
   const nuovoStato = document.getElementById('edit-lead-stato').value;
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('edit-lead'):undefined),citta:document.getElementById('edit-lead-citta').value,prodotto:document.getElementById('edit-lead-prodotto').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('edit-lead'):undefined),prodotto:(typeof prodottiSelezionati==='function'?prodottiSelezionati('edit-lead').join(', '):undefined),citta:document.getElementById('edit-lead-citta').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
 
   if(currentPipelineId === 'default'){
     body.stato = nuovoStato;
@@ -501,7 +501,7 @@ function editLead(id){
   (Array.isArray(l.telefoni_extra)?l.telefoni_extra:[]).forEach(t => aggiungiTelefono('edit-lead', t));
   document.getElementById('edit-lead-citta').value=l.citta||'';
   document.getElementById('edit-lead-note').value=l.note||'';
-  const ps=document.getElementById('edit-lead-prodotto'); for(let o of ps.options) if(o.value===l.prodotto)o.selected=true;
+  // i prodotti sono ora a selezione multipla: li disegna popolaProdottiLead
   const statoCorrente = statoLeadInPipeline(l, currentPipelineId);
   const ss=document.getElementById('edit-lead-stato'); for(let o of ss.options) if(o.value===statoCorrente)o.selected=true;
   document.getElementById('edit-lead-tag').value=l.tag||'';
@@ -1404,9 +1404,9 @@ async function salvaLead(){
     indirizzo:document.getElementById('lead-indirizzo').value,
     etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():[]),
     telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('lead'):[]),
+    prodotto:(typeof prodottiSelezionati==='function'?prodottiSelezionati('lead').join(', '):''),
     email:document.getElementById('lead-email')?.value||'',
     citta:document.getElementById('lead-citta').value,
-    prodotto:document.getElementById('lead-prodotto').value,
     stato:statoPerLeadRecord,
     tag:document.getElementById('lead-tag').value||null
   });
@@ -2081,8 +2081,11 @@ window.telefoniExtra = telefoniExtra;
 window.svuotaTelefoniExtra = svuotaTelefoniExtra;
 
 
-// ── PRODOTTI DI INTERESSE: elenco dal gestionale, con "Altro" per aggiungerne ──
+// ── PRODOTTI DI INTERESSE: selezione multipla ────────────────────────────
+// Un cliente puo' interessarsi a piu' prodotti: si scelgono a chip, come le
+// etichette. "+ altro prodotto" ne aggiunge uno nuovo all'elenco comune.
 window._prodottiInteresse = [];
+let _prodSelezionati = { 'lead': [], 'edit-lead': [] };
 
 async function caricaProdottiInteresse(){
   try{
@@ -2091,33 +2094,56 @@ async function caricaProdottiInteresse(){
   }catch(e){}
 }
 
-async function popolaProdottiLead(prefix, selezionato){
-  const sel = document.getElementById(prefix + '-prodotto');
-  if(!sel) return;
+async function popolaProdottiLead(prefix, selezionati){
+  const box = document.getElementById(prefix + '-prodotti');
+  if(!box) return;
   if(!(window._prodottiInteresse||[]).length) await caricaProdottiInteresse();
-  sel.innerHTML = '<option value="">— Seleziona —</option>' +
-    (window._prodottiInteresse||[]).map(p => `<option>${p.nome}</option>`).join('') +
-    '<option value="Altro">Altro (aggiungi nuovo)...</option>';
-  if(selezionato){
-    // se il prodotto salvato non e' piu' in elenco lo aggiungo in coda
-    if(![...sel.options].some(o => o.value === selezionato)){
-      const o = document.createElement('option');
-      o.textContent = selezionato;
-      sel.insertBefore(o, sel.lastElementChild);
-    }
-    sel.value = selezionato;
-  }
-  const box = document.getElementById(prefix + '-prodotto-nuovo');
-  if(box) box.style.display = 'none';
+
+  // accetta sia l'elenco sia la vecchia forma con un prodotto solo
+  let sel = [];
+  if(Array.isArray(selezionati)) sel = [...selezionati];
+  else if(typeof selezionati === 'string' && selezionati.trim())
+    sel = selezionati.split(/\s*[,;+]\s*/).filter(Boolean);
+  _prodSelezionati[prefix] = sel;
+
+  // un prodotto salvato che non e' piu' in elenco resta comunque selezionabile
+  const elenco = [...(window._prodottiInteresse||[]).map(p => p.nome)];
+  sel.forEach(s => { if(!elenco.includes(s)) elenco.push(s); });
+
+  box.style.cssText = 'display:flex;gap:5px;flex-wrap:wrap';
+  const dis = () => {
+    box.innerHTML = elenco.map(nome => {
+      const on = _prodSelezionati[prefix].includes(nome);
+      return `<span onclick="toggleProdotto('${prefix}','${nome.replace(/'/g,"\\'")}')"
+        style="cursor:pointer;user-select:none;background:${on?'var(--brand)':'transparent'};
+        color:${on?'#fff':'var(--text-2)'};border:1.5px solid ${on?'var(--brand)':'var(--border)'};
+        font-size:12px;padding:4px 10px;border-radius:14px;display:inline-flex;align-items:center;gap:5px">
+        ${on?'<i class="ti ti-check" style="font-size:12px"></i>':''}${nome}</span>`;
+    }).join('') +
+    `<span onclick="mostraNuovoProdotto('${prefix}')" style="cursor:pointer;font-size:12px;color:var(--text-3);
+      border:1.5px dashed var(--border);padding:4px 10px;border-radius:14px">+ altro prodotto</span>`;
+  };
+  box._ridisegna = dis;
+  dis();
+  const nuovo = document.getElementById(prefix + '-prodotto-nuovo');
+  if(nuovo) nuovo.style.display = 'none';
 }
 
-function onProdottoLead(prefix){
-  const sel = document.getElementById(prefix + '-prodotto');
-  const box = document.getElementById(prefix + '-prodotto-nuovo');
-  if(!sel || !box) return;
-  const nuovo = sel.value === 'Altro';
-  box.style.display = nuovo ? 'block' : 'none';
-  if(nuovo) setTimeout(()=>document.getElementById(prefix + '-prodotto-custom')?.focus(), 60);
+function toggleProdotto(prefix, nome){
+  const sel = _prodSelezionati[prefix] || (_prodSelezionati[prefix] = []);
+  const i = sel.indexOf(nome);
+  if(i >= 0) sel.splice(i, 1); else sel.push(nome);
+  const box = document.getElementById(prefix + '-prodotti');
+  if(box && box._ridisegna) box._ridisegna();
+}
+
+function prodottiSelezionati(prefix){ return [...(_prodSelezionati[prefix] || [])]; }
+
+function mostraNuovoProdotto(prefix){
+  const n = document.getElementById(prefix + '-prodotto-nuovo');
+  if(!n) return;
+  n.style.display = 'block';
+  setTimeout(()=>document.getElementById(prefix + '-prodotto-custom')?.focus(), 60);
 }
 
 async function salvaProdottoInteresse(prefix){
@@ -2127,11 +2153,15 @@ async function salvaProdottoInteresse(prefix){
   const r = await api.post('/api/prodotti-interesse', {nome});
   if(r.error) return alert('Errore: ' + r.error);
   await caricaProdottiInteresse();
-  await popolaProdottiLead(prefix, nome);
+  const sel = [...(_prodSelezionati[prefix]||[]), nome];
+  await popolaProdottiLead(prefix, sel);
   if(inp) inp.value = '';
   showSave();
 }
 
+window.toggleProdotto = toggleProdotto;
+window.prodottiSelezionati = prodottiSelezionati;
+window.mostraNuovoProdotto = mostraNuovoProdotto;
 window.caricaProdottiInteresse = caricaProdottiInteresse;
 window.popolaProdottiLead = popolaProdottiLead;
 window.onProdottoLead = onProdottoLead;
