@@ -576,6 +576,7 @@ window.addEventListener('unhandledrejection', function(e) {
           </div>
         </div>
         <div style="display:flex;gap:8px">
+          <button class="btn btn-primary" id="lead-detail-converti-btn" style="background:var(--green);border-color:var(--green)"><i class="ti ti-user-check"></i>Diventa cliente</button>
           <button class="btn" id="lead-detail-edit-btn"><i class="ti ti-pencil"></i>Modifica</button>
           <button class="btn btn-danger" id="lead-detail-delete-btn"><i class="ti ti-trash"></i></button>
         </div>
@@ -2192,7 +2193,7 @@ window.addEventListener('unhandledrejection', function(e) {
 <div class="modal-overlay" id="modal-converti-lead">
   <div class="modal" style="max-width:620px">
     <div class="modal-header">
-      <div class="modal-title"><i class="ti ti-user-check" style="color:var(--green)"></i>Diventa cliente</div>
+      <div class="modal-title"><i class="ti ti-id" style="color:var(--green)"></i>Dati anagrafici e fiscali</div>
       <button class="btn btn-icon" onclick="closeModal('modal-converti-lead')"><i class="ti ti-x"></i></button>
     </div>
     <div class="modal-body">
@@ -2217,7 +2218,7 @@ window.addEventListener('unhandledrejection', function(e) {
       <div id="cv-errore" style="display:none;background:#fdecea;color:#8c2f26;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:12px"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button class="btn" onclick="closeModal('modal-converti-lead')">Annulla</button>
-        <button class="btn btn-primary" onclick="confermaConversione()" id="cv-btn"><i class="ti ti-user-check"></i>Crea la scheda cliente</button>
+        <button class="btn btn-primary" onclick="confermaConversione()" id="cv-btn"><i class="ti ti-arrow-right"></i>Salva e passa a Primo ordine</button>
       </div>
     </div>
   </div>
