@@ -1,3 +1,4 @@
+
 // app-preventivi.js — Preventivi creati dalla pipeline
 // I prezzi vengono suggeriti dal listino della città del cliente, con il
 // prezzo minimo sempre in vista: sotto quello non si scende.
