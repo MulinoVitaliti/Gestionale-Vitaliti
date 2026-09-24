@@ -284,6 +284,7 @@ async function initDB() {
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS etichette JSONB DEFAULT '[]';
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS telefoni_extra JSONB DEFAULT '[]';
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
       ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS ordini_ids JSONB;
@@ -1345,17 +1346,17 @@ app.get('/api/places/search', async (req, res) => {
 });
 
 app.post('/api/leads', async (req, res) => {
-  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette, telefoni_extra } = req.body;
   try {
-    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,tel2,indirizzo,citta,prodotto,stato,note,tag,etichette) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11) RETURNING *', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, JSON.stringify(etichette||[])]);
+    const r = await pool.query('INSERT INTO leads (nome,contatto,tel,tel2,indirizzo,citta,prodotto,stato,note,tag,etichette,telefoni_extra) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12) RETURNING *', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, JSON.stringify(etichette||[]), JSON.stringify(telefoni_extra||[])]);
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/leads/:id', async (req, res) => {
-  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette } = req.body;
+  const { nome, contatto, tel, tel2, indirizzo, citta, prodotto, stato, note, tag, etichette, telefoni_extra } = req.body;
   try {
-    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,tel2=$4,indirizzo=$5,citta=$6,prodotto=$7,stato=$8,note=$9,tag=$10,etichette=COALESCE($12,etichette),updated_at=NOW() WHERE id=$11', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, req.params.id, etichette?JSON.stringify(etichette):null]);
+    await pool.query('UPDATE leads SET nome=$1,contatto=$2,tel=$3,tel2=$4,indirizzo=$5,citta=$6,prodotto=$7,stato=$8,note=$9,tag=$10,etichette=COALESCE($12,etichette),telefoni_extra=COALESCE($13,telefoni_extra),updated_at=NOW() WHERE id=$11', [nome, contatto, tel, tel2||null, indirizzo||null, citta, prodotto, stato, note, tag||null, req.params.id, etichette?JSON.stringify(etichette):null, telefoni_extra?JSON.stringify(telefoni_extra):null]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
 });
