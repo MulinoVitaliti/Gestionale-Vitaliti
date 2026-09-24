@@ -1582,7 +1582,7 @@ function apriDettaglioLead(id){
   const faseLabel = (state.fasi.find(f=>f.id===l.stato)||{}).label||l.stato||'—';
   const infoRows = [
     l.contatto ? ['Referente', l.contatto] : null,
-    l.tel ? ['Telefono', `<a href="tel:${l.tel}" style="color:var(--blue);text-decoration:none">${l.tel}</a>` + (l.tel2 ? ` &middot; <a href="tel:${l.tel2}" style="color:var(--blue);text-decoration:none">${l.tel2}</a>` : '')] : null,
+    l.tel ? ['Telefono', [l.tel, l.tel2, ...(Array.isArray(l.telefoni_extra)?l.telefoni_extra:[])].filter(Boolean).map(t => `<a href="tel:${t}" style="color:var(--blue);text-decoration:none">${t}</a>`).join(' &middot; ')] : null,
     l.email ? ['Email', `<a href="mailto:${l.email}" style="color:var(--blue);text-decoration:none">${l.email}</a>`] : null,
     l.indirizzo ? ['Indirizzo', l.indirizzo] : null,
     l.citta ? ['Città', l.citta] : null,
