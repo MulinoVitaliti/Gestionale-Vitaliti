@@ -643,8 +643,8 @@ async function caricaPanoramicaSpedizioni(){
       </div>`;
 
     cards.innerHTML =
-      card('Spedizioni pallet', 'One Express · spedizioni, assicurazioni e monitoraggio', 'box', 'var(--brand)',
-           d.pallet, "switchSpedizioniTab('spedizioni')") +
+      card('Spedizioni pallet', 'One Express · bancali, assicurazioni e monitoraggio', 'box', 'var(--brand)',
+           d.pallet, "apriSpedizioni('bancale')") +
       card('Spedizioni pacchi', 'Spedire Pro · campionature', 'package', '#C9A84C',
            d.pacchi, "apriSpedizioni('campionatura')");
 
@@ -727,6 +727,12 @@ function apriSpedizioni(tipo){
   setTimeout(() => {
     const t = document.querySelector('#page-followup .page-title');
     if(t) t.textContent = tipo === 'campionatura' ? 'Spedizioni pacchi' : 'Spedizioni pallet';
+    // Spedizioni e Assicurazioni riguardano solo i bancali
+    const bancali = tipo !== 'campionatura';
+    const bs = document.getElementById('fup-btn-spedizioni');
+    const ba = document.getElementById('fup-btn-assicurazioni');
+    if(bs) bs.style.display = bancali ? '' : 'none';
+    if(ba) ba.style.display = bancali ? '' : 'none';
     caricaFollowup();
   }, 100);
 }
