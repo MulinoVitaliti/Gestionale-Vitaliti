@@ -613,3 +613,91 @@ async function apriDaRicontattare(giorni){
 window.apriSenzaEmail = apriSenzaEmail;
 window.salvaEmailFollowup = salvaEmailFollowup;
 window.apriDaRicontattare = apriDaRicontattare;
+
+
+// ── PANORAMICA SPEDIZIONI: bancali e pacchi ──────────────────────────────
+async function caricaPanoramicaSpedizioni(){
+  const cards = document.getElementById('sped-hub-cards');
+  const stats = document.getElementById('sped-hub-stats');
+  if(!cards) return;
+  cards.innerHTML = '<div style="padding:18px;color:var(--text-3);font-size:13px">Caricamento...</div>';
+  try{
+    const d = await api.get('/api/spedizioni/statistiche');
+    if(d.error) throw new Error(d.error);
+
+    const card = (titolo, sottotitolo, icona, colore, s, azione) => `
+      <div onclick="${azione}" style="cursor:pointer;border:1px solid var(--border);border-top:4px solid ${colore};
+           border-radius:14px;padding:20px;background:#fff;transition:transform .12s,box-shadow .12s"
+           onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 24px rgba(0,0,0,.09)'"
+           onmouseout="this.style.transform='';this.style.boxShadow=''">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:14px">
+          <div style="width:42px;height:42px;border-radius:11px;background:${colore};display:flex;align-items:center;justify-content:center">
+            <i class="ti ti-${icona}" style="color:#fff;font-size:22px"></i></div>
+          <div><div style="font-weight:700;font-size:16px">${titolo}</div>
+               <div style="font-size:11.5px;color:var(--text-3)">${sottotitolo}</div></div>
+          <i class="ti ti-chevron-right" style="margin-left:auto;color:var(--text-3);font-size:18px"></i>
+        </div>
+        <div style="display:flex;gap:18px">
+          <div><div style="font-size:24px;font-weight:700;color:${colore}">${s.in_corso}</div>
+               <div style="font-size:10.5px;color:var(--text-3);text-transform:uppercase">in corso</div></div>
+          <div><div style="font-size:24px;font-weight:700">${s.mese_corrente}</div>
+               <div style="font-size:10.5px;color:var(--text-3);text-transform:uppercase">questo mese</div></div>
+          <div><div style="font-size:24px;font-weight:700;color:${s.problemi ? 'var(--red)' : 'var(--text-3)'}">${s.problemi}</div>
+               <div style="font-size:10.5px;color:var(--text-3);text-transform:uppercase">da guardare</div></div>
+        </div>
+      </div>`;
+
+    cards.innerHTML =
+      card('Spedizioni pallet', 'One Express · bancali e assicurazioni', 'box', 'var(--brand)',
+           d.pallet, "apriSpedizioni('bancale')") +
+      card('Spedizioni pacchi', 'Spedire Pro · campionature', 'package', '#C9A84C',
+           d.pacchi, "apriSpedizioni('campionatura')");
+
+    const riga = (etichetta, a, b, nota) => `
+      <div style="display:flex;align-items:center;padding:9px 0;border-bottom:1px solid var(--border);font-size:13px">
+        <span style="flex:1;color:var(--text-2)">${etichetta}</span>
+        <span style="width:110px;text-align:right;font-weight:600">${a}</span>
+        <span style="width:110px;text-align:right;font-weight:600">${b}</span>
+      </div>${nota ? `<div style="font-size:11px;color:var(--text-3);padding:2px 0 6px">${nota}</div>` : ''}`;
+
+    const conv = d.pacchi.clienti_totali
+      ? Math.round(d.pacchi.clienti_con_ordine_dopo / d.pacchi.clienti_totali * 100) : null;
+
+    stats.innerHTML =
+      `<div style="display:flex;padding:8px 0;font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.4px;border-bottom:2px solid var(--border)">
+        <span style="flex:1"></span><span style="width:110px;text-align:right">Pallet</span><span style="width:110px;text-align:right">Pacchi</span>
+      </div>` +
+      riga('Totale registrate', d.pallet.totale, d.pacchi.totale) +
+      riga('Questo mese', d.pallet.mese_corrente, d.pacchi.mese_corrente) +
+      riga('Mese scorso', d.pallet.mese_scorso, d.pacchi.mese_scorso) +
+      riga('Ultimi 7 giorni', d.pallet.ultimi_7, d.pacchi.ultimi_7) +
+      riga('Consegnate', d.pallet.consegnate, d.pacchi.consegnate) +
+      riga('Giacenze o problemi', d.pallet.problemi, d.pacchi.problemi) +
+      riga('Clienti serviti', d.pallet.clienti, d.pacchi.clienti) +
+      riga('Giorni medi di consegna', d.pallet.giorni_medi ?? '—', d.pacchi.giorni_medi ?? '—') +
+      riga('Valore spedito quest\'anno', '€ ' + Math.round(d.pallet.valore_anno).toLocaleString('it-IT'), '—') +
+      (conv !== null
+        ? `<div style="margin-top:14px;background:var(--surface-2);border-radius:9px;padding:12px 14px;font-size:13px">
+             <strong>Campioni che diventano ordini:</strong> ${d.pacchi.clienti_con_ordine_dopo} su ${d.pacchi.clienti_totali}
+             (${conv}%)<div style="font-size:11.5px;color:var(--text-3);margin-top:3px">
+             Clienti che hanno ordinato dopo aver ricevuto un campione. È il numero che dice se la campionatura funziona.</div></div>`
+        : '');
+  }catch(e){
+    cards.innerHTML = '<div style="padding:18px;color:var(--red);font-size:13px">Errore nel caricamento delle statistiche.</div>';
+  }
+}
+
+// Dalla panoramica si entra nel monitoraggio già filtrato
+function apriSpedizioni(tipo){
+  _fupTipo = tipo;
+  showPage('followup');
+  setTimeout(() => {
+    document.querySelectorAll('#fup-tipi .pill').forEach(p => p.classList.remove('active'));
+    const pills = document.querySelectorAll('#fup-tipi .pill');
+    if(pills.length >= 3) pills[tipo === 'campionatura' ? 2 : 1].classList.add('active');
+    caricaFollowup();
+  }, 120);
+}
+
+window.caricaPanoramicaSpedizioni = caricaPanoramicaSpedizioni;
+window.apriSpedizioni = apriSpedizioni;
