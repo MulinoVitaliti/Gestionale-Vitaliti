@@ -643,8 +643,8 @@ async function caricaPanoramicaSpedizioni(){
       </div>`;
 
     cards.innerHTML =
-      card('Spedizioni pallet', 'One Express · bancali e assicurazioni', 'box', 'var(--brand)',
-           d.pallet, "apriSpedizioni('bancale')") +
+      card('Spedizioni pallet', 'One Express · spedizioni, assicurazioni e monitoraggio', 'box', 'var(--brand)',
+           d.pallet, "switchSpedizioniTab('spedizioni')") +
       card('Spedizioni pacchi', 'Spedire Pro · campionature', 'package', '#C9A84C',
            d.pacchi, "apriSpedizioni('campionatura')");
 
