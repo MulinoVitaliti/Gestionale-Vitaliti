@@ -401,6 +401,12 @@ async function eliminaFaseConCheck(id){
 let assFilter = 'tutte';
 
 function switchSpedizioniTab(tab, el){
+  // se arrivo dal monitoraggio devo prima rientrare nella pagina Spedizioni
+  const pag = document.getElementById('page-spedizioni');
+  if(pag && !pag.classList.contains('active') && typeof showPage === 'function'){
+    showPage('spedizioni');
+    return setTimeout(() => switchSpedizioniTab(tab, el), 80);
+  }
   document.querySelectorAll('#sped-tabs .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
   const hub = document.getElementById('sped-vista-hub');
