@@ -289,6 +289,12 @@ async function initDB() {
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS etichette JSONB DEFAULT '[]';
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS telefoni_extra JSONB DEFAULT '[]';
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS piva TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS cf TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS sdi TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS pec TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS ind_legale TEXT;
+      ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS ind_consegna TEXT;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_id INTEGER;
       ALTER TABLE IF EXISTS ordini ADD COLUMN IF NOT EXISTS fic_fattura_numero TEXT;
       ALTER TABLE IF EXISTS documenti_bozza ADD COLUMN IF NOT EXISTS ordini_ids JSONB;
@@ -6223,7 +6229,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); initProdottiInteresse().catch(()=>{}); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); initProdottiInteresse().catch(()=>{}); initFasePrimoOrdine().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -8255,18 +8261,37 @@ app.delete('/api/prodotti-interesse/:id', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
-// ── CONVERSIONE LEAD → CLIENTE ────────────────────────────────────────────
-// Porta nella scheda cliente tutto quello che il lead ha raccolto e aggiunge
-// i dati fiscali, senza i quali non si puo' fatturare.
-app.post('/api/leads/:id/converti', async (req, res) => {
+// ── PASSO 1: dati anagrafici sul lead, poi in fase "Primo ordine" ─────────
+app.patch('/api/leads/:id/anagrafica', async (req, res) => {
   const d = req.body || {};
   const piva = String(d.piva || '').trim();
   const cf = String(d.cf || '').trim();
   if (!piva && !cf) return res.json({ error: 'Serve la partita IVA o il codice fiscale: senza non si puo\' fatturare.' });
+  try {
+    const fase = await pool.query(`SELECT id FROM fasi WHERE lower(label) LIKE '%primo ordine%' LIMIT 1`);
+    const faseId = fase.rows[0]?.id || 'primo_ordine';
+    await pool.query(
+      `UPDATE leads SET piva=$1, cf=$2, sdi=$3, pec=$4, ind_legale=$5, ind_consegna=$6,
+              stato=$7, updated_at=NOW() WHERE id=$8`,
+      [piva || null, cf || null, d.sdi || null, d.pec || null,
+       d.ind_legale || null, d.ind_consegna || null, faseId, req.params.id]);
+    res.json({ ok: true, fase: faseId });
+  } catch (e) { res.json({ error: e.message }); }
+});
 
+// ── PASSO 2: CONVERSIONE LEAD → CLIENTE ───────────────────────────────────
+// Porta nella scheda cliente tutto quello che il lead ha raccolto e aggiunge
+// i dati fiscali, senza i quali non si puo' fatturare.
+app.post('/api/leads/:id/converti', async (req, res) => {
+  const d = req.body || {};
   try {
     const l = (await pool.query(`SELECT * FROM leads WHERE id=$1`, [req.params.id])).rows[0];
     if (!l) return res.json({ error: 'Lead non trovato' });
+
+    // i dati fiscali sono gia' sul lead dal passaggio precedente
+    const piva = String(d.piva || l.piva || '').trim();
+    const cf = String(d.cf || l.cf || '').trim();
+    if (!piva && !cf) return res.json({ error: 'Mancano partita IVA e codice fiscale: completa prima i dati anagrafici.' });
 
     // se esiste gia' un cliente con la stessa partita IVA, non ne creo un altro
     if (piva) {
@@ -8283,8 +8308,8 @@ app.post('/api/leads/:id/converti', async (req, res) => {
        d.tel || l.tel || null, d.tel2 || l.tel2 || null,
        JSON.stringify(d.telefoni_extra || l.telefoni_extra || []),
        d.email || l.email || null, d.citta || l.citta || null,
-       d.indirizzo || l.indirizzo || null, d.ind_legale || d.indirizzo || l.indirizzo || null,
-       d.ind_consegna || null, d.sdi || null, d.pec || null, piva || null, cf || null,
+       d.indirizzo || l.indirizzo || null, d.ind_legale || l.ind_legale || l.indirizzo || null,
+       d.ind_consegna || l.ind_consegna || null, d.sdi || l.sdi || null, d.pec || l.pec || null, piva || null, cf || null,
        d.prodotto || l.prodotto || null,
        [l.note, d.note].filter(Boolean).join('\n') || null,
        JSON.stringify(l.etichette || []), l.id]);
@@ -8315,6 +8340,23 @@ const ETICHETTE_DEFAULT = [
   ['EMAIL', '#3B6D11', 30],
   ['ORDINE', '#E06C2A', 40],
 ];
+
+// La fase "Primo ordine" sta fra la trattativa e il cliente acquisito:
+// e' li' che si ferma il lead dopo aver raccolto i dati fiscali.
+async function initFasePrimoOrdine() {
+  try {
+    const c = await pool.query(
+      `SELECT id FROM fasi WHERE lower(label) LIKE '%primo ordine%' LIMIT 1`);
+    if (c.rows.length) return;
+    const ord = await pool.query(
+      `SELECT COALESCE(MAX(ordine),0) m FROM fasi WHERE COALESCE(pipeline_id,'default')='default'`);
+    await pool.query(
+      `INSERT INTO fasi (id, label, color, ordine, pipeline_id)
+       VALUES ('primo_ordine','Primo ordine','var(--gold)',$1,'default')
+       ON CONFLICT (id) DO NOTHING`, [Number(ord.rows[0].m) + 1]);
+    console.log('✅ Fase "Primo ordine" creata nella pipeline');
+  } catch (e) { console.error('[FASE primo ordine]', e.message); }
+}
 
 async function initEtichette() {
   for (const [nome, colore, ordine] of ETICHETTE_DEFAULT) {
