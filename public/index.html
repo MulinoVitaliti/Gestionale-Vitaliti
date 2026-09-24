@@ -1451,7 +1451,15 @@ window.addEventListener('unhandledrejection', function(e) {
     <div id="lead-tel-extra"></div>
     <div style="margin:-6px 0 14px"><a href="#" onclick="aggiungiTelefono('lead');return false" style="font-size:12.5px;color:var(--brand);text-decoration:none"><i class="ti ti-plus" style="font-size:12px"></i> Aggiungi un altro numero</a></div>
     <div class="form-group"><label class="form-label">Email</label><input type="text" id="lead-email"></div>
-    <div class="form-row"><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="lead-indirizzo" placeholder="Via, numero civico"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="lead-citta" placeholder="serve per il listino"></div><div class="form-group"><label class="form-label">Prodotto di interesse</label><select id="lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Senatore Cappelli</option><option>Grano Canadese</option><option>Altro</option></select></div></div>
+    <div class="form-row"><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="lead-indirizzo" placeholder="Via, numero civico"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="lead-citta" placeholder="serve per il listino"></div><div class="form-group"><label class="form-label">Prodotto di interesse</label>
+      <select id="lead-prodotto" onchange="onProdottoLead('lead')"></select>
+      <div id="lead-prodotto-nuovo" style="display:none;margin-top:6px">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="lead-prodotto-custom" placeholder="Scrivi il nuovo prodotto..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();salvaProdottoInteresse('lead');}">
+          <button type="button" class="btn btn-sm btn-primary" onclick="salvaProdottoInteresse('lead')"><i class="ti ti-check"></i></button>
+        </div>
+        <div style="font-size:11px;color:var(--text-3);margin-top:3px">Verrà aggiunto all'elenco per le prossime volte.</div>
+      </div></div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
 
     <!-- Divider prima attività -->
@@ -1521,7 +1529,14 @@ window.addEventListener('unhandledrejection', function(e) {
     <div style="margin:-6px 0 14px"><a href="#" onclick="aggiungiTelefono('edit-lead');return false" style="font-size:12.5px;color:var(--brand);text-decoration:none"><i class="ti ti-plus" style="font-size:12px"></i> Aggiungi un altro numero</a></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Indirizzo</label><input type="text" id="edit-lead-indirizzo" placeholder="Via, numero civico"></div><div class="form-group"><label class="form-label">Città</label><input type="text" id="edit-lead-citta" placeholder="serve per il listino"></div></div>
     <div class="form-group"><label class="form-label">Etichette</label><div id="edit-lead-etichette"></div></div>
-    <div class="form-group"><label class="form-label">Prodotto</label><select id="edit-lead-prodotto"><option>Semola rimacinata di grano duro</option><option>Farina 00</option><option>Farina integrale</option><option>Farina di semola</option><option>Altro</option></select></div>
+    <div class="form-group"><label class="form-label">Prodotto</label>
+      <select id="edit-lead-prodotto" onchange="onProdottoLead('edit-lead')"></select>
+      <div id="edit-lead-prodotto-nuovo" style="display:none;margin-top:6px">
+        <div style="display:flex;gap:6px">
+          <input type="text" id="edit-lead-prodotto-custom" placeholder="Scrivi il nuovo prodotto..." style="flex:1;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px" onkeydown="if(event.key==='Enter'){event.preventDefault();salvaProdottoInteresse('edit-lead');}">
+          <button type="button" class="btn btn-sm btn-primary" onclick="salvaProdottoInteresse('edit-lead')"><i class="ti ti-check"></i></button>
+        </div>
+      </div></div>
     <div class="form-row"><div class="form-group"><label class="form-label">Fase pipeline</label><select id="edit-lead-stato"></select></div><div class="form-group"><label class="form-label">Etichetta</label><select id="edit-lead-tag"><option value="">— Nessuna —</option><option value="cliente">🟢 Cliente</option><option value="potenziale">🟡 Potenziale cliente</option><option value="non_interessato">🔴 Non interessato</option></select></div></div>
     <div class="form-group"><label class="form-label">Note</label><textarea id="edit-lead-note"></textarea></div>
     <div style="display:flex;gap:8px;justify-content:flex-end"><button class="btn" onclick="closeModal('modal-edit-lead')">Annulla</button><button class="btn btn-primary" onclick="aggiornaLead()"><i class="ti ti-check"></i>Salva</button></div>
