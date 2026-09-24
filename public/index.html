@@ -1056,7 +1056,17 @@ window.addEventListener('unhandledrejection', function(e) {
       </div>
 
       <!-- Tab switcher -->
-      <div class="pills" style="margin-bottom:16px" id="sped-tabs">
+      <!-- PANORAMICA: le due strade, con le statistiche di entrambe -->
+      <div id="sped-vista-hub">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:22px" id="sped-hub-cards"></div>
+        <div class="card">
+          <div class="card-header"><div class="card-title"><i class="ti ti-chart-bar" style="color:var(--brand)"></i>Confronto</div></div>
+          <div id="sped-hub-stats" style="padding:6px 18px 16px"></div>
+        </div>
+      </div>
+
+      <div class="pills" style="margin-bottom:16px;display:none" id="sped-tabs">
+        <div class="pill" onclick="switchSpedizioniTab('hub',this)"><i class="ti ti-arrow-left" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Panoramica</div>
         <div class="pill active" onclick="switchSpedizioniTab('spedizioni',this)"><i class="ti ti-truck-delivery" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Spedizioni</div>
         <div class="pill" onclick="switchSpedizioniTab('assicurazioni',this)"><i class="ti ti-shield-check" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Assicurazioni <span class="nav-badge" id="ass-badge" style="display:none;margin-left:4px">0</span></div>
         <div class="pill" onclick="showPage('followup')"><i class="ti ti-route" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Monitoraggio ordini <span class="nav-badge" id="sped-fup-badge" style="display:none;margin-left:4px">0</span></div>
