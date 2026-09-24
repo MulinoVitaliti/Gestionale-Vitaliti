@@ -65,10 +65,7 @@ async function caricaFollowup(){
       return `<div onclick="apriFollowup(${r.id})" style="display:flex;align-items:center;gap:14px;padding:11px 16px;border-bottom:1px solid var(--border);cursor:pointer" onmouseover="this.style.background='var(--surface-2)'" onmouseout="this.style.background=''">
         <div style="flex:1;min-width:0">
           <div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">
-            ${(r.tipo_spedizione === 'campionatura')
-              ? '<span style="background:var(--gold,#C9A84C);color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px">CAMPIONE</span>'
-              : '<span style="background:var(--brand);color:#fff;font-size:9.5px;font-weight:700;padding:1px 6px;border-radius:4px;margin-right:6px">BANCALE</span>'}
-            ${r.cliente_nome}${allarmeEmail}</div>
+${r.cliente_nome}${allarmeEmail}</div>
           <div style="font-size:11px;color:var(--text-3)">DDT ${r.ddt_numero || '—'} del ${fupData(r.ddt_data)}${r.importo ? ' · € ' + Number(r.importo).toFixed(0) : ''}</div>
         </div>
         <div style="width:130px">${(() => { const c = FUP_CONSEGNA[r.stato_consegna] || FUP_CONSEGNA.in_viaggio;
@@ -335,10 +332,8 @@ async function sincronizzaFollowup(btn){
 }
 window.sincronizzaFollowup = sincronizzaFollowup;
 
-function filtraTipoSped(tipo, el){
+function filtraTipoSped(tipo){
   _fupTipo = tipo;
-  document.querySelectorAll('#fup-tipi .pill').forEach(p=>p.classList.remove('active'));
-  if(el) el.classList.add('active');
   caricaFollowup();
 }
 window.filtraTipoSped = filtraTipoSped;
@@ -687,16 +682,54 @@ async function caricaPanoramicaSpedizioni(){
   }
 }
 
+// Barra delle statistiche del tipo scelto, uguale nelle due sezioni
+function barraStatistiche(s, tipo){
+  const col = tipo === 'campionatura' ? '#C9A84C' : 'var(--brand)';
+  const n = (v, t, c) => `<div class="card" style="padding:13px 16px;border-top:3px solid ${c||'var(--border)'}">
+      <div style="font-size:22px;font-weight:700;color:${c||'var(--text)'}">${v}</div>
+      <div style="font-size:10.5px;color:var(--text-3);text-transform:uppercase;letter-spacing:.3px">${t}</div></div>`;
+  let html = `<div style="display:grid;grid-template-columns:repeat(5,1fr);gap:10px">` +
+    n(s.in_corso, 'in corso', col) +
+    n(s.mese_corrente, 'questo mese') +
+    n(s.mese_scorso, 'mese scorso') +
+    n(s.consegnate, 'consegnate', 'var(--green)') +
+    n(s.problemi, 'da guardare', s.problemi ? 'var(--red)' : null) +
+    `</div>`;
+  if(tipo === 'campionatura' && s.clienti_totali){
+    const p = Math.round(s.clienti_con_ordine_dopo / s.clienti_totali * 100);
+    html += `<div style="margin-top:10px;background:var(--surface-2);border-radius:9px;padding:11px 14px;font-size:13px">
+      <strong>${s.clienti_con_ordine_dopo} campioni su ${s.clienti_totali} sono diventati un ordine (${p}%)</strong>
+      <div style="font-size:11.5px;color:var(--text-3);margin-top:2px">È il numero che dice se la campionatura funziona.</div></div>`;
+  } else if(tipo === 'bancale'){
+    html += `<div style="margin-top:10px;font-size:12px;color:var(--text-3)">
+      ${s.clienti} clienti serviti${s.giorni_medi ? ' · ' + s.giorni_medi + ' giorni medi di consegna' : ''}
+      ${s.valore_anno ? ' · € ' + Math.round(s.valore_anno).toLocaleString('it-IT') + ' spediti quest\'anno' : ''}</div>`;
+  }
+  return html;
+}
+
+async function mostraStatistiche(contenitoreId, tipo){
+  const box = document.getElementById(contenitoreId);
+  if(!box) return;
+  try{
+    const d = await api.get('/api/spedizioni/statistiche');
+    if(d.error) return;
+    box.innerHTML = barraStatistiche(tipo === 'campionatura' ? d.pacchi : d.pallet, tipo);
+    box.style.display = 'block';
+  }catch(e){}
+}
+window.mostraStatistiche = mostraStatistiche;
+
 // Dalla panoramica si entra nel monitoraggio già filtrato
 function apriSpedizioni(tipo){
   _fupTipo = tipo;
   showPage('followup');
   setTimeout(() => {
-    document.querySelectorAll('#fup-tipi .pill').forEach(p => p.classList.remove('active'));
-    const pills = document.querySelectorAll('#fup-tipi .pill');
-    if(pills.length >= 3) pills[tipo === 'campionatura' ? 2 : 1].classList.add('active');
+    const t = document.querySelector('#page-followup .page-title');
+    if(t) t.textContent = tipo === 'campionatura' ? 'Spedizioni pacchi' : 'Spedizioni pallet';
+    mostraStatistiche('fup-stats', tipo);
     caricaFollowup();
-  }, 120);
+  }, 100);
 }
 
 window.caricaPanoramicaSpedizioni = caricaPanoramicaSpedizioni;
