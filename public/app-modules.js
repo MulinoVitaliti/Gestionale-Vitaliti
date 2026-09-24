@@ -403,9 +403,23 @@ let assFilter = 'tutte';
 function switchSpedizioniTab(tab, el){
   document.querySelectorAll('#sped-tabs .pill').forEach(p=>p.classList.remove('active'));
   if(el) el.classList.add('active');
-  document.getElementById('sped-vista-spedizioni').style.display = tab==='spedizioni' ? 'block' : 'none';
-  document.getElementById('sped-vista-assicurazioni').style.display = tab==='assicurazioni' ? 'block' : 'none';
-  if(tab==='assicurazioni') setTimeout(()=>renderAssicurazioni(), 50);
+  const hub = document.getElementById('sped-vista-hub');
+  const tabs = document.getElementById('sped-tabs');
+  const mostra = (id, si) => { const e = document.getElementById(id); if(e) e.style.display = si ? 'block' : 'none'; };
+
+  if(tab === 'hub'){
+    if(hub) hub.style.display = 'block';
+    if(tabs) tabs.style.display = 'none';
+    mostra('sped-vista-spedizioni', false);
+    mostra('sped-vista-assicurazioni', false);
+    if(typeof caricaPanoramicaSpedizioni === 'function') caricaPanoramicaSpedizioni();
+    return;
+  }
+  if(hub) hub.style.display = 'none';
+  if(tabs) tabs.style.display = 'flex';
+  mostra('sped-vista-spedizioni', tab === 'spedizioni');
+  mostra('sped-vista-assicurazioni', tab === 'assicurazioni');
+  if(tab === 'assicurazioni') setTimeout(()=>renderAssicurazioni(), 50);
 }
 
 function calcolaRimborsoMax(){
