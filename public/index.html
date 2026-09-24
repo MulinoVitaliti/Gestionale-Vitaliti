@@ -1020,7 +1020,7 @@ window.addEventListener('unhandledrejection', function(e) {
     <div class="page" id="page-followup">
       <div class="page-header">
         <div class="page-title" style="display:flex;align-items:center;gap:10px">
-          <button class="btn btn-icon" onclick="showPage('spedizioni')" title="Torna alle spedizioni"><i class="ti ti-arrow-left"></i></button>
+          <button class="btn btn-icon" onclick="showPage('spedizioni')" title="Torna alla panoramica"><i class="ti ti-arrow-left"></i></button>
           Monitoraggio spedizioni
         </div>
         <div style="display:flex;gap:8px">
@@ -1033,11 +1033,7 @@ window.addEventListener('unhandledrejection', function(e) {
 
       <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:18px" id="fup-riepilogo"></div>
 
-      <div style="display:flex;gap:6px;margin-bottom:10px" id="fup-tipi">
-        <button class="pill active" onclick="filtraTipoSped('tutti',this)">Tutte</button>
-        <button class="pill" onclick="filtraTipoSped('bancale',this)"><i class="ti ti-box" style="font-size:12px"></i> Bancali</button>
-        <button class="pill" onclick="filtraTipoSped('campionatura',this)"><i class="ti ti-package" style="font-size:12px"></i> Campionature</button>
-      </div>
+      <div id="fup-stats" style="margin-bottom:14px"></div>
       <div style="display:flex;gap:6px;margin-bottom:12px" id="fup-pills">
         <button class="pill active" onclick="filtraFollowup('in_corso',this)">In corso</button>
         <button class="pill" onclick="filtraFollowup('completato',this)">Completati</button>
@@ -1065,11 +1061,13 @@ window.addEventListener('unhandledrejection', function(e) {
         </div>
       </div>
 
+      <div id="sped-stats" style="display:none;margin-bottom:16px"></div>
+
       <div class="pills" style="margin-bottom:16px;display:none" id="sped-tabs">
         <div class="pill" onclick="switchSpedizioniTab('hub',this)"><i class="ti ti-arrow-left" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Panoramica</div>
         <div class="pill active" onclick="switchSpedizioniTab('spedizioni',this)"><i class="ti ti-truck-delivery" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Spedizioni</div>
         <div class="pill" onclick="switchSpedizioniTab('assicurazioni',this)"><i class="ti ti-shield-check" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Assicurazioni <span class="nav-badge" id="ass-badge" style="display:none;margin-left:4px">0</span></div>
-        <div class="pill" onclick="showPage('followup')"><i class="ti ti-route" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Monitoraggio ordini <span class="nav-badge" id="sped-fup-badge" style="display:none;margin-left:4px">0</span></div>
+        <div class="pill" onclick="apriSpedizioni('bancale')"><i class="ti ti-route" style="font-size:13px;vertical-align:-2px;margin-right:4px"></i>Monitoraggio bancali <span class="nav-badge" id="sped-fup-badge" style="display:none;margin-left:4px">0</span></div>
       </div>
 
       <!-- VISTA SPEDIZIONI -->
