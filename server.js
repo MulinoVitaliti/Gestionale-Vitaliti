@@ -259,6 +259,10 @@ async function initDB() {
       -- Migrazione: aggiunge tag se non esiste
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tag TEXT;
       ALTER TABLE clienti ADD COLUMN IF NOT EXISTS tel2 TEXT;
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS cf TEXT;
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS telefoni_extra JSONB DEFAULT '[]';
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS etichette JSONB DEFAULT '[]';
+      ALTER TABLE clienti ADD COLUMN IF NOT EXISTS lead_id INTEGER;
       ALTER TABLE utenti ADD COLUMN IF NOT EXISTS figura_vc TEXT DEFAULT NULL;
       ALTER TABLE utenti ADD COLUMN IF NOT EXISTS permessi JSONB DEFAULT '{}';
 
@@ -8249,6 +8253,59 @@ app.delete('/api/prodotti-interesse/:id', async (req, res) => {
     await pool.query(`UPDATE prodotti_interesse SET attivo=FALSE WHERE id=$1`, [req.params.id]);
     res.json({ ok: true });
   } catch (e) { res.json({ error: e.message }); }
+});
+
+// ── CONVERSIONE LEAD → CLIENTE ────────────────────────────────────────────
+// Porta nella scheda cliente tutto quello che il lead ha raccolto e aggiunge
+// i dati fiscali, senza i quali non si puo' fatturare.
+app.post('/api/leads/:id/converti', async (req, res) => {
+  const d = req.body || {};
+  const piva = String(d.piva || '').trim();
+  const cf = String(d.cf || '').trim();
+  if (!piva && !cf) return res.json({ error: 'Serve la partita IVA o il codice fiscale: senza non si puo\' fatturare.' });
+
+  try {
+    const l = (await pool.query(`SELECT * FROM leads WHERE id=$1`, [req.params.id])).rows[0];
+    if (!l) return res.json({ error: 'Lead non trovato' });
+
+    // se esiste gia' un cliente con la stessa partita IVA, non ne creo un altro
+    if (piva) {
+      const g = await pool.query(`SELECT id, nome FROM clienti WHERE piva=$1 LIMIT 1`, [piva]);
+      if (g.rows.length) return res.json({ error: `Esiste gia' il cliente "${g.rows[0].nome}" con questa partita IVA.`, cliente_id: g.rows[0].id });
+    }
+
+    const r = await pool.query(
+      `INSERT INTO clienti (tipo, nome, ref, tel, tel2, telefoni_extra, email, citta, ind, ind_legale,
+                            ind_consegna, sdi, pec, piva, cf, prod, note, tag, etichette, lead_id)
+       VALUES ('cliente',$1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'cliente',$17,$18)
+       RETURNING *`,
+      [d.nome || l.nome, d.contatto || l.contatto || null,
+       d.tel || l.tel || null, d.tel2 || l.tel2 || null,
+       JSON.stringify(d.telefoni_extra || l.telefoni_extra || []),
+       d.email || l.email || null, d.citta || l.citta || null,
+       d.indirizzo || l.indirizzo || null, d.ind_legale || d.indirizzo || l.indirizzo || null,
+       d.ind_consegna || null, d.sdi || null, d.pec || null, piva || null, cf || null,
+       d.prodotto || l.prodotto || null,
+       [l.note, d.note].filter(Boolean).join('\n') || null,
+       JSON.stringify(l.etichette || []), l.id]);
+
+    const cliente = r.rows[0];
+
+    // il lead resta, marcato come diventato cliente: serve per la storia della trattativa
+    await pool.query(
+      `UPDATE leads SET tag='cliente', note = COALESCE(note,'') || $1, updated_at=NOW() WHERE id=$2`,
+      [`\n[${new Date().toLocaleDateString('it-IT')}] Diventato cliente (scheda #${cliente.id})`, l.id]);
+
+    // porto con me anche le attivita' svolte, cosi' la storia non si perde
+    await pool.query(
+      `UPDATE attivita SET cliente_id=$1 WHERE lead_id=$2`, [cliente.id, l.id]).catch(() => {});
+
+    console.log(`[LEAD] ${l.nome} convertito in cliente #${cliente.id}`);
+    res.json({ ok: true, cliente });
+  } catch (e) {
+    console.error('[CONVERSIONE]', e.message);
+    res.json({ error: e.message });
+  }
 });
 
 // ── ETICHETTE DEI LEAD ────────────────────────────────────────────────────
