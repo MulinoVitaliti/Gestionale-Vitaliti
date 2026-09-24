@@ -259,6 +259,7 @@ function renderPipeline(){
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriDettaglioLead(${l.id})" title="Vedi dettaglio"><i class="ti ti-eye"></i></button>
             <button class="btn btn-sm btn-danger" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();eliminaLead(${l.id})" title="Elimina"><i class="ti ti-trash"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
+            <button class="btn btn-sm" style="padding:4px 9px;font-size:12px;background:var(--green);color:#fff" onclick="event.stopPropagation();convertiLead(${l.id})" title="Diventa cliente"><i class="ti ti-user-check"></i></button>
           </div>
         </div>`;
       col.appendChild(c);
@@ -2289,3 +2290,88 @@ async function salvaEditUtente(){
 }
 window.apriEditUtente = apriEditUtente;
 window.salvaEditUtente = salvaEditUtente;
+
+
+// ── CONVERSIONE LEAD → CLIENTE ───────────────────────────────────────────
+let _leadDaConvertire = null;
+
+function convertiLead(id){
+  const l = (state.leads||[]).find(x => x.id === id);
+  if(!l) return;
+  if(String(l.tag||'') === 'cliente' && !confirm('Questo lead risulta già diventato cliente. Vuoi crearne comunque una nuova scheda?')) return;
+  _leadDaConvertire = l;
+
+  const tel = [l.tel, l.tel2, ...(Array.isArray(l.telefoni_extra)?l.telefoni_extra:[])].filter(Boolean);
+  const et = Array.isArray(l.etichette) ? l.etichette : [];
+  document.getElementById('cv-riepilogo').innerHTML = `
+    <div style="font-weight:700;font-size:14px;margin-bottom:5px">${l.nome}</div>
+    <div style="color:var(--text-2);line-height:1.7">
+      ${l.contatto ? 'Referente: ' + l.contatto + '<br>' : ''}
+      ${tel.length ? 'Telefono: ' + tel.join(' · ') + '<br>' : ''}
+      ${l.email ? 'Email: ' + l.email + '<br>' : ''}
+      ${(l.indirizzo || l.citta) ? [l.indirizzo, l.citta].filter(Boolean).join(', ') + '<br>' : ''}
+      ${l.prodotto ? 'Prodotti: ' + l.prodotto : ''}
+    </div>
+    ${et.length ? '<div style="margin-top:7px;display:flex;gap:4px;flex-wrap:wrap">' + et.map(n => {
+      const e = (window._etichette||[]).find(x => x.nome === n);
+      return `<span style="background:${e?e.colore:'#973D37'};color:#fff;font-size:9.5px;font-weight:700;padding:2px 7px;border-radius:4px">${n}</span>`;
+    }).join('') + '</div>' : ''}
+    <div style="margin-top:8px;font-size:11.5px;color:var(--text-3)">Questi dati passano automaticamente nella scheda cliente.</div>`;
+
+  document.getElementById('cv-piva').value = '';
+  document.getElementById('cv-cf').value = '';
+  document.getElementById('cv-sdi').value = '';
+  document.getElementById('cv-pec').value = '';
+  document.getElementById('cv-ind-legale').value = [l.indirizzo, l.citta].filter(Boolean).join(', ');
+  document.getElementById('cv-ind-consegna').value = '';
+  document.getElementById('cv-note').value = '';
+  document.getElementById('cv-errore').style.display = 'none';
+  openModal('modal-converti-lead');
+  setTimeout(()=>document.getElementById('cv-piva').focus(), 120);
+}
+
+async function confermaConversione(){
+  const l = _leadDaConvertire;
+  if(!l) return;
+  const err = document.getElementById('cv-errore');
+  const btn = document.getElementById('cv-btn');
+  const v = id => (document.getElementById(id).value || '').trim();
+
+  if(!v('cv-piva') && !v('cv-cf')){
+    err.textContent = 'Serve la partita IVA o il codice fiscale: senza non si può fatturare.';
+    err.style.display = 'block';
+    return;
+  }
+  err.style.display = 'none';
+  btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Creo la scheda...';
+  try{
+    const r = await api.post('/api/leads/' + l.id + '/converti', {
+      piva: v('cv-piva'), cf: v('cv-cf'), sdi: v('cv-sdi'), pec: v('cv-pec'),
+      ind_legale: v('cv-ind-legale'), ind_consegna: v('cv-ind-consegna'), note: v('cv-note')
+    });
+    if(r.error){
+      err.textContent = r.error; err.style.display = 'block';
+      return;
+    }
+    closeModal('modal-converti-lead');
+    // ricarico clienti e lead per vedere subito il risultato
+    try{
+      const [cl, ld] = await Promise.all([api.get('/api/clienti'), api.get('/api/leads')]);
+      if(Array.isArray(cl)) state.clienti = cl;
+      if(Array.isArray(ld)) state.leads = ld;
+    }catch(e){}
+    renderPipeline();
+    showSave();
+    if(confirm('Scheda cliente creata.\n\nVuoi inserire subito un ordine per ' + (r.cliente?.nome || l.nome) + '?')){
+      showPage('ordini');
+      setTimeout(()=>{ if(typeof apriNuovoOrdine === 'function') apriNuovoOrdine(); }, 300);
+    }
+  }catch(e){
+    err.textContent = 'Errore: ' + e.message; err.style.display = 'block';
+  }finally{
+    btn.disabled = false; btn.innerHTML = '<i class="ti ti-user-check"></i>Crea la scheda cliente';
+  }
+}
+
+window.convertiLead = convertiLead;
+window.confermaConversione = confermaConversione;
