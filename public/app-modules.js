@@ -417,6 +417,8 @@ function switchSpedizioniTab(tab, el){
   }
   if(hub) hub.style.display = 'none';
   if(tabs) tabs.style.display = 'flex';
+  // le statistiche in alto sono quelle dei pallet: questa sezione e' la loro
+  if(typeof mostraStatistiche === 'function') mostraStatistiche('sped-stats', 'bancale');
   mostra('sped-vista-spedizioni', tab === 'spedizioni');
   mostra('sped-vista-assicurazioni', tab === 'assicurazioni');
   if(tab === 'assicurazioni') setTimeout(()=>renderAssicurazioni(), 50);
