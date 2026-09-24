@@ -359,6 +359,15 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Prodotti di interesse proposti nei moduli lead (modificabili dall'utente)
+      CREATE TABLE IF NOT EXISTS prodotti_interesse (
+        id SERIAL PRIMARY KEY,
+        nome TEXT UNIQUE NOT NULL,
+        ordine INTEGER DEFAULT 100,
+        attivo BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Etichette colorate applicabili ai lead (preventivo, campionatura, ...)
       CREATE TABLE IF NOT EXISTS etichette (
         id SERIAL PRIMARY KEY,
@@ -6210,7 +6219,7 @@ app.post('/api/spedizioni/disconnect', async (req, res) => {
 
 // Carica token dal DB all'avvio
 // Prepara i modelli e avvia il controllo periodico del percorso post-spedizione
-setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); }, 6000);
+setTimeout(() => { caricaListiniSeNecessario(); initCosti().catch(()=>{}); initFormati().catch(()=>{}); initEtichette().catch(()=>{}); initProdottiInteresse().catch(()=>{}); }, 6000);
 setTimeout(() => {
   fupInitModelli()
     .then(() => console.log('✅ Modelli follow-up spedizioni pronti'))
@@ -8192,6 +8201,54 @@ app.post('/api/impegni', async (req, res) => {
 app.delete('/api/impegni/:id', async (req, res) => {
   try { await pool.query(`DELETE FROM impegni_ricorrenti WHERE id=$1`, [req.params.id]); res.json({ ok: true }); }
   catch (e) { res.json({ error: e.message }); }
+});
+
+// ── PRODOTTI DI INTERESSE ─────────────────────────────────────────────────
+// Sono quelli che compaiono nel modulo del lead. L'elenco parte dalla gamma
+// vera del mulino e si puo' allungare scegliendo "Altro".
+const PRODOTTI_INTERESSE_DEFAULT = [
+  ['Semola rimacinata di grano duro', 10],
+  ['Semola rimacinata con Senatore Cappelli', 20],
+  ['Farina integrale di grano duro', 30],
+  ['Perciasacchi', 40],
+  ['Tumminia', 50],
+  ['Maiorca', 60],
+  ['Russello Integrale', 70],
+  ['Russello Burattato', 80],
+  ['Senatore Cappelli 100%', 90],
+];
+
+async function initProdottiInteresse() {
+  for (const [nome, ordine] of PRODOTTI_INTERESSE_DEFAULT) {
+    await pool.query(
+      `INSERT INTO prodotti_interesse (nome, ordine) VALUES ($1,$2) ON CONFLICT (nome) DO NOTHING`,
+      [nome, ordine]).catch(() => {});
+  }
+}
+
+app.get('/api/prodotti-interesse', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM prodotti_interesse WHERE attivo=TRUE ORDER BY ordine, nome`);
+    res.json(r.rows);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/prodotti-interesse', async (req, res) => {
+  const nome = String(req.body?.nome || '').trim().slice(0, 80);
+  if (nome.length < 2) return res.json({ error: 'Serve il nome del prodotto' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO prodotti_interesse (nome) VALUES ($1)
+       ON CONFLICT (nome) DO UPDATE SET attivo=TRUE RETURNING *`, [nome]);
+    res.json({ ok: true, prodotto: r.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.delete('/api/prodotti-interesse/:id', async (req, res) => {
+  try {
+    await pool.query(`UPDATE prodotti_interesse SET attivo=FALSE WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
 });
 
 // ── ETICHETTE DEI LEAD ────────────────────────────────────────────────────
