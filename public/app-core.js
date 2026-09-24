@@ -280,6 +280,7 @@ function openModal(id){
   if(id==='modal-lead'||id==='modal-edit-lead') populateFasiSelects();
   // chip delle etichette: il nuovo lead parte pulito, la modifica li carica da sola
   if(id==='modal-lead' && typeof renderSelettoreEtichette==='function') renderSelettoreEtichette('lead-etichette', []);
+  if(id==='modal-lead' && typeof svuotaTelefoniExtra==='function') svuotaTelefoniExtra('lead');
   document.getElementById(id).classList.add('open');
 }
 function closeModal(id){
