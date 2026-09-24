@@ -496,6 +496,7 @@ function editLead(id){
   document.getElementById('edit-lead-indirizzo').value=l.indirizzo||'';
   if(typeof renderSelettoreEtichette==='function')
     renderSelettoreEtichette('edit-lead-etichette', Array.isArray(l.etichette)?l.etichette:[]);
+  popolaProdottiLead('edit-lead', l.prodotto || '');
   svuotaTelefoniExtra('edit-lead');
   (Array.isArray(l.telefoni_extra)?l.telefoni_extra:[]).forEach(t => aggiungiTelefono('edit-lead', t));
   document.getElementById('edit-lead-citta').value=l.citta||'';
@@ -2078,3 +2079,60 @@ function svuotaTelefoniExtra(prefix){
 window.aggiungiTelefono = aggiungiTelefono;
 window.telefoniExtra = telefoniExtra;
 window.svuotaTelefoniExtra = svuotaTelefoniExtra;
+
+
+// ── PRODOTTI DI INTERESSE: elenco dal gestionale, con "Altro" per aggiungerne ──
+window._prodottiInteresse = [];
+
+async function caricaProdottiInteresse(){
+  try{
+    const p = await api.get('/api/prodotti-interesse');
+    if(Array.isArray(p)) window._prodottiInteresse = p;
+  }catch(e){}
+}
+
+async function popolaProdottiLead(prefix, selezionato){
+  const sel = document.getElementById(prefix + '-prodotto');
+  if(!sel) return;
+  if(!(window._prodottiInteresse||[]).length) await caricaProdottiInteresse();
+  sel.innerHTML = '<option value="">— Seleziona —</option>' +
+    (window._prodottiInteresse||[]).map(p => `<option>${p.nome}</option>`).join('') +
+    '<option value="Altro">Altro (aggiungi nuovo)...</option>';
+  if(selezionato){
+    // se il prodotto salvato non e' piu' in elenco lo aggiungo in coda
+    if(![...sel.options].some(o => o.value === selezionato)){
+      const o = document.createElement('option');
+      o.textContent = selezionato;
+      sel.insertBefore(o, sel.lastElementChild);
+    }
+    sel.value = selezionato;
+  }
+  const box = document.getElementById(prefix + '-prodotto-nuovo');
+  if(box) box.style.display = 'none';
+}
+
+function onProdottoLead(prefix){
+  const sel = document.getElementById(prefix + '-prodotto');
+  const box = document.getElementById(prefix + '-prodotto-nuovo');
+  if(!sel || !box) return;
+  const nuovo = sel.value === 'Altro';
+  box.style.display = nuovo ? 'block' : 'none';
+  if(nuovo) setTimeout(()=>document.getElementById(prefix + '-prodotto-custom')?.focus(), 60);
+}
+
+async function salvaProdottoInteresse(prefix){
+  const inp = document.getElementById(prefix + '-prodotto-custom');
+  const nome = (inp?.value || '').trim();
+  if(nome.length < 2) return alert('Scrivi il nome del prodotto.');
+  const r = await api.post('/api/prodotti-interesse', {nome});
+  if(r.error) return alert('Errore: ' + r.error);
+  await caricaProdottiInteresse();
+  await popolaProdottiLead(prefix, nome);
+  if(inp) inp.value = '';
+  showSave();
+}
+
+window.caricaProdottiInteresse = caricaProdottiInteresse;
+window.popolaProdottiLead = popolaProdottiLead;
+window.onProdottoLead = onProdottoLead;
+window.salvaProdottoInteresse = salvaProdottoInteresse;
