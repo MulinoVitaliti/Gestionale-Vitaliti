@@ -727,7 +727,6 @@ function apriSpedizioni(tipo){
   setTimeout(() => {
     const t = document.querySelector('#page-followup .page-title');
     if(t) t.textContent = tipo === 'campionatura' ? 'Spedizioni pacchi' : 'Spedizioni pallet';
-    mostraStatistiche('fup-stats', tipo);
     caricaFollowup();
   }, 100);
 }
