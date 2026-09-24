@@ -417,6 +417,12 @@ function switchSpedizioniTab(tab, el){
   }
   if(hub) hub.style.display = 'none';
   if(tabs) tabs.style.display = 'flex';
+  // se arrivo dalla panoramica senza cliccare una linguetta, evidenzio quella aperta
+  if(!el && tabs){
+    const voci = tabs.querySelectorAll('.pill');
+    const indice = { spedizioni: 1, assicurazioni: 2 }[tab];
+    if(indice !== undefined && voci[indice]) voci[indice].classList.add('active');
+  }
 
   mostra('sped-vista-spedizioni', tab === 'spedizioni');
   mostra('sped-vista-assicurazioni', tab === 'assicurazioni');
