@@ -10167,10 +10167,22 @@ app.get('/api/spedirepro/corrieri', async (req, res) => {
 // Quanto costerebbe: si chiede prima di creare, cosi' si sa la spesa
 app.post('/api/spedirepro/quotazione', async (req, res) => {
   const d = req.body || {};
+  if (!d.citta || !d.cap) return res.json({ error: 'Servono città e CAP del destinatario' });
   try {
+    // la quotazione vuole from/to con le sole localita', non gli indirizzi completi
     const r = await spedireProChiamata('/v1/get-quotes', {
-      sender: MITTENTE_SPEDIREPRO,
-      receiver: costruisciDestinatario(d),
+      from: {
+        country: 'IT',
+        city: MITTENTE_SPEDIREPRO.city,
+        postcode: MITTENTE_SPEDIREPRO.postcode,
+        province: MITTENTE_SPEDIREPRO.province
+      },
+      to: {
+        country: 'IT',
+        city: d.citta,
+        postcode: String(d.cap).trim(),
+        province: String(d.provincia || '').toUpperCase().slice(0, 2)
+      },
       packages: [pacco(d)]
     });
     res.json(r.ok ? r.dati : { error: messaggioErrore(r), http: r.http });
