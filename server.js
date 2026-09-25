@@ -8461,90 +8461,163 @@ app.post('/api/preventivi', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
-// Costruisce il PDF del preventivo
+// Costruisce il PDF del preventivo, con la stessa impostazione grafica dei
+// documenti emessi da Fatture in Cloud: banda rossa, tabella con IVA per riga,
+// modalita' di pagamento e netto a pagare in evidenza.
+const DATI_MULINO = {
+  ragione: 'VITALITI ANTONIO',
+  piva: '03236980870',
+  cf: 'VTLNTN70C28C351A',
+  via: 'VIA I RETTA LEVANTE 134',
+  cap: '95032 BELPASSO (CT)',
+  tel: '095 913523',
+  email: 'insieme.mulinovitaliti@gmail.com',
+  sito: 'www.mulinovitaliti.com',
+  iban: 'IT44U0503684090CC0521362069',
+  bic: 'POPRIT31052',
+};
+
 async function costruisciPdfPreventivo(p) {
   const PDFDocument = require('pdfkit');
-  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const doc = new PDFDocument({ size: 'A4', margin: 0 });
   const pezzi = [];
   doc.on('data', d => pezzi.push(d));
   const fine = new Promise(ok => doc.on('end', () => ok(Buffer.concat(pezzi))));
 
-  const TERRA = '#973D37', GRIGIO = '#6B6B6B', CREMA = '#EEE8DA';
+  const ROSSO = '#C8102E', SCURO = '#333333', GRIGIO = '#666666';
   const euro = n => '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const M = 45;                       // margine
+  const L = 595 - M;                  // bordo destro
 
-  // intestazione
-  doc.fillColor(TERRA).fontSize(20).font('Helvetica-Bold').text('MULINO VITALITI', 50, 50);
-  doc.fillColor(GRIGIO).fontSize(9).font('Helvetica')
-     .text('Via I Retta Levante 134 — 95032 Belpasso (CT)', 50, 74)
-     .text('P.IVA 03236980870 — tel. 389 6066832', 50, 86);
-  doc.fillColor(TERRA).fontSize(15).font('Helvetica-Bold')
-     .text(`PREVENTIVO n. ${p.numero}`, 50, 120);
-  doc.fillColor(GRIGIO).fontSize(9).font('Helvetica')
-     .text(`del ${new Date(p.created_at).toLocaleDateString('it-IT')}`, 50, 140);
+  // ── intestazione: logo a sinistra, banda rossa a destra ──
+  try {
+    doc.image(path.join(__dirname, 'public', 'logo.png'), M + 10, 40, { width: 80 });
+  } catch (e) { /* senza logo si prosegue */ }
 
-  // destinatario
-  doc.roundedRect(50, 165, 495, p.piva ? 72 : 60, 5).fill(CREMA);
-  doc.fillColor('#2A2A2A').fontSize(8).font('Helvetica').text('SPETTABILE', 62, 176);
-  doc.fontSize(12).font('Helvetica-Bold').text(p.intestazione, 62, 188);
-  let y = 204;
-  doc.fontSize(9).font('Helvetica').fillColor('#444');
-  if (p.referente) { doc.text(`Alla cortese attenzione di ${p.referente}`, 62, y); y += 12; }
-  if (p.indirizzo || p.citta) { doc.text([p.indirizzo, p.citta].filter(Boolean).join(' — '), 62, y); y += 12; }
-  if (p.piva) doc.text(`P.IVA ${p.piva}`, 62, y);
+  doc.rect(280, 40, L - 280, 70).fill(ROSSO);
+  doc.fillColor('#fff').fontSize(9).font('Helvetica');
+  doc.text(DATI_MULINO.email, 280, 62, { width: L - 280, align: 'center' });
+  doc.text(DATI_MULINO.sito, 280, 78, { width: L - 280, align: 'center' });
 
-  // tabella
-  let ty = p.piva ? 260 : 248;
-  doc.rect(50, ty, 495, 22).fill(TERRA);
-  doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
-  doc.text('PRODOTTO', 60, ty + 7);
-  doc.text('QUANTITÀ', 300, ty + 7, { width: 70, align: 'right' });
-  doc.text('€/KG', 375, ty + 7, { width: 60, align: 'right' });
-  doc.text('IMPORTO', 440, ty + 7, { width: 95, align: 'right' });
-  ty += 22;
+  // ── mittente ──
+  let y = 140;
+  doc.fillColor(ROSSO).fontSize(14).font('Helvetica-Bold').text(DATI_MULINO.ragione, M, y);
+  y += 19;
+  doc.fillColor(SCURO).fontSize(9).font('Helvetica');
+  [`P.IVA ${DATI_MULINO.piva}`, `CF ${DATI_MULINO.cf}`, DATI_MULINO.via, DATI_MULINO.cap, 'Italia']
+    .forEach(r => { doc.text(r, M, y); y += 12; });
 
+  // ── numero e data, a destra ──
+  doc.fillColor(ROSSO).fontSize(15).font('Helvetica-Bold')
+     .text('Preventivo', 330, 178, { width: L - 330, align: 'right' });
+  doc.fillColor(SCURO).fontSize(9).font('Helvetica')
+     .text(`nr. ${p.numero} del ${new Date(p.created_at).toLocaleDateString('it-IT')}`,
+           330, 197, { width: L - 330, align: 'right' });
+
+  // ── destinatario ──
+  y = 216;
+  doc.moveTo(M, y).lineTo(L, y).lineWidth(1).stroke(ROSSO);
+  y += 8;
+  doc.fillColor(ROSSO).fontSize(12).font('Helvetica').text('Spettabile', M + 4, y);
+  y += 18;
+  doc.fillColor(SCURO).fontSize(9.5).font('Helvetica');
+  doc.text(String(p.intestazione || '').toUpperCase(), M, y, { width: 330 });
+  y = doc.y + 2;
+  const righeDest = [];
+  if (p.piva) righeDest.push(`P.IVA ${p.piva}`);
+  if (p.referente) righeDest.push(`Alla c.a. ${p.referente}`);
+  if (p.indirizzo) righeDest.push(p.indirizzo);
+  if (p.citta) righeDest.push(p.citta);
+  righeDest.push('Italia');
+  righeDest.forEach(r => { doc.text(r, M, y, { width: 330 }); y += 12; });
+
+  // ── tabella ──
+  let ty = Math.max(y + 18, 330);
+  const col = { desc: M + 6, prezzo: 268, qta: 322, netto: 372, iva: 432, tot: 484 };
+  doc.rect(M, ty, L - M, 18).fill(ROSSO);
+  doc.fillColor('#fff').fontSize(8).font('Helvetica-Bold');
+  doc.text('Descrizione', col.desc, ty + 5);
+  doc.text('Prezzo', col.prezzo, ty + 5, { width: 46, align: 'right' });
+  doc.text('Quantità', col.qta, ty + 5, { width: 44, align: 'right' });
+  doc.text('Importo netto', col.netto, ty + 5, { width: 54, align: 'right' });
+  doc.text(`IVA ${p.aliquota_iva ?? 4}%`, col.iva, ty + 5, { width: 46, align: 'right' });
+  doc.text('Importo totale', col.tot, ty + 5, { width: L - col.tot - 6, align: 'right' });
+  ty += 18;
+
+  const aliquota = Number(p.aliquota_iva ?? 4);
   const righe = Array.isArray(p.righe) ? p.righe : JSON.parse(p.righe || '[]');
-  righe.forEach((r, i) => {
-    const imp = (Number(r.kg) || 0) * (Number(r.prezzo) || 0);
-    if (i % 2) doc.rect(50, ty, 495, 24).fill('#FAF8F4');
-    doc.fillColor('#2A2A2A').fontSize(9.5).font('Helvetica');
-    doc.text(String(r.prodotto || ''), 60, ty + 7, { width: 230 });
-    doc.text(`${Number(r.kg || 0).toLocaleString('it-IT')} kg`, 300, ty + 7, { width: 70, align: 'right' });
-    doc.text(Number(r.prezzo || 0).toFixed(2), 375, ty + 7, { width: 60, align: 'right' });
-    doc.font('Helvetica-Bold').text(euro(imp), 440, ty + 7, { width: 95, align: 'right' });
-    ty += 24;
+  let imponibile = 0;
+  righe.forEach(r => {
+    const kg = Number(r.kg) || 0, prezzo = Number(r.prezzo) || 0;
+    const netto = kg * prezzo;
+    const ivaR = netto * aliquota / 100;
+    imponibile += netto;
+    doc.fillColor(SCURO).fontSize(9).font('Helvetica');
+    const h = Math.max(22, doc.heightOfString(String(r.prodotto || ''), { width: 210 }) + 10);
+    doc.text(String(r.prodotto || ''), col.desc, ty + 6, { width: 210 });
+    doc.text(euro(prezzo), col.prezzo, ty + 6, { width: 46, align: 'right' });
+    doc.text(`${kg.toLocaleString('it-IT')} KG`, col.qta, ty + 6, { width: 44, align: 'right' });
+    doc.text(euro(netto), col.netto, ty + 6, { width: 54, align: 'right' });
+    doc.text(euro(ivaR), col.iva, ty + 6, { width: 46, align: 'right' });
+    doc.text(euro(netto + ivaR), col.tot, ty + 6, { width: L - col.tot - 6, align: 'right' });
+    ty += h;
+    doc.moveTo(M, ty).lineTo(L, ty).lineWidth(0.4).stroke('#E0E0E0');
   });
 
-  // imponibile, IVA e totale
-  const aliquota = Number(p.aliquota_iva ?? 4);
-  const imponibile = Number(p.totale || 0);
   const iva = imponibile * aliquota / 100;
+  const totale = imponibile + iva;
 
-  doc.fillColor('#444').fontSize(9.5).font('Helvetica');
-  doc.text('Imponibile', 300, ty + 6, { width: 135, align: 'right' });
-  doc.text(euro(imponibile), 440, ty + 6, { width: 95, align: 'right' });
-  ty += 18;
-  doc.text(`IVA ${aliquota}%`, 300, ty + 6, { width: 135, align: 'right' });
-  doc.text(euro(iva), 440, ty + 6, { width: 95, align: 'right' });
-  ty += 22;
+  // ── riepilogo importi, a destra ──
+  ty += 10;
+  doc.fillColor(SCURO).fontSize(9).font('Helvetica');
+  doc.text('Imponibile', 330, ty, { width: 145, align: 'right' });
+  doc.text(euro(imponibile), col.tot, ty, { width: L - col.tot - 6, align: 'right' });
+  ty += 15;
+  doc.text(`IVA ${aliquota}% su ${euro(imponibile)}`, 300, ty, { width: 175, align: 'right' });
+  doc.text(euro(iva), col.tot, ty, { width: L - col.tot - 6, align: 'right' });
+  ty += 24;
+  doc.moveTo(M, ty).lineTo(L, ty).lineWidth(1).stroke(ROSSO);
 
-  doc.rect(50, ty, 495, 30).fill(CREMA);
-  doc.fillColor(TERRA).fontSize(12).font('Helvetica-Bold');
-  doc.text('TOTALE IVA INCLUSA', 60, ty + 10);
-  doc.text(euro(imponibile + iva), 440, ty + 10, { width: 95, align: 'right' });
-  ty += 44;
+  // ── pagamento e netto a pagare ──
+  ty += 12;
+  doc.fillColor(SCURO).fontSize(9).font('Helvetica-BoldOblique');
+  doc.text('MODALITÀ DI PAGAMENTO', M, ty);
+  doc.text('NETTO A PAGARE', 350, ty, { width: L - 350, align: 'right' });
+  ty += 20;
+  doc.fillColor(ROSSO).fontSize(9).font('Helvetica-Bold').text('BONIFICO', M, ty);
+  doc.fillColor(SCURO).fontSize(8.5).font('Helvetica');
+  doc.text(`IBAN  ${DATI_MULINO.iban}`, M, ty + 13);
+  doc.text(`INTESTATARIO  ${DATI_MULINO.ragione}`, M, ty + 25);
+  doc.text(`BIC  ${DATI_MULINO.bic}`, M, ty + 37);
 
-  doc.fillColor('#444').fontSize(9).font('Helvetica');
-  doc.text(`Quantità complessiva: ${Number(p.peso_kg || 0).toLocaleString('it-IT')} kg`, 50, ty); ty += 14;
-  doc.text(`Prezzi in €/kg al netto di IVA. Trasporto compreso.`, 50, ty); ty += 14;
-  doc.text(`Preventivo valido ${p.validita_giorni} giorni dalla data di emissione.`, 50, ty); ty += 20;
+  doc.fillColor(ROSSO).fontSize(28).font('Helvetica-Bold')
+     .text(euro(totale), 330, ty + 6, { width: L - 330, align: 'right' });
 
-  if (p.note) {
-    doc.fontSize(9).font('Helvetica-Bold').fillColor('#2A2A2A').text('Note', 50, ty); ty += 13;
-    doc.font('Helvetica').fillColor('#444').text(String(p.note), 50, ty, { width: 495 });
-  }
+  // ── condizioni ──
+  ty += 62;
+  doc.fillColor(GRIGIO).fontSize(8.5).font('Helvetica');
+  doc.text(`Quantità complessiva ${Number(p.peso_kg || 0).toLocaleString('it-IT')} kg · trasporto compreso · preventivo valido ${p.validita_giorni} giorni dalla data di emissione.`,
+           M, ty, { width: L - M });
+  if (p.note) { ty += 14; doc.text(String(p.note), M, ty, { width: L - M }); }
 
-  doc.fontSize(8.5).fillColor(GRIGIO)
-     .text('Mulino Vitaliti — grano duro siciliano macinato a Belpasso dal 1930', 50, 770, { width: 495, align: 'center' });
+  // ── piede ──
+  const fy = 700;
+  doc.moveTo(M, fy).lineTo(L, fy).lineWidth(1).stroke(ROSSO);
+  doc.fillColor(SCURO).fontSize(8).font('Helvetica-Bold').text(DATI_MULINO.ragione, M, fy + 12);
+  doc.font('Helvetica').fontSize(7.5);
+  doc.text(`P.IVA ${DATI_MULINO.piva}`, M, fy + 24);
+  doc.text(`CF ${DATI_MULINO.cf}`, M, fy + 34);
+  doc.text(`${DATI_MULINO.via} — ${DATI_MULINO.cap}`, 170, fy + 14, { width: 140 });
+  doc.text(DATI_MULINO.tel, 320, fy + 14);
+  doc.text(DATI_MULINO.email, 320, fy + 25);
+  doc.text(DATI_MULINO.sito, 320, fy + 36);
+  doc.fillColor(ROSSO).fontSize(26).font('Helvetica-Bold')
+     .text('GRAZIE', 420, fy + 16, { width: L - 420, align: 'right' });
+  doc.moveTo(M, fy + 56).lineTo(L, fy + 56).lineWidth(1).stroke(ROSSO);
+
+  try {
+    doc.image(path.join(__dirname, 'public', 'logo.png'), 273, fy + 70, { width: 50 });
+  } catch (e) {}
 
   doc.end();
   return fine;
