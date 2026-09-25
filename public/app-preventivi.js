@@ -330,11 +330,16 @@ function apriCampionatura(leadId){
   v('cp-telefono', l.tel || l.tel2 || '');
   v('cp-indirizzo', l.indirizzo || l.ind_consegna || l.ind_legale || l.ind || '');
   v('cp-citta', l.citta || '');
-  v('cp-email', l.email || '');
+  const sugEmail = suggerisciEmail(l, null);
+  v('cp-email', sugEmail.email || '');
   v('cp-cap', ''); v('cp-provincia', '');
   document.getElementById('cp-quotazione').style.display = 'none';
   document.getElementById('cp-errore').style.display = 'none';
+  const nota = document.getElementById('cp-geo-nota');
+  if(nota) nota.textContent = sugEmail.email ? `Email suggerita ${sugEmail.da}` : '';
   openModal('modal-campionatura');
+  // se ho città o indirizzo, provo a completare CAP e provincia da solo
+  setTimeout(cercaCapCampionatura, 150);
 }
 
 function datiCampionatura(){
@@ -412,3 +417,36 @@ async function creaCampionatura(){
 window.apriCampionatura = apriCampionatura;
 window.quotaCampionatura = quotaCampionatura;
 window.creaCampionatura = creaCampionatura;
+
+
+// Completa CAP e provincia partendo da città e indirizzo, senza farli cercare
+let _cpUltimaRicerca = '';
+async function cercaCapCampionatura(){
+  const g = id => (document.getElementById(id)?.value || '').trim();
+  const citta = g('cp-citta'), via = g('cp-indirizzo');
+  if(!citta) return;
+  const query = [via, citta].filter(Boolean).join(', ');
+  if(query === _cpUltimaRicerca) return;       // gia' cercato, non insisto
+  const capVuoto = !g('cp-cap'), provVuota = !g('cp-provincia');
+  if(!capVuoto && !provVuota) return;          // ci sono gia' entrambi
+
+  const nota = document.getElementById('cp-geo-nota');
+  if(nota){ nota.style.color = 'var(--text-3)'; nota.textContent = 'Cerco CAP e provincia...'; }
+  try{
+    const r = await api.get('/api/geo/cap?q=' + encodeURIComponent(query));
+    _cpUltimaRicerca = query;
+    if(!r.trovato){
+      if(nota){ nota.style.color = 'var(--orange)'; nota.textContent = 'CAP e provincia non trovati: scrivili a mano.'; }
+      return;
+    }
+    if(capVuoto && r.cap) document.getElementById('cp-cap').value = r.cap;
+    if(provVuota && r.provincia) document.getElementById('cp-provincia').value = r.provincia;
+    if(nota){
+      nota.style.color = 'var(--text-3)';
+      nota.textContent = `Completato da ${r.completo || citta} — controlla che sia giusto`;
+    }
+  }catch(e){
+    if(nota) nota.textContent = '';
+  }
+}
+window.cercaCapCampionatura = cercaCapCampionatura;
