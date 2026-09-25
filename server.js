@@ -10191,7 +10191,21 @@ app.post('/api/spedirepro/quotazione', async (req, res) => {
       },
       packages: [pacco(d)]
     });
-    res.json(r.ok ? r.dati : { error: messaggioErrore(r), http: r.http });
+    if (!r.ok) return res.json({ error: messaggioErrore(r), http: r.http });
+
+    // Teniamo solo i corrieri che vengono a ritirare in azienda: le tariffe piu'
+    // basse sono spesso drop-off, cioe' prevedono che sia il mittente a portare
+    // il pacco in un punto di raccolta. A noi non serve.
+    const tutte = Array.isArray(r.dati) ? r.dati : (r.dati?.quotes || r.dati?.data || []);
+    const conRitiro = tutte.filter(q => {
+      const partenza = String(q.departure_type || '').toLowerCase();
+      const ritiro = String(q.pickup_type || '').toLowerCase();
+      if (partenza && partenza !== 'home') return false;     // drop point in partenza: scartato
+      if (ritiro === 'none' || ritiro === 'no') return false; // nessun ritiro previsto
+      return true;
+    });
+    console.log(`[SPEDIREPRO] quotazioni: ${tutte.length} totali, ${conRitiro.length} con ritiro in azienda`);
+    res.json(conRitiro.length ? conRitiro : { error: 'Nessun corriere disponibile che ritiri in azienda per questo indirizzo.' });
   } catch (e) { res.json({ error: e.message }); }
 });
 
@@ -10243,7 +10257,7 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
       content: { description: d.contenuto || 'Campione semola rimacinata di grano duro', amount: Number(d.valore) || 10 }
     };
     if (d.corriere) corpo.courier = d.corriere;
-    if (d.ritiro) corpo.book_pickup = true;
+    corpo.book_pickup = true;   // il corriere ritira sempre in azienda
 
     const r = await spedireProChiamata('/v1/create-label', corpo);
     if (!r.ok) {
