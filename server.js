@@ -311,6 +311,8 @@ async function initDB() {
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS etichetta_url TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS tracking_url TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS panel_url TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS ritiro_numero TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS ritiro_data DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
@@ -10400,10 +10402,42 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
        descrizioneSpedirePro(d.status) || d.update_type || 'evento',
        'Evento Spedire Pro', JSON.stringify(d)]).catch(() => {});
 
-    // l'esito del ritiro non riguarda una spedizione da seguire
+    // ── esito della richiesta di ritiro al mulino ──
     if (d.update_type === 'pickup') {
-      console.log(`[SPEDIREPRO] esito ritiro: ${d.status || ''} ${d.message || ''}`);
-      return res.json({ ok: true, tipo: 'pickup' });
+      const riuscito = String(d.status || '').toLowerCase() === 'booked';
+      const codici = [d.merchant_reference, d.order, d.reference, d.tracking].filter(Boolean);
+      let sped = null;
+      for (const c of codici) {
+        const r = await pool.query(
+          `SELECT id, cliente_nome FROM followup_spedizioni
+           WHERE corriere_id=$1 OR tracking=$1 OR riferimento=$1 ORDER BY id DESC LIMIT 1`, [String(c)]);
+        if (r.rows.length) { sped = r.rows[0]; break; }
+      }
+
+      if (sped && riuscito) {
+        await pool.query(
+          `UPDATE followup_spedizioni SET ritiro_numero=$1, ritiro_data=$2, updated_at=NOW() WHERE id=$3`,
+          [d.pickup_number || null, d.pickup_date || null, sped.id]);
+        await fupEvento(sped.id, 'ritiro_prenotato',
+          `Ritiro prenotato per il ${d.pickup_date || 'data da confermare'}${d.pickup_number ? ' — codice ' + d.pickup_number : ''}`,
+          null).catch(() => {});
+        console.log(`[SPEDIREPRO] ritiro prenotato ${d.pickup_number} il ${d.pickup_date} (${sped.cliente_nome})`);
+      } else if (!riuscito) {
+        // il ritiro non e' andato: va saputo subito, altrimenti il pacco resta fermo
+        console.error(`[SPEDIREPRO] RITIRO NON PRENOTATO per ${d.reference || d.merchant_reference}`);
+        if (sped) {
+          await fupEvento(sped.id, 'ritiro_fallito',
+            'Richiesta di ritiro NON andata a buon fine: va prenotato a mano o portato in punto di consegna.',
+            null).catch(() => {});
+        }
+        await pool.query(
+          `INSERT INTO tasks (titolo, descrizione, priorita, scadenza, stato, assegnata_a, assegnata_da)
+           VALUES ($1,$2,'alta',CURRENT_DATE,'da_fare','Giovanni','Spedire Pro')`,
+          [`Ritiro non prenotato: ${sped?.cliente_nome || d.reference || 'spedizione'}`,
+           `Spedire Pro non e' riuscito a prenotare il ritiro.\nRiferimento: ${d.reference || d.order || '-'}\n` +
+           `Il pacco resta fermo finche' non prenoti il ritiro dal loro pannello o lo porti in un punto di consegna.`]).catch(() => {});
+      }
+      return res.json({ ok: true, tipo: 'pickup', prenotato: riuscito });
     }
 
     const stato = statoDaSpedirePro(d.status, d.exception_status);
