@@ -10083,6 +10083,160 @@ app.post('/api/portale/destinatario', async (req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════════
+// SPEDIRE PRO — creazione delle spedizioni dei campioni dal gestionale
+// Documentazione: https://www.spedirepro.com/public-api
+// ══════════════════════════════════════════════════════════════════════════
+
+const SPEDIREPRO_BASE = process.env.SPEDIREPRO_API_URL || 'https://www.spedirepro.com/public-api';
+
+// Mittente: sono i nostri dati, uguali per ogni spedizione
+const MITTENTE_SPEDIREPRO = {
+  name: 'MULINO VITALITI',
+  attention_name: 'Giovanni Vitaliti',
+  street: 'Via I Retta Levante 134',
+  city: 'Belpasso',
+  postcode: '95032',
+  province: 'CT',
+  country: 'IT',
+  email: 'spedizioni.mulinovitaliti@gmail.com',
+  phone: '3896066832',
+};
+
+// Misure del pacco campione: valori di partenza, modificabili al momento
+const PACCO_CAMPIONE = { width: 20, height: 25, depth: 35, weight: 10 };
+
+async function spedireProChiamata(percorso, corpo) {
+  const key = process.env.SPEDIREPRO_API_KEY;
+  if (!key) throw new Error('SPEDIREPRO_API_KEY non impostata su Railway');
+  const r = await fetch(SPEDIREPRO_BASE + percorso, {
+    method: corpo ? 'POST' : 'GET',
+    headers: { 'X-Api-Key': key, 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: corpo ? JSON.stringify(corpo) : undefined
+  });
+  const testo = await r.text();
+  let dati; try { dati = JSON.parse(testo); } catch (e) { dati = { raw: testo.slice(0, 400) }; }
+  return { ok: r.ok, http: r.status, dati };
+}
+
+// I corrieri disponibili: servono per far scegliere quello giusto
+app.get('/api/spedirepro/corrieri', async (req, res) => {
+  try {
+    const r = await spedireProChiamata('/v1/couriers');
+    res.json(r.ok ? r.dati : { error: r.dati?.message || 'Elenco corrieri non disponibile', http: r.http });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Quanto costerebbe: si chiede prima di creare, cosi' si sa la spesa
+app.post('/api/spedirepro/quotazione', async (req, res) => {
+  const d = req.body || {};
+  try {
+    const r = await spedireProChiamata('/v1/get-quotes', {
+      sender: MITTENTE_SPEDIREPRO,
+      receiver: costruisciDestinatario(d),
+      packages: [pacco(d)]
+    });
+    res.json(r.ok ? r.dati : { error: messaggioErrore(r), http: r.http });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+function pacco(d) {
+  return {
+    width: Math.round(Number(d.width) || PACCO_CAMPIONE.width),
+    height: Math.round(Number(d.height) || PACCO_CAMPIONE.height),
+    depth: Math.round(Number(d.depth) || PACCO_CAMPIONE.depth),
+    weight: Number(d.weight) || PACCO_CAMPIONE.weight
+  };
+}
+
+function costruisciDestinatario(d) {
+  const soloCifre = t => String(t || '').replace(/[^0-9+]/g, '');
+  return {
+    name: String(d.nome || '').slice(0, 27),
+    attention_name: d.referente ? String(d.referente).slice(0, 22) : undefined,
+    street: d.indirizzo || '',
+    city: d.citta || '',
+    postcode: String(d.cap || '').trim(),
+    province: String(d.provincia || '').toUpperCase().slice(0, 2),
+    country: 'IT',
+    email: d.email || MITTENTE_SPEDIREPRO.email,
+    phone: soloCifre(d.telefono) || MITTENTE_SPEDIREPRO.phone
+  };
+}
+
+function messaggioErrore(r) {
+  const d = r.dati || {};
+  if (d.error?.message) return d.error.message;
+  if (d.errors) return Object.entries(d.errors).map(([k, v]) => `${k}: ${[].concat(v).join(', ')}`).join(' · ');
+  return d.message || 'Errore da Spedire Pro (codice ' + r.http + ')';
+}
+
+// Crea la spedizione del campione e apre il monitoraggio
+app.post('/api/spedirepro/campionatura', async (req, res) => {
+  const d = req.body || {};
+  if (!d.nome || !d.indirizzo || !d.citta || !d.cap) {
+    return res.json({ error: 'Servono nome, indirizzo, città e CAP del destinatario' });
+  }
+  try {
+    const riferimento = 'CAMP-' + Date.now().toString().slice(-8);
+    const corpo = {
+      merchant_reference: riferimento,
+      sender: MITTENTE_SPEDIREPRO,
+      receiver: costruisciDestinatario(d),
+      packages: [pacco(d)],
+      include_price: true,
+      content: { description: d.contenuto || 'Campione semola rimacinata di grano duro', amount: Number(d.valore) || 10 }
+    };
+    if (d.corriere) corpo.courier = d.corriere;
+    if (d.ritiro) corpo.book_pickup = true;
+
+    const r = await spedireProChiamata('/v1/create-label', corpo);
+    if (!r.ok) {
+      console.error('[SPEDIREPRO] creazione fallita:', JSON.stringify(r.dati).slice(0, 400));
+      return res.json({ error: messaggioErrore(r) });
+    }
+
+    const tracking = r.dati?.order || riferimento;
+    console.log(`[SPEDIREPRO] campione per ${d.nome} — spedizione ${tracking} (${r.dati?.courier_name || ''})`);
+
+    // apro subito il percorso di monitoraggio della campionatura
+    let followupId = null;
+    try {
+      followupId = await fupCreaDaDDT({
+        cliente_nome: d.nome,
+        cliente_id: d.cliente_id || null,
+        ddt_data: new Date(),
+        tracking,
+        corriere: r.dati?.courier_name || 'Spedire Pro',
+        corriere_id: tracking,
+        email: d.email || null,
+        tipo_spedizione: 'campionatura'
+      });
+    } catch (e) { console.error('[SPEDIREPRO] monitoraggio non creato:', e.message); }
+
+    res.json({
+      ok: true, tracking, riferimento,
+      corriere: r.dati?.courier_name || null,
+      costo: r.dati?.amount ?? null,
+      followup_id: followupId
+    });
+  } catch (e) {
+    console.error('[SPEDIREPRO campionatura]', e.message);
+    res.json({ error: e.message });
+  }
+});
+
+// Etichetta da stampare e attaccare al pacco
+app.get('/api/spedirepro/etichetta/:tracking', async (req, res) => {
+  try {
+    const r = await spedireProChiamata('/v1/get-label', { order: req.params.tracking });
+    if (!r.ok) return res.status(400).send(messaggioErrore(r));
+    const url = r.dati?.label || r.dati?.url || r.dati?.pdf;
+    if (url) return res.redirect(url);
+    res.json(r.dati);
+  } catch (e) { res.status(500).send(e.message); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
 // SPEDIRE PRO — eventi delle spedizioni dei campioni
 // Indirizzo da configurare nel loro pannello:
 //   https://<gestionale>/api/spedirepro/webhook
