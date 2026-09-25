@@ -351,7 +351,8 @@ function datiCampionatura(){
     provincia: v('cp-provincia'), email: v('cp-email'),
     width: v('cp-width'), height: v('cp-height'), depth: v('cp-depth'), weight: v('cp-weight'),
     contenuto: v('cp-contenuto'),
-    ritiro: document.getElementById('cp-ritiro')?.checked || false
+    ritiro: document.getElementById('cp-ritiro')?.checked || false,
+    corriere: document.querySelector('input[name="cp-corriere"]:checked')?.value || null
   };
 }
 
@@ -380,11 +381,21 @@ async function quotaCampionatura(){
     if(r.error){ err.textContent = r.error; err.style.display='block'; return; }
     const q = Array.isArray(r) ? r : (r.quotes || r.data || []);
     box.style.display = 'block';
-    box.innerHTML = Array.isArray(q) && q.length
-      ? '<strong>Corrieri disponibili</strong><br>' + q.slice(0,5).map(x =>
-          `${x.courier_name || x.name || x.courier_alias} — <strong>€ ${Number(x.amount ?? x.price ?? 0).toFixed(2)}</strong>` +
-          (x.delivery_time ? ` · ${x.delivery_time}` : '')).join('<br>')
-      : 'Nessuna quotazione disponibile per questo indirizzo.';
+    if(!Array.isArray(q) || !q.length){
+      box.innerHTML = 'Nessuna quotazione disponibile per questo indirizzo.';
+      return;
+    }
+    // ordino dal più economico e permetto di scegliere il corriere
+    const ord = [...q].sort((a,b) => Number(a.price||0) - Number(b.price||0));
+    box.innerHTML = '<div style="font-weight:600;margin-bottom:7px">Corrieri disponibili</div>' +
+      ord.slice(0,6).map((x,i) => `
+        <label style="display:flex;align-items:center;gap:9px;padding:6px 0;cursor:pointer;border-bottom:1px solid var(--border)">
+          <input type="radio" name="cp-corriere" value="${x.id || x.vendor || ''}" ${i===0?'checked':''}>
+          ${x.logo ? `<img src="${x.logo}" style="height:18px;width:auto">` : ''}
+          <span style="flex:1">${x.name || x.vendor}</span>
+          <strong>€ ${Number(x.price||0).toFixed(2)}</strong>
+        </label>`).join('') +
+      `<div style="font-size:11px;color:var(--text-3);margin-top:7px">Prezzi IVA esclusa. Il primo è il più conveniente.</div>`;
   }catch(e){ err.textContent = 'Errore: ' + e.message; err.style.display='block'; }
   finally{ btn.disabled = false; btn.innerHTML = t; }
 }
@@ -394,6 +405,7 @@ async function creaCampionatura(){
   const d = datiCampionatura();
   const m = controllaCampionatura(d);
   if(m.length){ err.textContent = 'Mancano: ' + m.join(', ') + '.'; err.style.display='block'; return; }
+  if(!d.corriere && !confirm('Non hai ancora scelto il corriere.\n\nVuoi procedere lasciando scegliere a Spedire Pro? Conviene prima premere "Quanto costa".')) return;
   if(!confirm(`Creare la spedizione del campione per ${d.nome}?\n\nVerrà addebitata sul credito Spedire Pro.`)) return;
   err.style.display = 'none';
   const btn = document.getElementById('cp-btn-crea');
