@@ -257,6 +257,7 @@ function renderPipeline(){
           <span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span>
           <div style="display:flex;gap:4px">
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriPreventivo(${l.id})" title="Preventivo"><i class="ti ti-file-text"></i></button>
+            <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriCampionatura(${l.id})" title="Manda un campione"><i class="ti ti-package"></i></button>
             <button class="btn btn-sm btn-danger" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();eliminaLead(${l.id})" title="Elimina"><i class="ti ti-trash"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px;background:var(--green);color:#fff" onclick="event.stopPropagation();convertiLead(${l.id})" title="Diventa cliente"><i class="ti ti-user-check"></i></button>
