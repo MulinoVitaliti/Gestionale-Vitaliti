@@ -314,3 +314,101 @@ function mostraOrigineEmail(sug){
 
 window.suggerisciEmail = suggerisciEmail;
 window.mostraOrigineEmail = mostraOrigineEmail;
+
+
+// ── CAMPIONATURA: crea la spedizione su Spedire Pro ─────────────────────
+let _cpDati = null;
+
+function apriCampionatura(leadId){
+  const l = (state.leads||[]).find(x => x.id === leadId)
+         || (state.clienti||[]).find(x => x.id === leadId);
+  if(!l) return;
+  _cpDati = l;
+  const v = (id, val) => { const e = document.getElementById(id); if(e) e.value = val || ''; };
+  v('cp-nome', String(l.nome||'').slice(0,27));
+  v('cp-referente', String(l.contatto || l.ref || '').slice(0,22));
+  v('cp-telefono', l.tel || l.tel2 || '');
+  v('cp-indirizzo', l.indirizzo || l.ind_consegna || l.ind_legale || l.ind || '');
+  v('cp-citta', l.citta || '');
+  v('cp-email', l.email || '');
+  v('cp-cap', ''); v('cp-provincia', '');
+  document.getElementById('cp-quotazione').style.display = 'none';
+  document.getElementById('cp-errore').style.display = 'none';
+  openModal('modal-campionatura');
+}
+
+function datiCampionatura(){
+  const v = id => (document.getElementById(id)?.value || '').trim();
+  return {
+    cliente_id: _cpDati?.cliente_id || (_cpDati?.tipo === 'cliente' ? _cpDati.id : null),
+    nome: v('cp-nome'), referente: v('cp-referente'), telefono: v('cp-telefono'),
+    indirizzo: v('cp-indirizzo'), cap: v('cp-cap'), citta: v('cp-citta'),
+    provincia: v('cp-provincia'), email: v('cp-email'),
+    width: v('cp-width'), height: v('cp-height'), depth: v('cp-depth'), weight: v('cp-weight'),
+    contenuto: v('cp-contenuto'),
+    ritiro: document.getElementById('cp-ritiro')?.checked || false
+  };
+}
+
+function controllaCampionatura(d){
+  const mancanti = [];
+  if(!d.nome) mancanti.push('ragione sociale');
+  if(!d.indirizzo) mancanti.push('indirizzo');
+  if(!d.cap) mancanti.push('CAP');
+  if(!d.citta) mancanti.push('città');
+  if(!d.provincia) mancanti.push('provincia');
+  if(!d.telefono) mancanti.push('telefono');
+  return mancanti;
+}
+
+async function quotaCampionatura(){
+  const err = document.getElementById('cp-errore');
+  const box = document.getElementById('cp-quotazione');
+  const d = datiCampionatura();
+  const m = controllaCampionatura(d);
+  if(m.length){ err.textContent = 'Mancano: ' + m.join(', ') + '.'; err.style.display='block'; return; }
+  err.style.display = 'none';
+  const btn = document.getElementById('cp-btn-quota');
+  const t = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Calcolo...';
+  try{
+    const r = await api.post('/api/spedirepro/quotazione', d);
+    if(r.error){ err.textContent = r.error; err.style.display='block'; return; }
+    const q = Array.isArray(r) ? r : (r.quotes || r.data || []);
+    box.style.display = 'block';
+    box.innerHTML = Array.isArray(q) && q.length
+      ? '<strong>Corrieri disponibili</strong><br>' + q.slice(0,5).map(x =>
+          `${x.courier_name || x.name || x.courier_alias} — <strong>€ ${Number(x.amount ?? x.price ?? 0).toFixed(2)}</strong>` +
+          (x.delivery_time ? ` · ${x.delivery_time}` : '')).join('<br>')
+      : 'Nessuna quotazione disponibile per questo indirizzo.';
+  }catch(e){ err.textContent = 'Errore: ' + e.message; err.style.display='block'; }
+  finally{ btn.disabled = false; btn.innerHTML = t; }
+}
+
+async function creaCampionatura(){
+  const err = document.getElementById('cp-errore');
+  const d = datiCampionatura();
+  const m = controllaCampionatura(d);
+  if(m.length){ err.textContent = 'Mancano: ' + m.join(', ') + '.'; err.style.display='block'; return; }
+  if(!confirm(`Creare la spedizione del campione per ${d.nome}?\n\nVerrà addebitata sul credito Spedire Pro.`)) return;
+  err.style.display = 'none';
+  const btn = document.getElementById('cp-btn-crea');
+  const t = btn.innerHTML; btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Creo...';
+  try{
+    const r = await api.post('/api/spedirepro/campionatura', d);
+    if(r.error){ err.textContent = r.error; err.style.display='block'; return; }
+    closeModal('modal-campionatura');
+    const msg = `Spedizione creata.\n\nTracking: ${r.tracking}` +
+      (r.corriere ? `\nCorriere: ${r.corriere}` : '') +
+      (r.costo != null ? `\nCosto: € ${Number(r.costo).toFixed(2)}` : '') +
+      `\n\nLa trovi in Spedizioni → Pacchi.`;
+    if(confirm(msg + '\n\nVuoi aprire l\'etichetta da stampare?')){
+      window.open('/api/spedirepro/etichetta/' + encodeURIComponent(r.tracking), '_blank');
+    }
+    showSave();
+  }catch(e){ err.textContent = 'Errore: ' + e.message; err.style.display='block'; }
+  finally{ btn.disabled = false; btn.innerHTML = t; }
+}
+
+window.apriCampionatura = apriCampionatura;
+window.quotaCampionatura = quotaCampionatura;
+window.creaCampionatura = creaCampionatura;
