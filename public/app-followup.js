@@ -44,7 +44,7 @@ async function caricaFollowup(){
   try{
     const [righe, ries] = await Promise.all([
       api.get('/api/followup?stato=' + _fupFiltro + '&tipo=' + _fupTipo),
-      api.get('/api/followup/riepilogo')
+      api.get('/api/followup/riepilogo?tipo=' + _fupTipo)
     ]);
     renderFupRiepilogo(ries);
     if(!Array.isArray(righe) || !righe.length){
@@ -94,10 +94,16 @@ function renderFupRiepilogo(r){
       <div style="font-size:11px;color:var(--text-3);margin-top:2px">${testo}${azione ? ' <i class="ti ti-chevron-right" style="font-size:11px"></i>' : ''}</div>
     </div>`;
   box.innerHTML =
-    card(r.in_corso, 'Ordini seguiti', 'var(--brand)') +
-    card(r.da_approvare, 'Email da approvare', 'var(--orange)') +
-    card(r.da_ricontattare, 'Da ricontattare (30+ gg)', Number(r.da_ricontattare) > 0 ? 'var(--orange)' : 'var(--text-3)', 'apriDaRicontattare()') +
-    card(r.senza_email, 'Clienti senza email', r.senza_email > 0 ? 'var(--red)' : 'var(--text-3)', 'apriSenzaEmail()');
+    (function(){
+      const pacchi = _fupTipo === 'campionatura';
+      return card(r.in_corso, pacchi ? 'Campioni seguiti' : 'Bancali seguiti', 'var(--brand)') +
+        card(r.da_approvare, 'Email da approvare', 'var(--orange)') +
+        card(r.da_ricontattare,
+             pacchi ? 'Campioni senza ordine' : 'Clienti da ricontattare',
+             Number(r.da_ricontattare) > 0 ? 'var(--orange)' : 'var(--text-3)',
+             pacchi ? null : 'apriDaRicontattare()') +
+        card(r.senza_email, 'Senza email', r.senza_email > 0 ? 'var(--red)' : 'var(--text-3)', 'apriSenzaEmail()');
+    })();
 }
 
 function filtraFollowup(stato, el){
@@ -303,7 +309,7 @@ async function aggiornaBadgeFollowup(){
   const b = document.getElementById('sped-fup-badge') || document.getElementById('btn-fup-badge');
   if(!b) return;
   try{
-    const r = await api.get('/api/followup/riepilogo');
+    const r = await api.get('/api/followup/riepilogo?tipo=' + _fupTipo);
     // sulla linguetta segnalo quello che richiede un'azione: email da approvare
     // piu' i clienti da ricontattare
     const n = (Number(r && r.da_approvare) || 0) + (Number(r && r.da_ricontattare) || 0);
@@ -544,7 +550,7 @@ async function salvaEmailFollowup(id){
       if(box && !box.querySelector('[id^="se-riga-"]')) box.innerHTML='<div style="padding:24px;text-align:center;color:var(--green);font-size:13px">✅ Tutte le spedizioni hanno un indirizzo email.</div>'; }, 1600);
   }
   // aggiorno subito il contatore e la lista sotto
-  try{ renderFupRiepilogo(await api.get('/api/followup/riepilogo')); }catch(e){}
+  try{ renderFupRiepilogo(await api.get('/api/followup/riepilogo?tipo=' + _fupTipo)); }catch(e){}
   caricaFollowup();
 }
 
@@ -557,7 +563,7 @@ async function caricaDaRicontattare(){
   try{
     const [d, ries] = await Promise.all([
       api.get('/api/followup/da-ricontattare?giorni=' + _drGiorni),
-      api.get('/api/followup/riepilogo')
+      api.get('/api/followup/riepilogo?tipo=' + _fupTipo)
     ]);
     renderFupRiepilogo(ries);
     const testa = `<div style="display:flex;align-items:center;gap:8px;padding:11px 16px;border-bottom:1px solid var(--border);background:var(--surface-2)">
