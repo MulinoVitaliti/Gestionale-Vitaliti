@@ -351,7 +351,7 @@ function datiCampionatura(){
     provincia: v('cp-provincia'), email: v('cp-email'),
     width: v('cp-width'), height: v('cp-height'), depth: v('cp-depth'), weight: v('cp-weight'),
     contenuto: v('cp-contenuto'),
-    ritiro: document.getElementById('cp-ritiro')?.checked || false,
+    ritiro: true,
     corriere: document.querySelector('input[name="cp-corriere"]:checked')?.value || null
   };
 }
