@@ -1,4 +1,3 @@
-
 // app-preventivi.js — Preventivi creati dalla pipeline
 // I prezzi vengono suggeriti dal listino della città del cliente, con il
 // prezzo minimo sempre in vista: sotto quello non si scende.
@@ -8,16 +7,34 @@ let _pvRighe = [];
 
 const pvEuro = n => '€ ' + Number(n || 0).toLocaleString('it-IT', {minimumFractionDigits:2, maximumFractionDigits:2});
 
+let _pvId = null;        // se valorizzato, sto modificando un preventivo esistente
+let _pvNumero = null;
+
 async function apriPreventivo(leadId){
   const l = (state.leads||[]).find(x => x.id === leadId);
   if(!l) return;
   _pvLead = l;
   _pvRighe = [];
+  _pvId = null; _pvNumero = null;
 
-  // se il lead ha già dei prodotti di interesse, parto da quelli
-  const prodotti = String(l.prodotto || '').split(/\s*,\s*/).filter(Boolean);
-  if(prodotti.length) prodotti.forEach(p => _pvRighe.push({prodotto: p, kg: '', prezzo: ''}));
-  else _pvRighe.push({prodotto: '', kg: '', prezzo: ''});
+  // se per questo lead esiste gia' un preventivo, lo riapro per modificarlo
+  let esistente = null;
+  try{
+    const p = await api.get('/api/preventivi?lead_id=' + l.id);
+    if(Array.isArray(p) && p.length) esistente = p[0];
+  }catch(e){}
+
+  if(esistente){
+    _pvId = esistente.id; _pvNumero = esistente.numero;
+    let righe = [];
+    try{ righe = Array.isArray(esistente.righe) ? esistente.righe : JSON.parse(esistente.righe||'[]'); }catch(e){}
+    _pvRighe = righe.map(r => ({prodotto: r.prodotto, kg: r.kg, prezzo: r.prezzo}));
+  }
+  if(!_pvRighe.length){
+    const prodotti = String(l.prodotto || '').split(/\s*,\s*/).filter(Boolean);
+    if(prodotti.length) prodotti.forEach(p => _pvRighe.push({prodotto: p, kg: '', prezzo: ''}));
+    else _pvRighe.push({prodotto: '', kg: '', prezzo: ''});
+  }
 
   document.getElementById('pv-cliente').innerHTML = `
     <div style="font-weight:700;font-size:14px">${l.nome}</div>
@@ -25,10 +42,15 @@ async function apriPreventivo(leadId){
       ${[l.contatto, l.indirizzo, l.citta].filter(Boolean).join(' · ')}
       ${l.piva ? '<br>P.IVA ' + l.piva : ''}
     </div>
-    ${l.citta ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:5px">Prezzi suggeriti dal listino di ${l.citta}</div>` : ''}`;
-  document.getElementById('pv-email').value = l.email || '';
-  document.getElementById('pv-note').value = '';
-  document.getElementById('pv-validita').value = 30;
+    ${l.citta ? `<div style="font-size:11.5px;color:var(--text-3);margin-top:5px">Prezzi suggeriti dal listino di ${l.citta}</div>` : ''}
+    ${_pvId ? `<div style="margin-top:8px;background:#fff;border-radius:7px;padding:8px 11px;font-size:12px">
+        <strong>Preventivo n. ${_pvNumero}</strong> già creato — stai modificando quello.
+        <a href="#" onclick="nuovoPreventivo();return false" style="color:var(--brand);margin-left:8px">crea invece uno nuovo</a></div>` : ''}`;
+  document.getElementById('pv-email').value = (esistente?.email) || l.email || '';
+  document.getElementById('pv-note').value = esistente?.note || '';
+  document.getElementById('pv-validita').value = esistente?.validita_giorni || 30;
+  const bm = document.getElementById('pv-btn-mail');
+  if(bm) bm.innerHTML = '<i class="ti ti-send"></i>' + (_pvId ? 'Salva e invia' : 'Crea e invia');
   document.getElementById('pv-errore').style.display = 'none';
 
   renderRighePreventivo();
@@ -115,11 +137,45 @@ function verificaMinimo(i){
 }
 
 function calcolaTotalePreventivo(){
-  const tot = _pvRighe.reduce((s,r) => s + (Number(r.kg)||0) * (Number(r.prezzo)||0), 0);
+  const imp = _pvRighe.reduce((s,r) => s + (Number(r.kg)||0) * (Number(r.prezzo)||0), 0);
   const kg = _pvRighe.reduce((s,r) => s + (Number(r.kg)||0), 0);
-  document.getElementById('pv-totale').textContent = pvEuro(tot);
-  document.getElementById('pv-peso').textContent = kg.toLocaleString('it-IT') + ' kg';
+  const iva = imp * 0.04;
+  document.getElementById('pv-totale').textContent = pvEuro(imp + iva);
+  document.getElementById('pv-peso').innerHTML =
+    `${kg.toLocaleString('it-IT')} kg · imponibile ${pvEuro(imp)} + IVA 4% ${pvEuro(iva)}`;
 }
+
+// Chiude il preventivo in modifica e ne comincia uno nuovo per lo stesso lead
+function nuovoPreventivo(){
+  const l = _pvLead;
+  _pvId = null; _pvNumero = null;
+  _pvRighe = [{prodotto: '', kg: '', prezzo: ''}];
+  closeModal('modal-preventivo');
+  setTimeout(()=>{
+    // riapro senza recuperare quello esistente
+    const salva = window._pvNoRecupero = true;
+    apriPreventivoNuovo(l);
+  }, 120);
+}
+
+function apriPreventivoNuovo(l){
+  _pvLead = l; _pvId = null; _pvNumero = null;
+  const prodotti = String(l.prodotto || '').split(/\s*,\s*/).filter(Boolean);
+  _pvRighe = prodotti.length ? prodotti.map(p => ({prodotto: p, kg: '', prezzo: ''}))
+                             : [{prodotto: '', kg: '', prezzo: ''}];
+  document.getElementById('pv-cliente').innerHTML =
+    `<div style="font-weight:700;font-size:14px">${l.nome}</div>
+     <div style="color:var(--text-2);font-size:12.5px;margin-top:3px">${[l.contatto, l.indirizzo, l.citta].filter(Boolean).join(' · ')}</div>`;
+  document.getElementById('pv-email').value = l.email || '';
+  document.getElementById('pv-note').value = '';
+  document.getElementById('pv-validita').value = 30;
+  document.getElementById('pv-errore').style.display = 'none';
+  const bm = document.getElementById('pv-btn-mail');
+  if(bm) bm.innerHTML = '<i class="ti ti-send"></i>Crea e invia';
+  renderRighePreventivo();
+  openModal('modal-preventivo');
+}
+window.nuovoPreventivo = nuovoPreventivo;
 
 async function salvaPreventivo(azione){
   const err = document.getElementById('pv-errore');
@@ -138,13 +194,17 @@ async function salvaPreventivo(azione){
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Attendi...';
   try{
     const l = _pvLead;
-    const r = await api.post('/api/preventivi', {
+    const corpo = {
       lead_id: l.id, intestazione: l.nome, referente: l.contatto, indirizzo: l.indirizzo,
       citta: l.citta, piva: l.piva, email: document.getElementById('pv-email').value.trim(),
       righe: righe.map(x => ({prodotto: x.prodotto, kg: Number(x.kg), prezzo: Number(x.prezzo)})),
       validita_giorni: Number(document.getElementById('pv-validita').value) || 30,
-      note: document.getElementById('pv-note').value.trim()
-    });
+      note: document.getElementById('pv-note').value.trim(),
+      aliquota_iva: 4
+    };
+    const r = _pvId
+      ? await api.put('/api/preventivi/' + _pvId, corpo)
+      : await api.post('/api/preventivi', corpo);
     if(r.error){ err.textContent = r.error; err.style.display = 'block'; return; }
     const p = r.preventivo;
 
