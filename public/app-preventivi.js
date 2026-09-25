@@ -46,11 +46,26 @@ async function apriPreventivo(leadId){
     ${_pvId ? `<div style="margin-top:8px;background:#fff;border-radius:7px;padding:8px 11px;font-size:12px">
         <strong>Preventivo n. ${_pvNumero}</strong> già creato — stai modificando quello.
         <a href="#" onclick="nuovoPreventivo();return false" style="color:var(--brand);margin-left:8px">crea invece uno nuovo</a></div>` : ''}`;
-  document.getElementById('pv-email').value = (esistente?.email) || l.email || '';
+  const sug = suggerisciEmail(l, esistente);
+  document.getElementById('pv-email').value = sug.email || '';
+  mostraOrigineEmail(sug);
   document.getElementById('pv-note').value = esistente?.note || '';
   document.getElementById('pv-validita').value = esistente?.validita_giorni || 30;
   const bm = document.getElementById('pv-btn-mail');
   if(bm) bm.innerHTML = '<i class="ti ti-send"></i>' + (_pvId ? 'Salva e invia' : 'Crea e invia');
+  // su Fatture in Cloud si puo' passare solo con i dati fiscali
+  const bf = document.getElementById('pv-btn-fic');
+  if(bf){
+    const haDati = !!(l.piva || l.cf);
+    bf.style.display = haDati ? '' : 'none';
+    if(esistente?.fic_id){
+      bf.disabled = true;
+      bf.innerHTML = '<i class="ti ti-check"></i>Già su FIC (n. ' + (esistente.fic_numero || '') + ')';
+    } else {
+      bf.disabled = false;
+      bf.innerHTML = '<i class="ti ti-cloud-upload"></i>Su Fatture in Cloud';
+    }
+  }
   document.getElementById('pv-errore').style.display = 'none';
 
   renderRighePreventivo();
@@ -166,7 +181,9 @@ function apriPreventivoNuovo(l){
   document.getElementById('pv-cliente').innerHTML =
     `<div style="font-weight:700;font-size:14px">${l.nome}</div>
      <div style="color:var(--text-2);font-size:12.5px;margin-top:3px">${[l.contatto, l.indirizzo, l.citta].filter(Boolean).join(' · ')}</div>`;
-  document.getElementById('pv-email').value = l.email || '';
+  const sug2 = suggerisciEmail(l, null);
+  document.getElementById('pv-email').value = sug2.email || '';
+  mostraOrigineEmail(sug2);
   document.getElementById('pv-note').value = '';
   document.getElementById('pv-validita').value = 30;
   document.getElementById('pv-errore').style.display = 'none';
@@ -189,14 +206,15 @@ async function salvaPreventivo(azione){
      !confirm('Una o più righe sono sotto il prezzo minimo di listino.\n\nVuoi procedere comunque?')) return;
   err.style.display = 'none';
 
-  const btn = document.getElementById(azione === 'email' ? 'pv-btn-mail' : 'pv-btn-pdf');
+  const btn = document.getElementById(
+    azione === 'email' ? 'pv-btn-mail' : azione === 'fic' ? 'pv-btn-fic' : 'pv-btn-pdf');
   const testo = btn.innerHTML;
   btn.disabled = true; btn.innerHTML = '<i class="ti ti-loader"></i>Attendi...';
   try{
     const l = _pvLead;
     const corpo = {
       lead_id: l.id, intestazione: l.nome, referente: l.contatto, indirizzo: l.indirizzo,
-      citta: l.citta, piva: l.piva, email: document.getElementById('pv-email').value.trim(),
+      citta: l.citta, piva: l.piva, cf: l.cf, email: document.getElementById('pv-email').value.trim(),
       righe: righe.map(x => ({prodotto: x.prodotto, kg: Number(x.kg), prezzo: Number(x.prezzo)})),
       validita_giorni: Number(document.getElementById('pv-validita').value) || 30,
       note: document.getElementById('pv-note').value.trim(),
@@ -211,6 +229,13 @@ async function salvaPreventivo(azione){
     if(azione === 'pdf'){
       window.open('/api/preventivi/' + p.id + '/pdf', '_blank');
       closeModal('modal-preventivo');
+      showSave();
+    } else if(azione === 'fic'){
+      const fic = await api.post('/api/preventivi/' + p.id + '/su-fic', {});
+      if(fic.error){ err.textContent = fic.error; err.style.display = 'block'; return; }
+      closeModal('modal-preventivo');
+      alert('Preventivo creato su Fatture in Cloud con il numero ' + fic.numero +
+            '.\n\nDa lì puoi trasformarlo in ordine o fattura con un clic.');
       showSave();
     } else {
       const email = document.getElementById('pv-email').value.trim();
@@ -239,3 +264,53 @@ window.aggiornaRiga = aggiornaRiga;
 window.suggerisciPrezzo = suggerisciPrezzo;
 window.salvaPreventivo = salvaPreventivo;
 window.renderRighePreventivo = renderRighePreventivo;
+
+
+// ── EMAIL DEL PREVENTIVO: proposta, non imposta ──────────────────────────
+// La cerca nell'ordine: quella usata nel preventivo precedente, quella del
+// lead, quella della scheda cliente collegata. Resta sempre modificabile.
+function suggerisciEmail(l, esistente){
+  if(esistente?.email) return {email: esistente.email, da: 'usata nel preventivo precedente'};
+  if(l.email) return {email: l.email, da: 'dalla scheda del lead'};
+
+  const clienti = state.clienti || [];
+  // prima per partita IVA, che è il legame più sicuro
+  if(l.piva){
+    const c = clienti.find(x => x.piva && String(x.piva).trim() === String(l.piva).trim() && x.email);
+    if(c) return {email: c.email, da: `dall'anagrafica di ${c.nome}`};
+  }
+  // poi per nome, ignorando maiuscole e forma societaria
+  const pulisci = s => String(s||'').toLowerCase()
+    .replace(/\b(srl|snc|sas|spa|s\.r\.l|s\.n\.c|s\.a\.s|di|e|c)\b/g,'')
+    .replace(/[^a-z0-9 ]/g,' ').replace(/\s+/g,' ').trim();
+  const n = pulisci(l.nome);
+  if(n.length > 4){
+    const c = clienti.find(x => x.email && pulisci(x.nome) === n)
+           || clienti.find(x => x.email && pulisci(x.nome).includes(n));
+    if(c) return {email: c.email, da: `dall'anagrafica di ${c.nome}`};
+  }
+  return {email: '', da: null};
+}
+
+function mostraOrigineEmail(sug){
+  const inp = document.getElementById('pv-email');
+  if(!inp) return;
+  let nota = document.getElementById('pv-email-nota');
+  if(!nota){
+    nota = document.createElement('div');
+    nota.id = 'pv-email-nota';
+    nota.style.cssText = 'font-size:11px;margin-top:3px';
+    inp.parentElement.appendChild(nota);
+  }
+  if(sug.email){
+    nota.style.color = 'var(--text-3)';
+    nota.innerHTML = `Suggerita ${sug.da} — puoi cambiarla`;
+  } else {
+    nota.style.color = 'var(--orange)';
+    nota.textContent = 'Nessuna email trovata: scrivila qui per poter inviare il preventivo.';
+  }
+  inp.oninput = () => { nota.style.color = 'var(--text-3)'; nota.textContent = ''; };
+}
+
+window.suggerisciEmail = suggerisciEmail;
+window.mostraOrigineEmail = mostraOrigineEmail;
