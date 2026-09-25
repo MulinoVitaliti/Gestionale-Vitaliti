@@ -10418,6 +10418,12 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
       if (r.rows.length) { f = r.rows[0]; break; }
     }
 
+    // un reso non e' una campionatura: lo registro e basta
+    if (!f && d.type === 'returning') {
+      console.log(`[SPEDIREPRO] reso ${d.reference || d.order || ''} — stato ${d.status}`);
+      return res.json({ ok: true, tipo: 'reso' });
+    }
+
     // se non la conosco la creo come campionatura
     if (!f) {
       const nome = d.receiver_name || d.receiver?.name || d.merchant_reference || 'Destinatario';
@@ -10445,7 +10451,11 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
          WHERE id = $6`,
         [d.tracking || null, d.reference || null,
          d.label?.link || null, d.tracking_url || null, d.panel_url || null, f.id]);
-      if (stato) await fupAggiornaStato(String(f.id), stato, descrizioneSpedirePro(d.status));
+      if (d.type === 'returning') {
+        await fupEvento(f.id, 'reso', `Spedizione di reso ${d.reference || ''} — ${descrizioneSpedirePro(d.status)}`, null).catch(() => {});
+      } else if (stato) {
+        await fupAggiornaStato(String(f.id), stato, descrizioneSpedirePro(d.status));
+      }
     }
 
     res.json({ ok: true, seguita: !!f, stato: stato || null });
