@@ -2203,12 +2203,13 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="form-group"><label class="form-label">Referente</label><input type="text" id="cp-referente" maxlength="22"></div>
         <div class="form-group"><label class="form-label">Telefono *</label><input type="text" id="cp-telefono" placeholder="serve al corriere"></div>
       </div>
-      <div class="form-group"><label class="form-label">Indirizzo *</label><input type="text" id="cp-indirizzo"></div>
+      <div class="form-group"><label class="form-label">Indirizzo *</label><input type="text" id="cp-indirizzo" onblur="cercaCapCampionatura()"></div>
       <div class="form-row">
         <div class="form-group"><label class="form-label">CAP *</label><input type="text" id="cp-cap" maxlength="5"></div>
-        <div class="form-group"><label class="form-label">Città *</label><input type="text" id="cp-citta"></div>
+        <div class="form-group"><label class="form-label">Città *</label><input type="text" id="cp-citta" onblur="cercaCapCampionatura()"></div>
         <div class="form-group"><label class="form-label">Prov. *</label><input type="text" id="cp-provincia" maxlength="2" placeholder="CT"></div>
       </div>
+      <div id="cp-geo-nota" style="font-size:11.5px;color:var(--text-3);margin:-8px 0 12px"></div>
       <div class="form-group"><label class="form-label">Email</label><input type="text" id="cp-email" placeholder="per gli avvisi di consegna"></div>
 
       <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin:16px 0 9px">Pacco</div>
