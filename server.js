@@ -7808,20 +7808,37 @@ app.get('/api/followup', async (req, res) => {
 
 app.get('/api/followup/riepilogo', async (req, res) => {
   try {
+    // I numeri sono separati per tipo: i pacchi non si sommano ai bancali,
+    // altrimenti non si capisce quanto pesa ciascun canale.
+    const tipo = req.query.tipo;
+    const filtro = (tipo && tipo !== 'tutti') ? `AND COALESCE(tipo_spedizione,'bancale')=$1` : '';
+    const filtroF = (tipo && tipo !== 'tutti') ? `AND COALESCE(f.tipo_spedizione,'bancale')=$1` : '';
+    const par = (tipo && tipo !== 'tutti') ? [tipo] : [];
+
     const r = await pool.query(`
       SELECT
-        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso') AS in_corso,
+        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso' ${filtro}) AS in_corso,
         (SELECT COUNT(*) FROM followup_tappe t JOIN followup_spedizioni f ON f.id=t.followup_id
-          WHERE t.stato='in_attesa_ok' AND f.stato='in_corso') AS da_approvare,
+          WHERE t.stato='in_attesa_ok' AND f.stato='in_corso' ${filtroF}) AS da_approvare,
         (SELECT COUNT(*) FROM followup_tappe t JOIN followup_spedizioni f ON f.id=t.followup_id
-          WHERE t.tipo='riordino' AND t.stato IN ('programmata','in_attesa_ok') AND f.stato='in_corso'
-            AND t.programmata_per <= CURRENT_DATE + 7) AS riordini_vicini,
-        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso' AND (email_dest IS NULL OR email_dest='')) AS senza_email`);
-    const dr = await pool.query(
-      `SELECT COUNT(*) n FROM (
-         SELECT c.id FROM clienti c JOIN ordini o ON o.cliente_id=c.id
-         WHERE c.tipo='cliente' GROUP BY c.id
-         HAVING MAX(o.data) <= CURRENT_DATE - INTERVAL '30 days') x`);
+          WHERE t.tipo IN ('riordino','camp_offerta') AND t.stato IN ('programmata','in_attesa_ok')
+            AND f.stato='in_corso' AND t.programmata_per <= CURRENT_DATE + 7 ${filtroF}) AS riordini_vicini,
+        (SELECT COUNT(*) FROM followup_spedizioni WHERE stato='in_corso'
+          AND (email_dest IS NULL OR email_dest='') ${filtro}) AS senza_email`, par);
+    // "da ricontattare" per i pacchi vuol dire: campione consegnato e nessun
+    // ordine dopo. Per i bancali: cliente fermo da oltre 30 giorni.
+    const dr = (tipo === 'campionatura')
+      ? await pool.query(
+          `SELECT COUNT(DISTINCT f.id) n FROM followup_spedizioni f
+           WHERE COALESCE(f.tipo_spedizione,'bancale')='campionatura'
+             AND f.stato_consegna='consegnata'
+             AND NOT EXISTS (SELECT 1 FROM ordini o
+                             WHERE o.cliente_id=f.cliente_id AND o.data > f.ddt_data)`)
+      : await pool.query(
+          `SELECT COUNT(*) n FROM (
+             SELECT c.id FROM clienti c JOIN ordini o ON o.cliente_id=c.id
+             WHERE c.tipo='cliente' GROUP BY c.id
+             HAVING MAX(o.data) <= CURRENT_DATE - INTERVAL '30 days') x`);
     const tp = await pool.query(
       `SELECT COALESCE(tipo_spedizione,'bancale') tipo, COUNT(*) n
        FROM followup_spedizioni WHERE stato='in_corso' GROUP BY 1`);
@@ -10499,8 +10516,23 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
          WHERE id = $6`,
         [d.tracking || null, d.reference || null,
          d.label?.link || null, d.tracking_url || null, d.panel_url || null, f.id]);
+      const codice = String(d.status || '').trim().toUpperCase();
+
       if (d.type === 'returning') {
         await fupEvento(f.id, 'reso', `Spedizione di reso ${d.reference || ''} — ${descrizioneSpedirePro(d.status)}`, null).catch(() => {});
+
+      } else if (codice === 'R') {
+        // Rimborsata e annullata: la spedizione non esiste piu', quindi chiudo il
+        // percorso e annullo le email programmate. Altrimenti il cliente
+        // riceverebbe il "come e' andata la prova" per un campione mai partito.
+        await fupFerma(f.id, `Spedizione annullata e rimborsata su Spedire Pro${d.reference ? ' (' + d.reference + ')' : ''}`, 'Spedire Pro');
+        console.log(`[SPEDIREPRO] spedizione ${d.reference || d.order} annullata: monitoraggio chiuso per ${f.cliente_nome}`);
+
+      } else if (codice === 'K') {
+        // Rientrata al mittente: il campione torna indietro, i seguiti non hanno senso
+        await fupFerma(f.id, 'Spedizione rientrata al mittente', 'Spedire Pro');
+        console.log(`[SPEDIREPRO] ${f.cliente_nome}: pacco rientrato, monitoraggio chiuso`);
+
       } else if (stato) {
         await fupAggiornaStato(String(f.id), stato, descrizioneSpedirePro(d.status));
       }
