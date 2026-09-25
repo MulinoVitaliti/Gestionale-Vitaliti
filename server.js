@@ -1319,6 +1319,44 @@ app.post('/api/whatsapp/start-chat', async (req, res) => {
 });
 
 // Diagnostica della ricerca aziende: dice se la chiave funziona e, se no, perche'
+// Ricava CAP e provincia da citta' e indirizzo, usando Google Places.
+// Serve al modulo campionatura: il corriere li vuole per forza.
+app.get('/api/geo/cap', async (req, res) => {
+  const q = String(req.query.q || '').trim();
+  const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+  if (!q) return res.json({ trovato: false });
+  if (!apiKey) return res.json({ trovato: false, motivo: 'chiave Google non impostata' });
+  try {
+    const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Goog-Api-Key': apiKey,
+                 'X-Goog-FieldMask': 'places.formattedAddress,places.addressComponents,places.displayName' },
+      body: JSON.stringify({ textQuery: q, languageCode: 'it', regionCode: 'IT', maxResultCount: 1 })
+    });
+    const d = await r.json();
+    const p = d.places?.[0];
+    if (!p) return res.json({ trovato: false });
+
+    const comp = p.addressComponents || [];
+    const prendi = tipo => comp.find(c => (c.types || []).includes(tipo));
+    const cap = prendi('postal_code')?.longText || null;
+    // in Italia la provincia e' administrative_area_level_2, con sigla in shortText
+    const prov = prendi('administrative_area_level_2');
+    const citta = prendi('locality')?.longText || prendi('administrative_area_level_3')?.longText || null;
+    const via = prendi('route')?.longText;
+    const civico = prendi('street_number')?.longText;
+
+    res.json({
+      trovato: !!(cap || prov),
+      cap,
+      provincia: prov ? (prov.shortText || prov.longText || '').toUpperCase().slice(0, 2) : null,
+      citta,
+      indirizzo: via ? (via + (civico ? ' ' + civico : '')) : null,
+      completo: p.formattedAddress || null
+    });
+  } catch (e) { res.json({ trovato: false, errore: e.message }); }
+});
+
 app.get('/api/places/diagnostica', async (req, res) => {
   const apiKey = process.env.GOOGLE_PLACES_API_KEY;
   if (!apiKey) return res.json({ chiave_presente: false, nota: 'GOOGLE_PLACES_API_KEY non impostata su Railway' });
