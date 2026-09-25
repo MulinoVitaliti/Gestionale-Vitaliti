@@ -242,12 +242,19 @@ function renderPipeline(){
       const nAtt = (state.attivita||[]).filter(a=>!a.completata&&(a.lead_id===l.id||a.collegata_id===l.id)).length;
       const attBadge = nAtt>0 ? `<span style="background:var(--brand);color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;margin-left:6px">${nAtt}</span>` : '';
       const etichette = Array.isArray(l.etichette) ? l.etichette : [];
-      const etHtml = etichette.length ? `<div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:5px">` +
-        etichette.map(n => {
-          const e = (window._etichette||[]).find(x => x.nome === n);
-          const col = e ? e.colore : '#973D37';
-          return `<span style="background:${col};color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:4px">${n}</span>`;
-        }).join('') + `</div>` : '';
+      const chip = etichette.map(n => {
+        const e = (window._etichette||[]).find(x => x.nome === n);
+        const col = e ? e.colore : '#973D37';
+        return `<span style="background:${col};color:#fff;font-size:9.5px;font-weight:700;letter-spacing:.3px;padding:2px 7px;border-radius:4px">${n}</span>`;
+      }).join('');
+      // riga in alto: etichette a sinistra, cestino a destra staccato dagli altri
+      const etHtml = `<div style="display:flex;align-items:flex-start;gap:6px;margin-bottom:5px;min-height:18px">
+          <div style="flex:1;display:flex;gap:4px;flex-wrap:wrap">${chip}</div>
+          <button onclick="event.stopPropagation();eliminaLead(${l.id})" title="Elimina"
+            style="background:none;border:0;color:var(--text-3);cursor:pointer;padding:0 2px;line-height:1;font-size:14px"
+            onmouseover="this.style.color='var(--red)'" onmouseout="this.style.color='var(--text-3)'">
+            <i class="ti ti-trash"></i></button>
+        </div>`;
       c.innerHTML=`
         ${etHtml}
         ${tagHtml}
@@ -258,7 +265,6 @@ function renderPipeline(){
           <div style="display:flex;gap:4px">
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriPreventivo(${l.id})" title="Preventivo"><i class="ti ti-file-text"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriCampionatura(${l.id})" title="Manda un campione"><i class="ti ti-package"></i></button>
-            <button class="btn btn-sm btn-danger" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();eliminaLead(${l.id})" title="Elimina"><i class="ti ti-trash"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();editLead(${l.id})" title="Modifica"><i class="ti ti-pencil"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px;background:var(--green);color:#fff" onclick="event.stopPropagation();convertiLead(${l.id})" title="Diventa cliente"><i class="ti ti-user-check"></i></button>
           </div>
