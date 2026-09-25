@@ -307,6 +307,10 @@ async function initDB() {
       CREATE UNIQUE INDEX IF NOT EXISTS idx_bandi_chiave ON bandi_visti (chiave) WHERE chiave IS NOT NULL;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS tipo_spedizione TEXT DEFAULT 'bancale';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS corriere_id TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS riferimento TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS etichetta_url TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS tracking_url TEXT;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS panel_url TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
@@ -10278,9 +10282,16 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
 // Etichetta da stampare e attaccare al pacco
 app.get('/api/spedirepro/etichetta/:tracking', async (req, res) => {
   try {
+    // se il webhook ha gia' portato il link, uso quello
+    const salvato = await pool.query(
+      `SELECT etichetta_url FROM followup_spedizioni
+       WHERE corriere_id=$1 OR tracking=$1 OR riferimento=$1 ORDER BY id DESC LIMIT 1`,
+      [req.params.tracking]);
+    if (salvato.rows[0]?.etichetta_url) return res.redirect(salvato.rows[0].etichetta_url);
+
     const r = await spedireProChiamata('/v1/get-label', { order: req.params.tracking });
     if (!r.ok) return res.status(400).send(messaggioErrore(r));
-    const url = r.dati?.label || r.dati?.url || r.dati?.pdf;
+    const url = r.dati?.label?.link || r.dati?.label || r.dati?.url || r.dati?.pdf;
     if (url) return res.redirect(url);
     res.json(r.dati);
   } catch (e) { res.status(500).send(e.message); }
@@ -10378,55 +10389,66 @@ app.get('/api/spedirepro/stato', async (req, res) => {
 
 app.all('/api/spedirepro/webhook', async (req, res) => {
   try {
-    const dati = { ...(req.body || {}), ...(req.query || {}) };
-    console.log('[SPEDIREPRO] evento ricevuto:', JSON.stringify(dati).slice(0, 1200));
+    const d = { ...(req.body || {}), ...(req.query || {}) };
+    console.log('[SPEDIREPRO] evento:', JSON.stringify(d).slice(0, 800));
 
-    // registro sempre il messaggio integrale, anche se non lo so interpretare
+    // registro sempre il messaggio integrale
     await pool.query(
       `INSERT INTO crm4_chiamate (telefono, nome, esito, campagna, note, payload)
        VALUES (NULL,$1,$2,'spedirepro',$3,$4)`,
-      [campo(dati, 'destinatario', 'recipient', 'ragione_sociale', 'nome') || 'spedizione',
-       campo(dati, 'stato', 'status', 'evento', 'event', 'descrizione') || 'evento',
-       'Evento Spedire Pro', JSON.stringify(dati)]).catch(() => {});
+      [d.merchant_reference || d.reference || 'spedizione',
+       descrizioneSpedirePro(d.status) || d.update_type || 'evento',
+       'Evento Spedire Pro', JSON.stringify(d)]).catch(() => {});
 
-    const tracking = campo(dati, 'tracking', 'tracking_number', 'ldv', 'lettera_di_vettura', 'codice_spedizione', 'shipment_id', 'id_spedizione', 'reference');
-    const codice = campo(dati, 'status', 'stato', 'state', 'shipment_status', 'evento', 'event');
-    const eccezione = campo(dati, 'exception_code', 'exceptioncode', 'codice_eccezione');
-    const stato = statoDaSpedirePro(codice, eccezione);
-    const statoTesto = descrizioneSpedirePro(codice) + (eccezione ? ` (dettaglio ${eccezione})` : '');
-    const destinatario = campo(dati, 'destinatario', 'recipient_name', 'ragione_sociale', 'nome', 'company');
-    const email = campo(dati, 'email', 'recipient_email', 'mail');
+    // l'esito del ritiro non riguarda una spedizione da seguire
+    if (d.update_type === 'pickup') {
+      console.log(`[SPEDIREPRO] esito ritiro: ${d.status || ''} ${d.message || ''}`);
+      return res.json({ ok: true, tipo: 'pickup' });
+    }
 
-    if (!tracking && !destinatario) return res.json({ ok: true, nota: 'evento registrato, nessun riferimento riconosciuto' });
+    const stato = statoDaSpedirePro(d.status, d.exception_status);
 
-    // cerco la spedizione gia' seguita
+    // cerco la spedizione: prima dal nostro riferimento, poi dagli altri codici
     let f = null;
-    if (tracking) {
+    const codici = [d.merchant_reference, d.order, d.reference, d.tracking].filter(Boolean);
+    for (const c of codici) {
       const r = await pool.query(
         `SELECT id, cliente_nome, stato_consegna FROM followup_spedizioni
-         WHERE tracking = $1 OR corriere_id = $1 ORDER BY id DESC LIMIT 1`, [tracking]);
-      f = r.rows[0] || null;
+         WHERE corriere_id=$1 OR tracking=$1 OR riferimento=$1 ORDER BY id DESC LIMIT 1`, [String(c)]);
+      if (r.rows.length) { f = r.rows[0]; break; }
     }
 
-    // se non esiste, la creo come CAMPIONATURA: Spedire Pro serve per i campioni
-    if (!f && destinatario) {
+    // se non la conosco la creo come campionatura
+    if (!f) {
+      const nome = d.receiver_name || d.receiver?.name || d.merchant_reference || 'Destinatario';
       const id = await fupCreaDaDDT({
-        cliente_nome: destinatario,
-        ddt_data: new Date(),
-        tracking: tracking || null,
-        corriere: 'Spedire Pro',
-        corriere_id: tracking || null,
-        email: email || null,
+        cliente_nome: nome, ddt_data: new Date(),
+        tracking: d.tracking || d.order || null,
+        corriere: d.courier_name || 'Spedire Pro',
+        corriere_id: d.order || d.merchant_reference || null,
         tipo_spedizione: 'campionatura'
       });
-      if (id) {
-        console.log(`[SPEDIREPRO] campionatura seguita per ${destinatario} (tracking ${tracking || '-'})`);
-        f = { id, cliente_nome: destinatario, stato_consegna: 'in_viaggio' };
-      }
+      if (id) f = { id, cliente_nome: nome };
+      console.log(`[SPEDIREPRO] nuova campionatura seguita: ${nome}`);
     }
 
-    if (f && stato) await fupAggiornaStato(tracking || String(f.id), stato, statoTesto);
-    res.json({ ok: true, seguita: !!f, stato_riconosciuto: stato || null });
+    // aggiorno i riferimenti: etichetta, tracciamento e link al pannello
+    if (f) {
+      await pool.query(
+        `UPDATE followup_spedizioni
+         SET tracking = COALESCE($1, tracking),
+             riferimento = COALESCE($2, riferimento),
+             etichetta_url = COALESCE($3, etichetta_url),
+             tracking_url = COALESCE($4, tracking_url),
+             panel_url = COALESCE($5, panel_url),
+             updated_at = NOW()
+         WHERE id = $6`,
+        [d.tracking || null, d.reference || null,
+         d.label?.link || null, d.tracking_url || null, d.panel_url || null, f.id]);
+      if (stato) await fupAggiornaStato(String(f.id), stato, descrizioneSpedirePro(d.status));
+    }
+
+    res.json({ ok: true, seguita: !!f, stato: stato || null });
   } catch (e) {
     console.error('[SPEDIREPRO]', e.message);
     res.json({ ok: false, errore: e.message });
