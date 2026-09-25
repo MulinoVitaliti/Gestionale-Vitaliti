@@ -284,6 +284,7 @@ async function initDB() {
       -- Memoria persistente di Steven
       ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS riferimento_doc TEXT;
       ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS materia_prima BOOLEAN DEFAULT FALSE;
+      ALTER TABLE IF EXISTS preventivi ADD COLUMN IF NOT EXISTS aliquota_iva INTEGER DEFAULT 4;
       ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
@@ -385,6 +386,7 @@ async function initDB() {
         totale NUMERIC,
         peso_kg NUMERIC,
         validita_giorni INTEGER DEFAULT 30,
+        aliquota_iva INTEGER DEFAULT 4,
         note TEXT,
         stato TEXT DEFAULT 'bozza',
         inviato_il TIMESTAMP,
@@ -8410,9 +8412,29 @@ app.get('/api/listini/suggerisci', async (req, res) => {
 
 app.get('/api/preventivi', async (req, res) => {
   try {
-    const r = await pool.query(
-      `SELECT * FROM preventivi ORDER BY id DESC LIMIT 100`);
+    const r = req.query.lead_id
+      ? await pool.query(`SELECT * FROM preventivi WHERE lead_id=$1 ORDER BY id DESC`, [req.query.lead_id])
+      : await pool.query(`SELECT * FROM preventivi ORDER BY id DESC LIMIT 100`);
     res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Modifica di un preventivo gia' creato: il numero resta lo stesso
+app.put('/api/preventivi/:id', async (req, res) => {
+  const d = req.body || {};
+  const righe = Array.isArray(d.righe) ? d.righe : [];
+  if (!righe.length) return res.json({ error: 'Il preventivo non ha righe' });
+  try {
+    const totale = righe.reduce((s, r) => s + (Number(r.kg) || 0) * (Number(r.prezzo) || 0), 0);
+    const peso = righe.reduce((s, r) => s + (Number(r.kg) || 0), 0);
+    const r = await pool.query(
+      `UPDATE preventivi SET righe=$1, totale=$2, peso_kg=$3, validita_giorni=$4, note=$5,
+              email=COALESCE($6,email), aliquota_iva=$7, stato='bozza'
+       WHERE id=$8 RETURNING *`,
+      [JSON.stringify(righe), totale, peso, Number(d.validita_giorni) || 30, d.note || null,
+       d.email || null, Number(d.aliquota_iva) || 4, req.params.id]);
+    if (!r.rows.length) return res.json({ error: 'Preventivo non trovato' });
+    res.json({ ok: true, preventivo: r.rows[0] });
   } catch (e) { res.json({ error: e.message }); }
 });
 
@@ -8430,11 +8452,11 @@ app.post('/api/preventivi', async (req, res) => {
     const peso = righe.reduce((s, r) => s + (Number(r.kg) || 0), 0);
     const r = await pool.query(
       `INSERT INTO preventivi (numero, lead_id, cliente_id, intestazione, referente, indirizzo, citta,
-                               piva, email, righe, totale, peso_kg, validita_giorni, note)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+                               piva, email, righe, totale, peso_kg, validita_giorni, note, aliquota_iva)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
       [numero, d.lead_id || null, d.cliente_id || null, d.intestazione, d.referente || null,
        d.indirizzo || null, d.citta || null, d.piva || null, d.email || null,
-       JSON.stringify(righe), totale, peso, Number(d.validita_giorni) || 30, d.note || null]);
+       JSON.stringify(righe), totale, peso, Number(d.validita_giorni) || 30, d.note || null, Number(d.aliquota_iva) || 4]);
     res.json({ ok: true, preventivo: r.rows[0] });
   } catch (e) { res.json({ error: e.message }); }
 });
@@ -8492,18 +8514,29 @@ async function costruisciPdfPreventivo(p) {
     ty += 24;
   });
 
-  // totale
-  doc.rect(50, ty, 495, 28).fill(CREMA);
-  doc.fillColor(TERRA).fontSize(11).font('Helvetica-Bold');
-  doc.text('TOTALE (IVA esclusa)', 60, ty + 9);
-  doc.text(euro(p.totale), 440, ty + 9, { width: 95, align: 'right' });
-  ty += 42;
+  // imponibile, IVA e totale
+  const aliquota = Number(p.aliquota_iva ?? 4);
+  const imponibile = Number(p.totale || 0);
+  const iva = imponibile * aliquota / 100;
+
+  doc.fillColor('#444').fontSize(9.5).font('Helvetica');
+  doc.text('Imponibile', 300, ty + 6, { width: 135, align: 'right' });
+  doc.text(euro(imponibile), 440, ty + 6, { width: 95, align: 'right' });
+  ty += 18;
+  doc.text(`IVA ${aliquota}%`, 300, ty + 6, { width: 135, align: 'right' });
+  doc.text(euro(iva), 440, ty + 6, { width: 95, align: 'right' });
+  ty += 22;
+
+  doc.rect(50, ty, 495, 30).fill(CREMA);
+  doc.fillColor(TERRA).fontSize(12).font('Helvetica-Bold');
+  doc.text('TOTALE IVA INCLUSA', 60, ty + 10);
+  doc.text(euro(imponibile + iva), 440, ty + 10, { width: 95, align: 'right' });
+  ty += 44;
 
   doc.fillColor('#444').fontSize(9).font('Helvetica');
   doc.text(`Quantità complessiva: ${Number(p.peso_kg || 0).toLocaleString('it-IT')} kg`, 50, ty); ty += 14;
-  doc.text(`Prezzi in €/kg, IVA esclusa. Trasporto compreso.`, 50, ty); ty += 14;
-  doc.text(`Preventivo valido ${p.validita_giorni} giorni dalla data di emissione.`, 50, ty); ty += 14;
-  doc.text(`Consegna a partire da 5 giorni lavorativi dall'ordine.`, 50, ty); ty += 20;
+  doc.text(`Prezzi in €/kg al netto di IVA. Trasporto compreso.`, 50, ty); ty += 14;
+  doc.text(`Preventivo valido ${p.validita_giorni} giorni dalla data di emissione.`, 50, ty); ty += 20;
 
   if (p.note) {
     doc.fontSize(9).font('Helvetica-Bold').fillColor('#2A2A2A').text('Note', 50, ty); ty += 13;
