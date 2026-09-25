@@ -369,6 +369,28 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Preventivi generati dalla pipeline
+      CREATE TABLE IF NOT EXISTS preventivi (
+        id SERIAL PRIMARY KEY,
+        numero TEXT,
+        lead_id INTEGER,
+        cliente_id INTEGER,
+        intestazione TEXT NOT NULL,
+        referente TEXT,
+        indirizzo TEXT,
+        citta TEXT,
+        piva TEXT,
+        email TEXT,
+        righe JSONB DEFAULT '[]',
+        totale NUMERIC,
+        peso_kg NUMERIC,
+        validita_giorni INTEGER DEFAULT 30,
+        note TEXT,
+        stato TEXT DEFAULT 'bozza',
+        inviato_il TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Prodotti di interesse proposti nei moduli lead (modificabili dall'utente)
       CREATE TABLE IF NOT EXISTS prodotti_interesse (
         id SERIAL PRIMARY KEY,
@@ -8360,6 +8382,209 @@ app.post('/api/leads/:id/converti', async (req, res) => {
     res.json({ ok: true, cliente });
   } catch (e) {
     console.error('[CONVERSIONE]', e.message);
+    res.json({ error: e.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// PREVENTIVI — costruiti dalla pipeline, con i prezzi presi dai listini
+// ══════════════════════════════════════════════════════════════════════════
+
+// Prezzo suggerito per una localita' e una quantita': serve al modulo preventivo
+app.get('/api/listini/suggerisci', async (req, res) => {
+  try {
+    const citta = String(req.query.localita || '').trim();
+    const kg = Number(req.query.kg) || 0;
+    if (!citta) return res.json({ trovato: false });
+    const r = await pool.query(
+      `SELECT localita, zona, listino, minimo FROM listini_prezzi
+       WHERE localita ILIKE $1 ORDER BY length(localita) LIMIT 1`, ['%' + citta + '%']);
+    if (!r.rows.length) return res.json({ trovato: false, motivo: 'localita non a listino' });
+    const i = scaglionePerKg(kg || 120);
+    const li = Number(r.rows[0].listino[i]);
+    const mi = r.rows[0].minimo ? Number(r.rows[0].minimo[i]) : null;
+    res.json({ trovato: true, localita: r.rows[0].localita, zona: r.rows[0].zona,
+               scaglione: SCAGLIONI_KG[i], listino: li, minimo: mi });
+  } catch (e) { res.json({ trovato: false, errore: e.message }); }
+});
+
+app.get('/api/preventivi', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM preventivi ORDER BY id DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/preventivi', async (req, res) => {
+  const d = req.body || {};
+  if (!d.intestazione) return res.json({ error: 'Manca il nome del cliente' });
+  const righe = Array.isArray(d.righe) ? d.righe : [];
+  if (!righe.length) return res.json({ error: 'Il preventivo non ha righe' });
+  try {
+    const anno = new Date().getFullYear();
+    const c = await pool.query(
+      `SELECT COUNT(*) n FROM preventivi WHERE created_at >= date_trunc('year', CURRENT_DATE)`);
+    const numero = `${Number(c.rows[0].n) + 1}/${anno}`;
+    const totale = righe.reduce((s, r) => s + (Number(r.kg) || 0) * (Number(r.prezzo) || 0), 0);
+    const peso = righe.reduce((s, r) => s + (Number(r.kg) || 0), 0);
+    const r = await pool.query(
+      `INSERT INTO preventivi (numero, lead_id, cliente_id, intestazione, referente, indirizzo, citta,
+                               piva, email, righe, totale, peso_kg, validita_giorni, note)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING *`,
+      [numero, d.lead_id || null, d.cliente_id || null, d.intestazione, d.referente || null,
+       d.indirizzo || null, d.citta || null, d.piva || null, d.email || null,
+       JSON.stringify(righe), totale, peso, Number(d.validita_giorni) || 30, d.note || null]);
+    res.json({ ok: true, preventivo: r.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Costruisce il PDF del preventivo
+async function costruisciPdfPreventivo(p) {
+  const PDFDocument = require('pdfkit');
+  const doc = new PDFDocument({ size: 'A4', margin: 50 });
+  const pezzi = [];
+  doc.on('data', d => pezzi.push(d));
+  const fine = new Promise(ok => doc.on('end', () => ok(Buffer.concat(pezzi))));
+
+  const TERRA = '#973D37', GRIGIO = '#6B6B6B', CREMA = '#EEE8DA';
+  const euro = n => '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+  // intestazione
+  doc.fillColor(TERRA).fontSize(20).font('Helvetica-Bold').text('MULINO VITALITI', 50, 50);
+  doc.fillColor(GRIGIO).fontSize(9).font('Helvetica')
+     .text('Via I Retta Levante 134 — 95032 Belpasso (CT)', 50, 74)
+     .text('P.IVA 03236980870 — tel. 389 6066832', 50, 86);
+  doc.fillColor(TERRA).fontSize(15).font('Helvetica-Bold')
+     .text(`PREVENTIVO n. ${p.numero}`, 50, 120);
+  doc.fillColor(GRIGIO).fontSize(9).font('Helvetica')
+     .text(`del ${new Date(p.created_at).toLocaleDateString('it-IT')}`, 50, 140);
+
+  // destinatario
+  doc.roundedRect(50, 165, 495, p.piva ? 72 : 60, 5).fill(CREMA);
+  doc.fillColor('#2A2A2A').fontSize(8).font('Helvetica').text('SPETTABILE', 62, 176);
+  doc.fontSize(12).font('Helvetica-Bold').text(p.intestazione, 62, 188);
+  let y = 204;
+  doc.fontSize(9).font('Helvetica').fillColor('#444');
+  if (p.referente) { doc.text(`Alla cortese attenzione di ${p.referente}`, 62, y); y += 12; }
+  if (p.indirizzo || p.citta) { doc.text([p.indirizzo, p.citta].filter(Boolean).join(' — '), 62, y); y += 12; }
+  if (p.piva) doc.text(`P.IVA ${p.piva}`, 62, y);
+
+  // tabella
+  let ty = p.piva ? 260 : 248;
+  doc.rect(50, ty, 495, 22).fill(TERRA);
+  doc.fillColor('#fff').fontSize(9).font('Helvetica-Bold');
+  doc.text('PRODOTTO', 60, ty + 7);
+  doc.text('QUANTITÀ', 300, ty + 7, { width: 70, align: 'right' });
+  doc.text('€/KG', 375, ty + 7, { width: 60, align: 'right' });
+  doc.text('IMPORTO', 440, ty + 7, { width: 95, align: 'right' });
+  ty += 22;
+
+  const righe = Array.isArray(p.righe) ? p.righe : JSON.parse(p.righe || '[]');
+  righe.forEach((r, i) => {
+    const imp = (Number(r.kg) || 0) * (Number(r.prezzo) || 0);
+    if (i % 2) doc.rect(50, ty, 495, 24).fill('#FAF8F4');
+    doc.fillColor('#2A2A2A').fontSize(9.5).font('Helvetica');
+    doc.text(String(r.prodotto || ''), 60, ty + 7, { width: 230 });
+    doc.text(`${Number(r.kg || 0).toLocaleString('it-IT')} kg`, 300, ty + 7, { width: 70, align: 'right' });
+    doc.text(Number(r.prezzo || 0).toFixed(2), 375, ty + 7, { width: 60, align: 'right' });
+    doc.font('Helvetica-Bold').text(euro(imp), 440, ty + 7, { width: 95, align: 'right' });
+    ty += 24;
+  });
+
+  // totale
+  doc.rect(50, ty, 495, 28).fill(CREMA);
+  doc.fillColor(TERRA).fontSize(11).font('Helvetica-Bold');
+  doc.text('TOTALE (IVA esclusa)', 60, ty + 9);
+  doc.text(euro(p.totale), 440, ty + 9, { width: 95, align: 'right' });
+  ty += 42;
+
+  doc.fillColor('#444').fontSize(9).font('Helvetica');
+  doc.text(`Quantità complessiva: ${Number(p.peso_kg || 0).toLocaleString('it-IT')} kg`, 50, ty); ty += 14;
+  doc.text(`Prezzi in €/kg, IVA esclusa. Trasporto compreso.`, 50, ty); ty += 14;
+  doc.text(`Preventivo valido ${p.validita_giorni} giorni dalla data di emissione.`, 50, ty); ty += 14;
+  doc.text(`Consegna a partire da 5 giorni lavorativi dall'ordine.`, 50, ty); ty += 20;
+
+  if (p.note) {
+    doc.fontSize(9).font('Helvetica-Bold').fillColor('#2A2A2A').text('Note', 50, ty); ty += 13;
+    doc.font('Helvetica').fillColor('#444').text(String(p.note), 50, ty, { width: 495 });
+  }
+
+  doc.fontSize(8.5).fillColor(GRIGIO)
+     .text('Mulino Vitaliti — grano duro siciliano macinato a Belpasso dal 1930', 50, 770, { width: 495, align: 'center' });
+
+  doc.end();
+  return fine;
+}
+
+app.get('/api/preventivi/:id/pdf', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM preventivi WHERE id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.status(404).send('Preventivo non trovato');
+    const pdf = await costruisciPdfPreventivo(r.rows[0]);
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader('Content-Disposition',
+      `inline; filename="Preventivo_${String(r.rows[0].numero).replace('/', '-')}.pdf"`);
+    res.send(pdf);
+  } catch (e) {
+    console.error('[PREVENTIVO pdf]', e.message);
+    res.status(500).send('Errore nella creazione del PDF: ' + e.message);
+  }
+});
+
+// Invia il preventivo al cliente, con il PDF in allegato
+app.post('/api/preventivi/:id/invia', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM preventivi WHERE id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.json({ error: 'Preventivo non trovato' });
+    const p = r.rows[0];
+    const dest = String(req.body?.email || p.email || '').trim();
+    if (!dest.includes('@')) return res.json({ error: 'Manca l\'indirizzo email del cliente' });
+
+    const pdf = await costruisciPdfPreventivo(p);
+    const nomeFile = `Preventivo_${String(p.numero).replace('/', '-')}.pdf`;
+
+    const usaDominio = !!gmailDominioTokens;
+    const client = usaDominio ? oauth2ClientDominio : oauth2Client;
+    const tokens = usaDominio ? gmailDominioTokens : gmailTokens;
+    if (!tokens) return res.json({ error: 'Nessun account email collegato' });
+    client.setCredentials(tokens);
+    const gmail = google.gmail({ version: 'v1', auth: client });
+
+    const corpo = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">
+<p>Gentile <strong>${p.intestazione}</strong>,</p>
+<p>in allegato trova il preventivo n. ${p.numero} come concordato.</p>
+<p>Resto a disposizione per qualsiasi chiarimento.</p>
+<p>Cordiali saluti,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br>
+<em>Noi la maciniamo, tu la impasti!</em></p></div>`;
+
+    const conf = '=_MulinoVitaliti_' + Date.now();
+    const parti = [
+      `To: ${dest}`,
+      usaDominio ? `From: "Mulino Vitaliti" <${MITTENTE_DOMINIO}>` : '',
+      `Subject: ${encodeEmailSubject('Preventivo n. ' + p.numero + ' — Mulino Vitaliti')}`,
+      'MIME-Version: 1.0',
+      `Content-Type: multipart/mixed; boundary="${conf}"`,
+      '', `--${conf}`,
+      'Content-Type: text/html; charset=utf-8', '', corpo,
+      '', `--${conf}`,
+      'Content-Type: application/pdf',
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${nomeFile}"`, '',
+      pdf.toString('base64'),
+      '', `--${conf}--`
+    ].filter(x => x !== '').join('\r\n');
+
+    const raw = Buffer.from(parti).toString('base64')
+      .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+    await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
+
+    await pool.query(`UPDATE preventivi SET stato='inviato', inviato_il=NOW(), email=$1 WHERE id=$2`,
+      [dest, p.id]);
+    console.log(`[PREVENTIVO] n.${p.numero} inviato a ${dest}`);
+    res.json({ ok: true, destinatario: dest });
+  } catch (e) {
+    console.error('[PREVENTIVO invio]', e.message);
     res.json({ error: e.message });
   }
 });
