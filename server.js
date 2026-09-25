@@ -285,6 +285,9 @@ async function initDB() {
       ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS riferimento_doc TEXT;
       ALTER TABLE IF EXISTS movimenti ADD COLUMN IF NOT EXISTS materia_prima BOOLEAN DEFAULT FALSE;
       ALTER TABLE IF EXISTS preventivi ADD COLUMN IF NOT EXISTS aliquota_iva INTEGER DEFAULT 4;
+      ALTER TABLE IF EXISTS preventivi ADD COLUMN IF NOT EXISTS cf TEXT;
+      ALTER TABLE IF EXISTS preventivi ADD COLUMN IF NOT EXISTS fic_id INTEGER;
+      ALTER TABLE IF EXISTS preventivi ADD COLUMN IF NOT EXISTS fic_numero TEXT;
       ALTER TABLE IF EXISTS portale_accessi ADD COLUMN IF NOT EXISTS referente TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS tel2 TEXT;
       ALTER TABLE IF EXISTS leads ADD COLUMN IF NOT EXISTS indirizzo TEXT;
@@ -381,6 +384,7 @@ async function initDB() {
         indirizzo TEXT,
         citta TEXT,
         piva TEXT,
+        cf TEXT,
         email TEXT,
         righe JSONB DEFAULT '[]',
         totale NUMERIC,
@@ -8452,10 +8456,10 @@ app.post('/api/preventivi', async (req, res) => {
     const peso = righe.reduce((s, r) => s + (Number(r.kg) || 0), 0);
     const r = await pool.query(
       `INSERT INTO preventivi (numero, lead_id, cliente_id, intestazione, referente, indirizzo, citta,
-                               piva, email, righe, totale, peso_kg, validita_giorni, note, aliquota_iva)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15) RETURNING *`,
+                               piva, cf, email, righe, totale, peso_kg, validita_giorni, note, aliquota_iva)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16) RETURNING *`,
       [numero, d.lead_id || null, d.cliente_id || null, d.intestazione, d.referente || null,
-       d.indirizzo || null, d.citta || null, d.piva || null, d.email || null,
+       d.indirizzo || null, d.citta || null, d.piva || null, d.cf || null, d.email || null,
        JSON.stringify(righe), totale, peso, Number(d.validita_giorni) || 30, d.note || null, Number(d.aliquota_iva) || 4]);
     res.json({ ok: true, preventivo: r.rows[0] });
   } catch (e) { res.json({ error: e.message }); }
@@ -8657,31 +8661,59 @@ app.post('/api/preventivi/:id/invia', async (req, res) => {
     client.setCredentials(tokens);
     const gmail = google.gmail({ version: 'v1', auth: client });
 
+    let righe = [];
+    try { righe = Array.isArray(p.righe) ? p.righe : JSON.parse(p.righe || '[]'); } catch (e) {}
+    const aliq = Number(p.aliquota_iva ?? 4);
+    const tot = Number(p.totale || 0) * (1 + aliq / 100);
+    const eur = n => '€ ' + Number(n || 0).toLocaleString('it-IT', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
     const corpo = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.6;color:#222">
 <p>Gentile <strong>${p.intestazione}</strong>,</p>
-<p>in allegato trova il preventivo n. ${p.numero} come concordato.</p>
-<p>Resto a disposizione per qualsiasi chiarimento.</p>
-<p>Cordiali saluti,<br><strong>Mulino Vitaliti</strong> — Belpasso (CT)<br>
-<em>Noi la maciniamo, tu la impasti!</em></p></div>`;
+<p>come concordato le inviamo in allegato il preventivo <strong>n. ${p.numero}</strong> per le nostre farine.</p>
+<table style="border-collapse:collapse;margin:16px 0;font-size:13px">
+${righe.map(r => `<tr>
+  <td style="padding:4px 14px 4px 0;color:#444">${r.prodotto}</td>
+  <td style="padding:4px 14px 4px 0;color:#444;white-space:nowrap">${Number(r.kg).toLocaleString('it-IT')} kg</td>
+  <td style="padding:4px 0;color:#444;white-space:nowrap">${eur(Number(r.kg) * Number(r.prezzo))}</td></tr>`).join('')}
+<tr><td colspan="2" style="padding:9px 14px 0 0;font-weight:700;border-top:1px solid #ddd">Totale IVA ${aliq}% inclusa</td>
+    <td style="padding:9px 0 0;font-weight:700;border-top:1px solid #ddd;white-space:nowrap">${eur(tot)}</td></tr>
+</table>
+<p>Il preventivo è valido <strong>${p.validita_giorni} giorni</strong> dalla data di emissione e comprende il trasporto.</p>
+<p>Restiamo a disposizione per qualsiasi chiarimento: può rispondere a questa email oppure chiamarci al 389 6066832.</p>
+<p style="margin-top:20px">Cordiali saluti,<br>
+<strong>Mulino Vitaliti</strong> — Belpasso (CT)<br>
+<em style="color:#973D37">Noi la maciniamo, tu la impasti!</em></p></div>`;
 
+    // Le righe vuote separano intestazioni e parti del messaggio: vanno lasciate
     const conf = '=_MulinoVitaliti_' + Date.now();
-    const parti = [
-      `To: ${dest}`,
-      usaDominio ? `From: "Mulino Vitaliti" <${MITTENTE_DOMINIO}>` : '',
+    const intestazioni = [`To: ${dest}`];
+    if (usaDominio) {
+      intestazioni.push(`From: "Mulino Vitaliti" <${MITTENTE_DOMINIO}>`);
+      intestazioni.push(`Reply-To: ${MITTENTE_DOMINIO}`);
+    }
+    intestazioni.push(
       `Subject: ${encodeEmailSubject('Preventivo n. ' + p.numero + ' — Mulino Vitaliti')}`,
       'MIME-Version: 1.0',
-      `Content-Type: multipart/mixed; boundary="${conf}"`,
-      '', `--${conf}`,
-      'Content-Type: text/html; charset=utf-8', '', corpo,
-      '', `--${conf}`,
-      'Content-Type: application/pdf',
-      'Content-Transfer-Encoding: base64',
-      `Content-Disposition: attachment; filename="${nomeFile}"`, '',
-      pdf.toString('base64'),
-      '', `--${conf}--`
-    ].filter(x => x !== '').join('\r\n');
+      `Content-Type: multipart/mixed; boundary="${conf}"`);
 
-    const raw = Buffer.from(parti).toString('base64')
+    const messaggio = intestazioni.join('\r\n') + '\r\n\r\n' + [
+      `--${conf}`,
+      'Content-Type: text/html; charset=utf-8',
+      'Content-Transfer-Encoding: 7bit',
+      '',
+      corpo,
+      '',
+      `--${conf}`,
+      'Content-Type: application/pdf; name="' + nomeFile + '"',
+      'Content-Transfer-Encoding: base64',
+      `Content-Disposition: attachment; filename="${nomeFile}"`,
+      '',
+      pdf.toString('base64').replace(/(.{76})/g, '$1\r\n'),
+      '',
+      `--${conf}--`
+    ].join('\r\n');
+
+    const raw = Buffer.from(messaggio).toString('base64')
       .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
     await gmail.users.messages.send({ userId: 'me', requestBody: { raw } });
 
@@ -8691,6 +8723,106 @@ app.post('/api/preventivi/:id/invia', async (req, res) => {
     res.json({ ok: true, destinatario: dest });
   } catch (e) {
     console.error('[PREVENTIVO invio]', e.message);
+    res.json({ error: e.message });
+  }
+});
+
+// ── PREVENTIVO SU FATTURE IN CLOUD ────────────────────────────────────────
+// Si puo' fare solo con la partita IVA o il codice fiscale: senza, FIC non puo'
+// creare il cliente in anagrafica. Il preventivo nel gestionale resta comunque.
+app.post('/api/preventivi/:id/su-fic', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM preventivi WHERE id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.json({ error: 'Preventivo non trovato' });
+    const p = r.rows[0];
+
+    if (!ficTokens || !ficCompanyId) return res.json({ error: 'Fatture in Cloud non e\' collegato' });
+    if (p.fic_id) return res.json({ error: `Questo preventivo e' gia' su Fatture in Cloud (n. ${p.fic_numero})` });
+    if (!p.piva && !p.cf) {
+      return res.json({ error: 'Servono partita IVA o codice fiscale: senza, Fatture in Cloud non puo\' creare il cliente. Il preventivo resta comunque nel gestionale.' });
+    }
+
+    // 1. cerco il cliente su FIC dalla partita IVA, altrimenti lo creo
+    let entityId = null;
+    if (p.piva) {
+      const q = await ficFetch(`/c/${ficCompanyId}/entities/clients?q=${encodeURIComponent('vat_number = \'' + p.piva + '\'')}&per_page=5`);
+      if (q.ok) {
+        const d = await q.json();
+        entityId = d.data?.[0]?.id || null;
+      }
+    }
+    if (!entityId) {
+      const nuovo = await ficFetch(`/c/${ficCompanyId}/entities/clients`, {
+        method: 'POST',
+        body: JSON.stringify({ data: {
+          name: p.intestazione,
+          vat_number: p.piva || undefined,
+          tax_code: p.cf || p.piva || undefined,
+          address_street: p.indirizzo || undefined,
+          address_city: p.citta || undefined,
+          email: p.email || undefined,
+          country: 'Italia'
+        }})
+      });
+      if (!nuovo.ok) {
+        const t = await nuovo.text();
+        return res.json({ error: 'Cliente non creato su Fatture in Cloud: ' + t.slice(0, 200) });
+      }
+      const nd = await nuovo.json();
+      entityId = nd.data?.id;
+      console.log(`[FIC] cliente ${p.intestazione} creato (id ${entityId})`);
+    }
+
+    // 2. creo il preventivo
+    const aliquota = Number(p.aliquota_iva ?? 4);
+    const ivaFic = await ficFetch(`/c/${ficCompanyId}/info/vat_types`);
+    let vatId = 0;
+    if (ivaFic.ok) {
+      const iv = await ivaFic.json();
+      const trovata = (iv.data || []).find(v => Number(v.value) === aliquota);
+      if (trovata) vatId = trovata.id;
+    }
+
+    let righe = [];
+    try { righe = Array.isArray(p.righe) ? p.righe : JSON.parse(p.righe || '[]'); } catch (e) {}
+    const items = righe.map(x => ({
+      name: String(x.prodotto || ''),
+      qty: Number(x.kg) || 0,
+      measure: 'KG',
+      net_price: Number(x.prezzo) || 0,
+      vat: { id: vatId }
+    }));
+
+    const oggi = new Date();
+    const scadenza = new Date(oggi);
+    scadenza.setDate(scadenza.getDate() + (Number(p.validita_giorni) || 30));
+
+    const resp = await ficFetch(`/c/${ficCompanyId}/issued_documents`, {
+      method: 'POST',
+      body: JSON.stringify({ data: {
+        type: 'quote',
+        entity: { id: entityId },
+        date: oggi.toISOString().slice(0, 10),
+        subject: `Preventivo ${p.numero} — valido fino al ${scadenza.toLocaleDateString('it-IT')}`,
+        notes: p.note || '',
+        items_list: items,
+        use_gross_prices: false,
+        e_invoice: false
+      }})
+    });
+    if (!resp.ok) {
+      const t = await resp.text();
+      return res.json({ error: 'Preventivo non creato su Fatture in Cloud: ' + t.slice(0, 250) });
+    }
+    const d = await resp.json();
+    const fid = d.data?.id, fnum = d.data?.number;
+
+    await pool.query(`UPDATE preventivi SET fic_id=$1, fic_numero=$2 WHERE id=$3`,
+      [fid || null, fnum ? String(fnum) : null, p.id]);
+    console.log(`[FIC] preventivo ${p.numero} creato su Fatture in Cloud (n. ${fnum})`);
+    res.json({ ok: true, fic_id: fid, numero: fnum, url: d.data?.url || null });
+  } catch (e) {
+    console.error('[FIC preventivo]', e.message);
     res.json({ error: e.message });
   }
 });
