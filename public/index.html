@@ -2190,6 +2190,50 @@ window.addEventListener('unhandledrejection', function(e) {
     </div>
   </div>
 </div>
+<div class="modal-overlay" id="modal-campionatura">
+  <div class="modal" style="max-width:600px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-package" style="color:var(--gold,#C9A84C)"></i>Manda un campione</div>
+      <button class="btn btn-icon" onclick="closeModal('modal-campionatura')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin-bottom:9px">Destinatario</div>
+      <div class="form-group"><label class="form-label">Ragione sociale *</label><input type="text" id="cp-nome" maxlength="27"><div style="font-size:11px;color:var(--text-3);margin-top:3px">Massimo 27 caratteri: è il limite dell'etichetta.</div></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Referente</label><input type="text" id="cp-referente" maxlength="22"></div>
+        <div class="form-group"><label class="form-label">Telefono *</label><input type="text" id="cp-telefono" placeholder="serve al corriere"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Indirizzo *</label><input type="text" id="cp-indirizzo"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">CAP *</label><input type="text" id="cp-cap" maxlength="5"></div>
+        <div class="form-group"><label class="form-label">Città *</label><input type="text" id="cp-citta"></div>
+        <div class="form-group"><label class="form-label">Prov. *</label><input type="text" id="cp-provincia" maxlength="2" placeholder="CT"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Email</label><input type="text" id="cp-email" placeholder="per gli avvisi di consegna"></div>
+
+      <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.6px;color:var(--text-3);margin:16px 0 9px">Pacco</div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Larghezza cm</label><input type="number" id="cp-width" value="20"></div>
+        <div class="form-group"><label class="form-label">Altezza cm</label><input type="number" id="cp-height" value="25"></div>
+        <div class="form-group"><label class="form-label">Profondità cm</label><input type="number" id="cp-depth" value="35"></div>
+        <div class="form-group"><label class="form-label">Peso kg</label><input type="number" id="cp-weight" value="10" step="0.5"></div>
+      </div>
+      <div class="form-group"><label class="form-label">Contenuto</label><input type="text" id="cp-contenuto" value="Campione semola rimacinata di grano duro"></div>
+      <div class="form-group">
+        <label style="display:flex;align-items:center;gap:8px;font-size:13px;cursor:pointer">
+          <input type="checkbox" id="cp-ritiro"> Richiedi anche il ritiro al mulino
+        </label>
+      </div>
+
+      <div id="cp-quotazione" style="display:none;background:var(--surface-2);border-radius:9px;padding:11px 14px;font-size:13px;margin-bottom:12px"></div>
+      <div id="cp-errore" style="display:none;background:#fdecea;color:#8c2f26;border-radius:8px;padding:10px 12px;font-size:12.5px;margin-bottom:12px"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button class="btn" onclick="quotaCampionatura()" id="cp-btn-quota"><i class="ti ti-calculator"></i>Quanto costa</button>
+        <button class="btn btn-primary" onclick="creaCampionatura()" id="cp-btn-crea"><i class="ti ti-package"></i>Crea spedizione</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div class="modal-overlay" id="modal-preventivo">
   <div class="modal" style="max-width:760px">
     <div class="modal-header">
