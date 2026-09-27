@@ -118,10 +118,18 @@ async function apriChatWhatsapp(telefono, silenzioso){
           style="background:#25D366;border:0;color:#fff;width:42px;height:42px;border-radius:50%;cursor:pointer;font-size:17px">
           <i class="ti ti-send"></i></button>
       </div>`
-    : `<div style="background:#fff8e6;padding:13px 16px;font-size:12.5px;color:#8a6d1a;border-top:1px solid #f0e0b0">
-        <strong>Finestra chiusa.</strong> Sono passate più di 24 ore dall'ultimo messaggio del cliente:
-        WhatsApp non permette di scrivergli liberamente. Puoi chiamarlo, oppure aspettare che risponda lui.
+    : `<div style="background:#fff8e6;padding:13px 16px;border-top:1px solid #f0e0b0">
+        <div style="font-size:12.5px;color:#8a6d1a;margin-bottom:9px">
+          <strong>Conversazione da aprire.</strong> WhatsApp permette di scrivere per primi solo con un
+          messaggio preapprovato. Dopo la risposta del cliente potrai scrivere liberamente per 24 ore.</div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="wa-modello" style="flex:1;min-width:180px;padding:8px 10px;border:1px solid var(--border);border-radius:8px;font-size:13px"></select>
+          <button class="btn btn-sm btn-primary" onclick="inviaModelloWhatsapp()" style="background:#25D366;border-color:#25D366"><i class="ti ti-send"></i>Apri conversazione</button>
+          <a href="#" onclick="apriGestioneModelli();return false" style="font-size:12px;color:var(--text-3)">gestisci modelli</a>
+        </div>
       </div>`}`;
+
+  if(!aperta) caricaModelliWa();
 
   const m = document.getElementById('wa-messaggi');
   if(m) m.scrollTop = m.scrollHeight;
@@ -193,3 +201,65 @@ window.caricaWhatsapp = caricaWhatsapp;
 window.apriChatWhatsapp = apriChatWhatsapp;
 window.inviaWhatsappChat = inviaWhatsappChat;
 window.apriNuovaChatWhatsapp = apriNuovaChatWhatsapp;
+
+
+// ── MODELLI: servono per scrivere a chi non ha ancora risposto ───────────
+let _waModelli = [];
+
+async function caricaModelliWa(){
+  const sel = document.getElementById('wa-modello');
+  if(!sel) return;
+  try{
+    const m = await api.get('/api/whatsapp/modelli');
+    _waModelli = Array.isArray(m) ? m : [];
+  }catch(e){ _waModelli = []; }
+  sel.innerHTML = _waModelli.length
+    ? _waModelli.map(m => `<option value="${m.sid}">${m.nome}${m.descrizione ? ' — ' + m.descrizione : ''}</option>`).join('')
+    : '<option value="">Nessun modello registrato</option>';
+}
+
+async function inviaModelloWhatsapp(){
+  const sel = document.getElementById('wa-modello');
+  const sid = sel?.value;
+  if(!sid) return alert('Devi prima registrare un modello approvato. Clicca "gestisci modelli".');
+  const m = _waModelli.find(x => x.sid === sid);
+
+  const variabili = {};
+  if(m && Number(m.variabili) > 0){
+    for(let i = 1; i <= Number(m.variabili); i++){
+      const v = prompt(`Valore da mettere al posto di {{${i}}} nel messaggio:`);
+      if(v === null) return;
+      variabili[String(i)] = v;
+    }
+  }
+  const r = await api.post('/api/whatsapp/invia-modello', {telefono: _waChat, sid, variabili});
+  if(r.error) return alert(r.error);
+  await caricaWhatsapp();
+  apriChatWhatsapp(_waChat, true);
+}
+
+async function apriGestioneModelli(){
+  const m = await api.get('/api/whatsapp/modelli');
+  const elenco = Array.isArray(m) && m.length
+    ? m.map(x => `• ${x.nome} (${x.sid.slice(0,12)}…)`).join('\n')
+    : '(nessuno)';
+  const nome = prompt(
+    `MODELLI REGISTRATI:\n${elenco}\n\n` +
+    `Per aggiungerne uno: crealo su Twilio, aspetta l'approvazione, poi copia qui il nome che vuoi dargli.\n\n` +
+    `Nome del modello:`);
+  if(!nome) return;
+  const sid = prompt('Codice del modello (comincia con HX, lo trovi su Twilio come "Modello SID"):');
+  if(!sid) return;
+  const vars = prompt('Quante parti variabili ha il messaggio? (0 se il testo è fisso)', '0');
+  const anteprima = prompt('Scrivi qui il testo del messaggio, serve a ricordarti cosa manda:');
+  const r = await api.post('/api/whatsapp/modelli', {
+    nome, sid: sid.trim(), variabili: Number(vars) || 0, anteprima
+  });
+  if(r.error) return alert(r.error);
+  await caricaModelliWa();
+  alert('Modello registrato.');
+}
+
+window.caricaModelliWa = caricaModelliWa;
+window.inviaModelloWhatsapp = inviaModelloWhatsapp;
+window.apriGestioneModelli = apriGestioneModelli;
