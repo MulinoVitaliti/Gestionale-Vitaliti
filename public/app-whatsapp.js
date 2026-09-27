@@ -152,39 +152,51 @@ async function inviaWhatsappChat(){
   finally{ if(btn) btn.disabled = false; }
 }
 
-// Comincia una conversazione scegliendo dalla rubrica
+// Comincia una conversazione: usa la finestra "Nuova chat" del gestionale
 async function apriNuovaChatWhatsapp(){
-  let rubrica = [];
-  try{
-    const r = await api.get('/api/whatsapp/rubrica');
-    rubrica = Array.isArray(r) ? r : [];
-  }catch(e){}
-  const nome = prompt(`Scrivi il nome del cliente o il numero di telefono.\n\n${rubrica.length} contatti con recapito in anagrafica.`);
-  if(!nome) return;
-
-  const cerca = nome.toLowerCase().trim();
-  const trovati = rubrica.filter(c => (c.nome||'').toLowerCase().includes(cerca));
-  let telefono = null;
-
-  if(/^[0-9+\s]{8,}$/.test(nome)) telefono = nome.trim();
-  else if(trovati.length === 1) telefono = trovati[0].telefono;
-  else if(trovati.length > 1){
-    const elenco = trovati.slice(0,10).map((c,i) => `${i+1}. ${c.nome} — ${c.telefono}`).join('\n');
-    const scelta = prompt(`Ho trovato più contatti:\n\n${elenco}\n\nScrivi il numero della riga:`);
-    const i = parseInt(scelta) - 1;
-    if(trovati[i]) telefono = trovati[i].telefono;
-  } else {
-    return alert('Nessun contatto trovato con questo nome. Puoi scrivere direttamente il numero di telefono.');
+  const sel = document.getElementById('wa-nuovo-cliente');
+  if(sel){
+    sel.innerHTML = '<option value="">— Nessuno —</option>';
+    try{
+      const r = await api.get('/api/whatsapp/rubrica');
+      (Array.isArray(r) ? r : []).forEach(c => {
+        const o = document.createElement('option');
+        o.value = c.nome;
+        o.textContent = `${c.nome}${c.citta ? ' — ' + c.citta : ''}`;
+        o.dataset.tel = c.telefono;
+        sel.appendChild(o);
+      });
+    }catch(e){}
   }
-  if(!telefono) return;
+  const n = document.getElementById('wa-nuovo-numero'); if(n) n.value = '';
+  const t = document.getElementById('wa-nuovo-testo'); if(t) t.value = '';
+  openModal('modal-wa-nuova-chat');
+}
 
-  _waChat = telefono.replace(/[^0-9+]/g, '');
-  if(!_waConversazioni.some(c => c.telefono === _waChat)){
-    _waConversazioni.unshift({telefono: _waChat, nome: trovati[0]?.nome || _waChat, finestra_aperta: true});
-    renderListaChat();
+async function inviaNuovaChatWhatsapp(){
+  const numero = (document.getElementById('wa-nuovo-numero')?.value || '').trim();
+  const testo = (document.getElementById('wa-nuovo-testo')?.value || '').trim();
+  if(!numero) return alert('Serve il numero di telefono.');
+  if(!testo) return alert('Scrivi il messaggio.');
+
+  const r = await api.post('/api/whatsapp/invia', {telefono: numero, testo});
+  if(r.error){
+    // fuori dalle 24 ore serve un modello: apro la chat da cui sceglierlo
+    alert(r.error);
+    closeModal('modal-wa-nuova-chat');
+    _waChat = numero.replace(/[^0-9+]/g, '');
+    if(!_waConversazioni.some(c => c.telefono === _waChat)){
+      _waConversazioni.unshift({telefono: _waChat, nome: _waChat, finestra_aperta: false});
+      renderListaChat();
+    }
+    return apriChatWhatsapp(_waChat);
   }
+  closeModal('modal-wa-nuova-chat');
+  await caricaWhatsapp();
+  _waChat = numero.replace(/[^0-9+]/g, '');
   apriChatWhatsapp(_waChat);
 }
+window.inviaNuovaChatWhatsapp = inviaNuovaChatWhatsapp;
 
 async function aggiornaBadgeWhatsapp(){
   const n = _waConversazioni.reduce((s,c) => s + (Number(c.non_letti)||0), 0);
