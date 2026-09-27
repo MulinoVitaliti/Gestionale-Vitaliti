@@ -240,7 +240,8 @@ function showPage(id){
 
   if(id==='email')checkGmailStatus();
   if(id==='fatture'){ initPaginaFatture(); if(typeof aggiornaBadgeDocumenti==='function')aggiornaBadgeDocumenti(); }
-  if(id==='whatsapp'){ loadWaChats(); } else { if(waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
+  if(id==='whatsapp'){ if(typeof caricaWhatsapp==='function') caricaWhatsapp(); }
+  else { if(typeof waPollingInterval!=='undefined' && waPollingInterval){ clearInterval(waPollingInterval); waPollingInterval=null; } }
   if(id==='spedizioni'){ if(typeof aggiornaBadgeFollowup==='function')aggiornaBadgeFollowup(); 
     // La pagina si apre sempre sulla panoramica: pallet o pacchi
     switchSpedizioniTab('hub');
