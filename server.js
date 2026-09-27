@@ -9685,14 +9685,32 @@ app.post('/api/portale/richiedi-codice', async (req, res) => {
     await pool.query(
       `INSERT INTO portale_codici (email, codice, scade_il) VALUES ($1,$2,NOW() + INTERVAL '15 minutes')`,
       [email, codice]);
+    // Prima WhatsApp, se il cliente ha un numero: arriva subito e non finisce in spam
+    let viaWhatsapp = false;
+    const tel = acc.telefono || acc.tel || null;
+    if (tel && process.env.TWILIO_TEMPLATE_CODICE) {
+      try {
+        await whatsappInviaCodice(tel, codice);
+        viaWhatsapp = true;
+      } catch (e) {
+        console.error('[PORTALE] WhatsApp non riuscito, ripiego sull\'email:', e.message);
+      }
+    }
+
+    // L'email parte comunque: e' la rete di sicurezza
     await portaleInviaEmail(email, 'Il suo codice di accesso — Mulino Vitaliti',
       `<div style="font-family:Arial,sans-serif;font-size:14px;line-height:1.6;color:#222">
        <p>Buongiorno,</p>
        <p>il codice per accedere al portale ordini è:</p>
        <p style="font-size:32px;font-weight:700;letter-spacing:6px;color:#973D37">${codice}</p>
        <p>È valido per 15 minuti. Se non ha richiesto lei l'accesso, ignori questo messaggio.</p>
-       <p style="margin-top:20px"><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p></div>`);
-    res.json({ ok: true, stato: 'codice_inviato', messaggio: 'Le abbiamo inviato un codice via email.' });
+       <p style="margin-top:20px"><strong>Mulino Vitaliti</strong> — Belpasso (CT)</p></div>`)
+      .catch(e => console.error('[PORTALE] email codice non inviata:', e.message));
+
+    res.json({ ok: true, stato: 'codice_inviato',
+      messaggio: viaWhatsapp
+        ? 'Le abbiamo inviato il codice su WhatsApp e via email.'
+        : 'Le abbiamo inviato un codice via email.' });
   } catch (e) {
     console.error('[PORTALE codice]', e.message);
     res.json({ error: 'Non riesco a inviare il codice in questo momento. Riprovi tra poco.' });
@@ -10102,12 +10120,63 @@ app.get('/api/portale/assistenza', async (req, res) => {
   } catch (e) { res.json({ error: e.message }); }
 });
 
+// ── CODICE DI ACCESSO VIA WHATSAPP ────────────────────────────────────────
+// Usa il modello approvato da Meta (categoria Autenticazione). Se WhatsApp non
+// e' configurato o il messaggio non parte, si ripiega sull'email: il cliente
+// deve poter entrare comunque.
+async function whatsappInviaCodice(telefono, codice) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const da = process.env.TWILIO_WHATSAPP_NUMBER;
+  const modello = process.env.TWILIO_TEMPLATE_CODICE;
+  if (!sid || !token || !da || !modello) throw new Error('WhatsApp non configurato');
+
+  const num = normalizzaTelefonoWa(telefono);
+  if (!num) throw new Error('Numero di telefono non valido');
+
+  const corpo = new URLSearchParams({
+    To: 'whatsapp:' + num,
+    From: da.startsWith('whatsapp:') ? da : 'whatsapp:' + da,
+    ContentSid: modello,
+    ContentVariables: JSON.stringify({ '1': String(codice) })
+  });
+
+  const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+    method: 'POST',
+    headers: {
+      'Authorization': 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+      'Content-Type': 'application/x-www-form-urlencoded'
+    },
+    body: corpo
+  });
+  const d = await r.json();
+  if (!r.ok) throw new Error(d.message || 'Invio WhatsApp non riuscito');
+  console.log(`[WHATSAPP] codice inviato a ${num} (${d.sid})`);
+  return d.sid;
+}
+
+// I numeri in anagrafica sono scritti in mille modi: qui diventano +39...
+function normalizzaTelefonoWa(t) {
+  let n = String(t || '').replace(/[^0-9+]/g, '');
+  if (!n) return null;
+  if (n.startsWith('00')) n = '+' + n.slice(2);
+  if (!n.startsWith('+')) {
+    n = n.replace(/^0+/, '');
+    n = '+39' + n;          // senza prefisso lo consideriamo italiano
+  }
+  // un cellulare italiano valido ha 12 caratteri contando +39
+  return n.length >= 11 && n.length <= 16 ? n : null;
+}
+
 // Diagnostica del portale: serve a capire perche' un'email non parte
 app.get('/api/portale/diagnostica', async (req, res) => {
   try {
     const dest = await portaleDestinatarioAvvisi();
     const inAttesa = await pool.query(`SELECT COUNT(*) n FROM portale_accessi WHERE stato='in_attesa'`);
     res.json({
+      whatsapp_pronto: !!(process.env.TWILIO_ACCOUNT_SID && process.env.TWILIO_AUTH_TOKEN &&
+                          process.env.TWILIO_WHATSAPP_NUMBER && process.env.TWILIO_TEMPLATE_CODICE),
+      whatsapp_mittente: process.env.TWILIO_WHATSAPP_NUMBER || null,
       gmail_collegato: !!gmailTokens,
       casella_dominio_collegata: !!gmailDominioTokens,
       mittente_usato: gmailDominioTokens ? MITTENTE_DOMINIO : 'account Gmail principale (ripiego)',
