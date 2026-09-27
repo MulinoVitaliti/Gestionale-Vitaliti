@@ -379,6 +379,33 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Conversazioni WhatsApp con i clienti
+      CREATE TABLE IF NOT EXISTS wa_conversazioni (
+        id SERIAL PRIMARY KEY,
+        telefono TEXT UNIQUE NOT NULL,
+        nome TEXT,
+        cliente_id INTEGER,
+        lead_id INTEGER,
+        ultimo_testo TEXT,
+        ultimo_il TIMESTAMP,
+        non_letti INTEGER DEFAULT 0,
+        finestra_scade TIMESTAMP,      -- entro 24h dall'ultimo messaggio del cliente
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
+      CREATE TABLE IF NOT EXISTS wa_messaggi (
+        id SERIAL PRIMARY KEY,
+        telefono TEXT NOT NULL,
+        direzione TEXT NOT NULL,       -- 'in' dal cliente, 'out' da noi
+        testo TEXT,
+        media_url TEXT,
+        sid TEXT,
+        stato TEXT,
+        utente TEXT,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+      CREATE INDEX IF NOT EXISTS idx_wa_msg_tel ON wa_messaggi(telefono, created_at);
+
       -- Preventivi generati dalla pipeline
       CREATE TABLE IF NOT EXISTS preventivi (
         id SERIAL PRIMARY KEY,
@@ -10116,6 +10143,164 @@ app.get('/api/portale/assistenza', async (req, res) => {
     const r = await pool.query(
       `SELECT * FROM portale_assistenza WHERE stato=$1 ORDER BY created_at DESC LIMIT 100`,
       [req.query.stato || 'aperta']);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// ══════════════════════════════════════════════════════════════════════════
+// WHATSAPP — conversazioni con i clienti, dentro il gestionale
+// I messaggi in arrivo li consegna Twilio al webhook qui sotto.
+// ══════════════════════════════════════════════════════════════════════════
+
+// Collega il numero a un cliente o a un lead dell'anagrafica
+async function waCollegaContatto(telefono) {
+  const ultime9 = telefono.replace(/[^0-9]/g, '').slice(-9);
+  if (ultime9.length < 8) return {};
+  try {
+    const c = await pool.query(
+      `SELECT id, nome FROM clienti
+       WHERE regexp_replace(COALESCE(tel,''), '[^0-9]', '', 'g') LIKE $1
+          OR regexp_replace(COALESCE(tel2,''), '[^0-9]', '', 'g') LIKE $1
+       LIMIT 1`, ['%' + ultime9]);
+    if (c.rows.length) return { cliente_id: c.rows[0].id, nome: c.rows[0].nome };
+
+    const l = await pool.query(
+      `SELECT id, nome FROM leads
+       WHERE regexp_replace(COALESCE(tel,''), '[^0-9]', '', 'g') LIKE $1
+          OR regexp_replace(COALESCE(tel2,''), '[^0-9]', '', 'g') LIKE $1
+       LIMIT 1`, ['%' + ultime9]);
+    if (l.rows.length) return { lead_id: l.rows[0].id, nome: l.rows[0].nome };
+  } catch (e) { console.error('[WA collega]', e.message); }
+  return {};
+}
+
+// Messaggi in arrivo: Twilio li manda qui come modulo, non come JSON
+app.post('/api/whatsapp/webhook', async (req, res) => {
+  try {
+    const d = req.body || {};
+    const da = String(d.From || '').replace('whatsapp:', '').trim();
+    const testo = d.Body || '';
+    const media = d.NumMedia && Number(d.NumMedia) > 0 ? d.MediaUrl0 : null;
+    if (!da) return res.type('text/xml').send('<Response></Response>');
+
+    const cont = await waCollegaContatto(da);
+    const nome = cont.nome || d.ProfileName || da;
+
+    await pool.query(
+      `INSERT INTO wa_messaggi (telefono, direzione, testo, media_url, sid, stato)
+       VALUES ($1,'in',$2,$3,$4,'ricevuto')`, [da, testo, media, d.MessageSid || null]);
+
+    // la finestra di 24 ore riparte a ogni messaggio del cliente
+    await pool.query(
+      `INSERT INTO wa_conversazioni (telefono, nome, cliente_id, lead_id, ultimo_testo, ultimo_il, non_letti, finestra_scade)
+       VALUES ($1,$2,$3,$4,$5,NOW(),1,NOW() + INTERVAL '24 hours')
+       ON CONFLICT (telefono) DO UPDATE SET
+         nome = COALESCE(wa_conversazioni.nome, $2),
+         cliente_id = COALESCE(wa_conversazioni.cliente_id, $3),
+         lead_id = COALESCE(wa_conversazioni.lead_id, $4),
+         ultimo_testo = $5, ultimo_il = NOW(),
+         non_letti = wa_conversazioni.non_letti + 1,
+         finestra_scade = NOW() + INTERVAL '24 hours'`,
+      [da, nome, cont.cliente_id || null, cont.lead_id || null, testo.slice(0, 300)]);
+
+    console.log(`[WHATSAPP] messaggio da ${nome} (${da}): ${testo.slice(0, 60)}`);
+    res.type('text/xml').send('<Response></Response>');
+  } catch (e) {
+    console.error('[WHATSAPP webhook]', e.message);
+    res.type('text/xml').send('<Response></Response>');
+  }
+});
+
+// Stato di consegna dei messaggi che mandiamo noi
+app.post('/api/whatsapp/stato', async (req, res) => {
+  try {
+    const d = req.body || {};
+    if (d.MessageSid && d.MessageStatus) {
+      await pool.query(`UPDATE wa_messaggi SET stato=$1 WHERE sid=$2`, [d.MessageStatus, d.MessageSid]);
+    }
+    res.sendStatus(204);
+  } catch (e) { res.sendStatus(204); }
+});
+
+app.get('/api/whatsapp/conversazioni', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT c.*, (c.finestra_scade > NOW()) AS finestra_aperta
+       FROM wa_conversazioni c ORDER BY c.ultimo_il DESC NULLS LAST LIMIT 200`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.get('/api/whatsapp/messaggi', async (req, res) => {
+  const tel = String(req.query.telefono || '').trim();
+  if (!tel) return res.json([]);
+  try {
+    const r = await pool.query(
+      `SELECT * FROM wa_messaggi WHERE telefono=$1 ORDER BY created_at LIMIT 300`, [tel]);
+    await pool.query(`UPDATE wa_conversazioni SET non_letti=0 WHERE telefono=$1`, [tel]);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Invio di un messaggio. Fuori dalle 24 ore WhatsApp non lo permette.
+app.post('/api/whatsapp/invia', async (req, res) => {
+  const testo = String(req.body?.testo || '').trim();
+  const tel = normalizzaTelefonoWa(req.body?.telefono);
+  if (!tel) return res.json({ error: 'Numero non valido' });
+  if (!testo) return res.json({ error: 'Il messaggio è vuoto' });
+
+  const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+  const da = process.env.TWILIO_WHATSAPP_NUMBER;
+  if (!sid || !token || !da) return res.json({ error: 'WhatsApp non configurato' });
+
+  try {
+    const c = await pool.query(
+      `SELECT finestra_scade > NOW() AS aperta FROM wa_conversazioni WHERE telefono=$1`, [tel]);
+    if (c.rows.length && c.rows[0].aperta === false) {
+      return res.json({ error: 'Sono passate più di 24 ore dall\'ultimo messaggio del cliente: WhatsApp non permette di scrivere liberamente. Aspetta che risponda, oppure chiamalo.' });
+    }
+
+    const corpo = new URLSearchParams({
+      To: 'whatsapp:' + tel,
+      From: da.startsWith('whatsapp:') ? da : 'whatsapp:' + da,
+      Body: testo
+    });
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+                 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: corpo
+    });
+    const d = await r.json();
+    if (!r.ok) return res.json({ error: d.message || 'Invio non riuscito' });
+
+    const cont = await waCollegaContatto(tel);
+    await pool.query(
+      `INSERT INTO wa_messaggi (telefono, direzione, testo, sid, stato, utente)
+       VALUES ($1,'out',$2,$3,'inviato',$4)`, [tel, testo, d.sid, req.body?.utente || null]);
+    await pool.query(
+      `INSERT INTO wa_conversazioni (telefono, nome, cliente_id, lead_id, ultimo_testo, ultimo_il)
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       ON CONFLICT (telefono) DO UPDATE SET ultimo_testo=$5, ultimo_il=NOW()`,
+      [tel, cont.nome || tel, cont.cliente_id || null, cont.lead_id || null, testo.slice(0, 300)]);
+
+    res.json({ ok: true, sid: d.sid });
+  } catch (e) {
+    console.error('[WHATSAPP invio]', e.message);
+    res.json({ error: e.message });
+  }
+});
+
+// Rubrica: clienti e lead che hanno un numero, per cominciare una conversazione
+app.get('/api/whatsapp/rubrica', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT nome, COALESCE(tel, tel2) AS telefono, 'cliente' AS tipo, citta FROM clienti
+        WHERE tipo='cliente' AND COALESCE(tel, tel2) IS NOT NULL AND COALESCE(tel, tel2) <> ''
+       UNION ALL
+       SELECT nome, COALESCE(tel, tel2) AS telefono, 'lead' AS tipo, citta FROM leads
+        WHERE COALESCE(tel, tel2) IS NOT NULL AND COALESCE(tel, tel2) <> ''
+       ORDER BY nome LIMIT 500`);
     res.json(r.rows);
   } catch (e) { res.json({ error: e.message }); }
 });
