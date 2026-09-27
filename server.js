@@ -379,6 +379,18 @@ async function initDB() {
       );
 
       -- Bandi rilevati sulle fonti ufficiali (sorveglianza settimanale)
+      -- Modelli WhatsApp approvati, per aprire una conversazione da zero
+      CREATE TABLE IF NOT EXISTS wa_modelli (
+        id SERIAL PRIMARY KEY,
+        nome TEXT NOT NULL,
+        sid TEXT UNIQUE NOT NULL,
+        descrizione TEXT,
+        anteprima TEXT,
+        variabili INTEGER DEFAULT 0,
+        attivo BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+
       -- Conversazioni WhatsApp con i clienti
       CREATE TABLE IF NOT EXISTS wa_conversazioni (
         id SERIAL PRIMARY KEY,
@@ -1176,11 +1188,15 @@ function unipileHeaders(){
   return { 'X-API-KEY': UNIPILE_API_KEY, 'accept': 'application/json' };
 }
 
-// Lista chat WhatsApp
+// Lista chat WhatsApp — vecchio indirizzo, resta per compatibilita'.
+// L'integrazione ora passa da Twilio: rimando alle conversazioni vere.
 app.get('/api/whatsapp/chats', async (req, res) => {
-  // TEMPORANEAMENTE DISABILITATO: in attesa di verifica con il supporto Unipile
-  // per un comportamento anomalo riscontrato (conversazioni non corrispondenti all'account reale)
-  return res.json({ error: 'Integrazione WhatsApp temporaneamente sospesa per verifica di sicurezza' });
+  try {
+    const r = await pool.query(
+      `SELECT telefono AS id, nome, ultimo_testo, ultimo_il, non_letti
+       FROM wa_conversazioni ORDER BY ultimo_il DESC NULLS LAST LIMIT 100`);
+    return res.json(r.rows);
+  } catch (e) { return res.json([]); }
   // eslint-disable-next-line no-unreachable
   if (!UNIPILE_DSN || !UNIPILE_API_KEY) return res.json({ error: 'WhatsApp non configurato' });
   try {
@@ -10303,6 +10319,88 @@ app.get('/api/whatsapp/rubrica', async (req, res) => {
        ORDER BY nome LIMIT 500`);
     res.json(r.rows);
   } catch (e) { res.json({ error: e.message }); }
+});
+
+// ── MODELLI WHATSAPP ──────────────────────────────────────────────────────
+// Fuori dalle 24 ore WhatsApp permette solo messaggi preapprovati. Qui si
+// registrano i modelli approvati su Twilio, per poterli usare dal gestionale.
+app.get('/api/whatsapp/modelli', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM wa_modelli WHERE attivo=TRUE ORDER BY nome`);
+    res.json(r.rows);
+  } catch (e) { res.json([]); }
+});
+
+app.post('/api/whatsapp/modelli', async (req, res) => {
+  const d = req.body || {};
+  const sid = String(d.sid || '').trim();
+  if (!sid.startsWith('HX')) return res.json({ error: 'Il codice del modello comincia con HX: lo trovi su Twilio, voce Modello SID.' });
+  try {
+    const r = await pool.query(
+      `INSERT INTO wa_modelli (nome, sid, descrizione, anteprima, variabili)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (sid) DO UPDATE SET nome=$1, descrizione=$3, anteprima=$4, variabili=$5, attivo=TRUE
+       RETURNING *`,
+      [d.nome || 'Modello', sid, d.descrizione || null, d.anteprima || null, Number(d.variabili) || 0]);
+    res.json({ ok: true, modello: r.rows[0] });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.delete('/api/whatsapp/modelli/:id', async (req, res) => {
+  try {
+    await pool.query(`UPDATE wa_modelli SET attivo=FALSE WHERE id=$1`, [req.params.id]);
+    res.json({ ok: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+// Apre una conversazione con un modello: funziona anche con chi non ha mai scritto
+app.post('/api/whatsapp/invia-modello', async (req, res) => {
+  const tel = normalizzaTelefonoWa(req.body?.telefono);
+  const modelloSid = String(req.body?.sid || '').trim();
+  const variabili = req.body?.variabili || {};
+  if (!tel) return res.json({ error: 'Numero non valido' });
+  if (!modelloSid) return res.json({ error: 'Scegli un modello' });
+
+  const sid = process.env.TWILIO_ACCOUNT_SID, token = process.env.TWILIO_AUTH_TOKEN;
+  const da = process.env.TWILIO_WHATSAPP_NUMBER;
+  if (!sid || !token || !da) return res.json({ error: 'WhatsApp non configurato' });
+
+  try {
+    const corpo = new URLSearchParams({
+      To: 'whatsapp:' + tel,
+      From: da.startsWith('whatsapp:') ? da : 'whatsapp:' + da,
+      ContentSid: modelloSid
+    });
+    if (Object.keys(variabili).length) corpo.append('ContentVariables', JSON.stringify(variabili));
+
+    const r = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+      method: 'POST',
+      headers: { 'Authorization': 'Basic ' + Buffer.from(`${sid}:${token}`).toString('base64'),
+                 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: corpo
+    });
+    const d = await r.json();
+    if (!r.ok) return res.json({ error: d.message || 'Invio non riuscito' });
+
+    const m = await pool.query(`SELECT nome, anteprima FROM wa_modelli WHERE sid=$1`, [modelloSid]);
+    const descrizione = m.rows[0]?.anteprima || `[modello: ${m.rows[0]?.nome || modelloSid}]`;
+    const cont = await waCollegaContatto(tel);
+
+    await pool.query(
+      `INSERT INTO wa_messaggi (telefono, direzione, testo, sid, stato, utente)
+       VALUES ($1,'out',$2,$3,'inviato',$4)`, [tel, descrizione, d.sid, req.body?.utente || null]);
+    await pool.query(
+      `INSERT INTO wa_conversazioni (telefono, nome, cliente_id, lead_id, ultimo_testo, ultimo_il)
+       VALUES ($1,$2,$3,$4,$5,NOW())
+       ON CONFLICT (telefono) DO UPDATE SET ultimo_testo=$5, ultimo_il=NOW()`,
+      [tel, cont.nome || tel, cont.cliente_id || null, cont.lead_id || null, descrizione.slice(0, 300)]);
+
+    console.log(`[WHATSAPP] modello inviato a ${tel} (${d.sid})`);
+    res.json({ ok: true, sid: d.sid });
+  } catch (e) {
+    console.error('[WHATSAPP modello]', e.message);
+    res.json({ error: e.message });
+  }
 });
 
 // ── CODICE DI ACCESSO VIA WHATSAPP ────────────────────────────────────────
