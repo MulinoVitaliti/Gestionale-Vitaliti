@@ -259,9 +259,10 @@ function renderPipeline(){
         ${etHtml}
         ${tagHtml}
         <div class="pl-card-name">${l.nome}${attBadge}</div>
+        ${l.contatto ? `<div class="pl-card-sub" style="display:flex;align-items:center;gap:4px"><i class="ti ti-user" style="font-size:11px"></i>${l.contatto}</div>` : ''}
         <div class="pl-card-sub">${[l.citta,l.prodotto].filter(Boolean).join(' · ')}</div>
         <div class="pl-card-footer">
-          <span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.contatto||'—'}</span>
+          <span style="font-size:12px;color:var(--text-3)"><i class="ti ti-phone" style="font-size:11px"></i> ${l.tel||'—'}</span>
           <div style="display:flex;gap:4px">
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriPreventivo(${l.id})" title="Preventivo"><i class="ti ti-file-text"></i></button>
             <button class="btn btn-sm" style="padding:4px 9px;font-size:12px" onclick="event.stopPropagation();apriCampionatura(${l.id})" title="Manda un campione"><i class="ti ti-package"></i></button>
