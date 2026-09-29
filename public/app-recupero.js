@@ -31,7 +31,7 @@ async function aggiornaContatoreBozze(){
 async function aggiornaLead(){
   const id=parseInt(document.getElementById('edit-lead-id').value);
   const nuovoStato = document.getElementById('edit-lead-stato').value;
-  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('edit-lead'):undefined),prodotto:(typeof prodottiSelezionati==='function'?prodottiSelezionati('edit-lead').join(', '):undefined),citta:document.getElementById('edit-lead-citta').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
+  const body={nome:document.getElementById('edit-lead-nome').value.trim(),contatto:document.getElementById('edit-lead-contatto').value,tel:document.getElementById('edit-lead-tel').value,tel2:document.getElementById('edit-lead-tel2').value,email:document.getElementById('edit-lead-email')?.value||null,indirizzo:document.getElementById('edit-lead-indirizzo').value,etichette:(typeof etichetteSelezionate==='function'?etichetteSelezionate():undefined),telefoni_extra:(typeof telefoniExtra==='function'?telefoniExtra('edit-lead'):undefined),prodotto:(typeof prodottiSelezionati==='function'?prodottiSelezionati('edit-lead').join(', '):undefined),citta:document.getElementById('edit-lead-citta').value,note:document.getElementById('edit-lead-note').value,tag:document.getElementById('edit-lead-tag').value||null};
 
   if(currentPipelineId === 'default'){
     body.stato = nuovoStato;
@@ -493,6 +493,7 @@ function editLead(id){
   document.getElementById('edit-lead-contatto').value=l.contatto||'';
   document.getElementById('edit-lead-tel').value=l.tel||'';
   document.getElementById('edit-lead-tel2').value=l.tel2||'';
+  const em=document.getElementById('edit-lead-email'); if(em) em.value=l.email||'';
   document.getElementById('edit-lead-indirizzo').value=l.indirizzo||'';
   if(typeof renderSelettoreEtichette==='function')
     renderSelettoreEtichette('edit-lead-etichette', Array.isArray(l.etichette)?l.etichette:[]);
