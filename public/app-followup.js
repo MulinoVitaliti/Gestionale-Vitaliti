@@ -72,6 +72,10 @@ ${r.cliente_nome}${allarmeEmail}</div>
             return `<span style="display:inline-flex;align-items:center;gap:4px;font-size:11px;font-weight:600;color:${c.colore}"><i class="ti ${c.icona}"></i>${c.testo}</span>`; })()}</div>
         <div style="width:200px;font-size:12px;color:var(--text-2)">${prossima}</div>
         <div style="width:130px;text-align:right;font-size:12px">${stato}</div>
+        ${(_fupTipo === 'campionatura' && r.tracking)
+          ? `<button class="btn btn-sm" title="Stampa etichetta" style="padding:4px 8px"
+               onclick="event.stopPropagation();window.open('/api/spedirepro/etichetta/'+encodeURIComponent('${r.tracking}'),'_blank')">
+               <i class="ti ti-printer"></i></button>` : ''}
         <i class="ti ti-chevron-right" style="color:var(--text-3)"></i>
       </div>`;
     }).join('');
@@ -137,6 +141,10 @@ async function apriFollowup(id){
           <input id="fupd-tracking" value="${s.tracking || ''}" placeholder="tracking" style="width:100%;padding:4px 8px;border:1px solid var(--border);border-radius:6px;font-size:12px">
         </div>
         <button class="btn btn-sm" onclick="salvaDatiFollowup(${id})" style="align-self:flex-end"><i class="ti ti-check"></i>Salva</button>
+        ${(s.tipo_spedizione === 'campionatura' && s.tracking)
+          ? `<button class="btn btn-sm" style="align-self:flex-end"
+               onclick="window.open('/api/spedirepro/etichetta/'+encodeURIComponent('${s.tracking}'),'_blank')">
+               <i class="ti ti-printer"></i>Etichetta</button>` : ''}
       </div>`;
 
     const tappe = d.tappe.map(t => {
