@@ -346,6 +346,7 @@ function datiCampionatura(){
   const v = id => (document.getElementById(id)?.value || '').trim();
   return {
     cliente_id: _cpDati?.cliente_id || (_cpDati?.tipo === 'cliente' ? _cpDati.id : null),
+    lead_id: (state.leads || []).includes(_cpDati) ? _cpDati.id : null,
     nome: v('cp-nome'), referente: v('cp-referente'), telefono: v('cp-telefono'),
     indirizzo: v('cp-indirizzo'), cap: v('cp-cap'), citta: v('cp-citta'),
     provincia: v('cp-provincia'), email: v('cp-email'),
@@ -414,9 +415,17 @@ async function creaCampionatura(){
     const r = await api.post('/api/spedirepro/campionatura', d);
     if(r.error){ err.textContent = r.error; err.style.display='block'; return; }
     closeModal('modal-campionatura');
+    // se il server ha spostato il lead in "Campionatura inviata", aggiorno la pipeline a video
+    if(r.lead_spostato){
+      const ld = (state.leads || []).find(x => x.id === r.lead_spostato);
+      if(ld) ld.stato = 'campionatura';
+      if(typeof renderPipeline === 'function') try{ renderPipeline(); }catch(_){}
+    }
     const msg = `Spedizione creata.\n\nTracking: ${r.tracking}` +
       (r.corriere ? `\nCorriere: ${r.corriere}` : '') +
       (r.costo != null ? `\nCosto: € ${Number(r.costo).toFixed(2)}` : '') +
+      (r.ritiro ? `\nRitiro in azienda: ${r.ritiro.split('-').reverse().join('/')}` : '') +
+      (r.lead_spostato ? `\nLead spostato in "Campionatura inviata".` : '') +
       `\n\nLa trovi in Spedizioni → Pacchi.`;
     if(confirm(msg + '\n\nVuoi aprire l\'etichetta da stampare?')){
       window.open('/api/spedirepro/etichetta/' + encodeURIComponent(r.tracking), '_blank');
