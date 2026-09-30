@@ -10610,6 +10610,17 @@ function messaggioErrore(r) {
 }
 
 // Crea la spedizione del campione e apre il monitoraggio
+// Data del prossimo giorno lavorativo (ora italiana): domani, ma se domani
+// cade di sabato o domenica il ritiro slitta a lunedì.
+function prossimoGiornoLavorativo() {
+  const dt = new Date(new Date().toLocaleString('en-US', { timeZone: 'Europe/Rome' }));
+  dt.setDate(dt.getDate() + 1);
+  while (dt.getDay() === 0 || dt.getDay() === 6) dt.setDate(dt.getDate() + 1);
+  const mm = String(dt.getMonth() + 1).padStart(2, '0');
+  const gg = String(dt.getDate()).padStart(2, '0');
+  return `${dt.getFullYear()}-${mm}-${gg}`;
+}
+
 app.post('/api/spedirepro/campionatura', async (req, res) => {
   const d = req.body || {};
   if (!d.nome || !d.indirizzo || !d.citta || !d.cap) {
@@ -10627,6 +10638,9 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
     };
     if (d.corriere) corpo.courier = d.corriere;
     corpo.book_pickup = true;   // il corriere ritira sempre in azienda
+    // il ritiro va programmato per il giorno successivo alla creazione
+    // (se domani è sabato o domenica, slitta a lunedì: i corrieri non ritirano nel weekend)
+    corpo.pickup_date = prossimoGiornoLavorativo();
 
     const r = await spedireProChiamata('/v1/create-label', corpo);
     if (!r.ok) {
@@ -10652,11 +10666,28 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
       });
     } catch (e) { console.error('[SPEDIREPRO] monitoraggio non creato:', e.message); }
 
+    // la spedizione del campione fa avanzare il lead in "Campionatura inviata"
+    let leadSpostato = null;
+    if (d.lead_id) {
+      try {
+        const up = await pool.query(
+          `UPDATE leads SET stato='campionatura', updated_at=NOW()
+           WHERE id=$1 AND stato IS DISTINCT FROM 'campionatura' RETURNING id`,
+          [d.lead_id]);
+        if (up.rows.length) {
+          leadSpostato = up.rows[0].id;
+          console.log(`[SPEDIREPRO] lead ${leadSpostato} spostato in "Campionatura inviata"`);
+        }
+      } catch (e) { console.error('[SPEDIREPRO] spostamento lead non riuscito:', e.message); }
+    }
+
     res.json({
       ok: true, tracking, riferimento,
       corriere: r.dati?.courier_name || null,
       costo: r.dati?.amount ?? null,
-      followup_id: followupId
+      followup_id: followupId,
+      ritiro: corpo.pickup_date,
+      lead_spostato: leadSpostato
     });
   } catch (e) {
     console.error('[SPEDIREPRO campionatura]', e.message);
