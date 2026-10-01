@@ -8061,6 +8061,35 @@ async function clientiDaRicontattare(giorni) {
 app.get('/api/followup/ricontatto-diagnosi', async (req, res) => {
   try {
     const g = Number(req.query.giorni) || 30;
+
+    // modalità mirata: ?cliente=spadafora → tutto quello che riguarda quel nome
+    if (req.query.cliente) {
+      const q = '%' + String(req.query.cliente).trim() + '%';
+      const [anag, sped] = await Promise.all([
+        pool.query(`SELECT id, nome, tipo, citta FROM clienti WHERE nome ILIKE $1 ORDER BY id`, [q]),
+        pool.query(`SELECT id, cliente_id, cliente_nome, ddt_numero, ddt_data, created_at::date AS ricevuto_il,
+                           tipo_spedizione, stato_consegna,
+                           (CURRENT_DATE - COALESCE(ddt_data, created_at::date))::int AS giorni_fa
+                    FROM followup_spedizioni WHERE cliente_nome ILIKE $1
+                    ORDER BY COALESCE(ddt_data, created_at::date) DESC LIMIT 30`, [q])
+      ]);
+      const note = [];
+      if (!anag.rows.length) note.push('NESSUN cliente in anagrafica con questo nome: per questo non appare.');
+      for (const c of anag.rows) {
+        if ((c.tipo || 'cliente') !== 'cliente') note.push(`"${c.nome}" ha tipo "${c.tipo}": escluso dalla lista (deve essere "cliente").`);
+      }
+      for (const s of sped.rows) {
+        if (!s.cliente_id && !anag.rows.some(c => c.nome.trim().toLowerCase() === (s.cliente_nome||'').trim().toLowerCase()))
+          note.push(`La spedizione DDT ${s.ddt_numero || s.id} ha il nome "${s.cliente_nome}" che NON coincide esattamente con nessun cliente in anagrafica e non ha collegamento diretto: non viene contata.`);
+        if (!s.ddt_data)
+          note.push(`La spedizione DDT ${s.ddt_numero || s.id} e' senza data DDT: conta per la data di ricezione nel gestionale (${s.ricevuto_il}).`);
+      }
+      const recenti = sped.rows.filter(s => (s.tipo_spedizione||'bancale') !== 'campionatura' && s.giorni_fa < g);
+      if (recenti.length) note.push(`Esiste un DDT bancale di ${recenti[0].giorni_fa} giorni fa (soglia ${g}): il cliente risulta "rifornito di recente" e quindi NON compare.`);
+      return res.json({ cliente_cercato: req.query.cliente, soglia_giorni: g,
+                        anagrafica: anag.rows, spedizioni: sped.rows, diagnosi: note.length ? note : ['Nessuna anomalia: se non appare, controlla la soglia giorni.'] });
+    }
+
     const [ordTot, ordOrfani, ordSenzaData, cliTot, cliNonCliente, recenti, eleggibili] = await Promise.all([
       pool.query(`SELECT COUNT(*)::int AS n FROM followup_spedizioni WHERE COALESCE(tipo_spedizione,'bancale') <> 'campionatura'`),
       pool.query(`SELECT COUNT(*)::int AS n FROM followup_spedizioni f WHERE f.cliente_id IS NULL
