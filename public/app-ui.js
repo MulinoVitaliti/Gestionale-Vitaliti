@@ -1110,6 +1110,7 @@ function apriModalTask(taskEsistente){
   document.getElementById('task-titolo').value = taskEsistente?.titolo || '';
   document.getElementById('task-descrizione').value = taskEsistente?.descrizione || '';
   document.getElementById('task-scadenza').value = (taskEsistente?.scadenza||'').slice(0,10);
+  document.getElementById('task-inizio').value = (taskEsistente?.data_inizio||'').slice(0,10);
   document.getElementById('task-priorita').value = taskEsistente?.priorita || 'media';
   caricaUtentiPerTask().then(()=>{
     if(taskEsistente?.assegnata_a){
@@ -1131,6 +1132,7 @@ async function salvaTask(){
     assegnata_da: currentUser.username,
     priorita: document.getElementById('task-priorita').value,
     scadenza: document.getElementById('task-scadenza').value || null,
+    data_inizio: document.getElementById('task-inizio').value || null,
     stato: id ? undefined : 'da_fare'
   };
   try{
@@ -1168,6 +1170,8 @@ const PRIORITA_LABEL = {alta:'Alta', media:'Media', bassa:'Bassa'};
 
 function renderTaskCard(t){
   const scadenzaFmt = t.scadenza ? new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
+  const inizioFmt = t.data_inizio ? new Date(t.data_inizio).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'}) : '';
+  const daIniziareOggi = t.data_inizio && new Date(t.data_inizio).toDateString() === new Date().toDateString() && t.stato==='da_fare';
   const isScaduta = t.scadenza && new Date(t.scadenza) < new Date(new Date().toDateString()) && t.stato!=='fatto';
   const assegnatario = (state.utentiList||[]).find(u=>u.username===t.assegnata_a);
   const nomeAssegnatario = assegnatario?.nome?.split(' ')[0] || t.assegnata_a || '';
@@ -1189,7 +1193,7 @@ function renderTaskCard(t){
           <i class="ti ti-user" style="font-size:11px"></i>${nomeAssegnatario}
         </span>
         <div style="display:flex;align-items:center;gap:6px">
-          ${scadenzaFmt?`<span style="color:${isScaduta?'var(--red)':'var(--text-3)'};font-weight:${isScaduta?'700':'400'};font-size:11px">${isScaduta?'⚠ ':''}${scadenzaFmt}</span>`:''}
+          ${(inizioFmt||scadenzaFmt)?`<span style="color:${isScaduta?'var(--red)':daIniziareOggi?'var(--orange)':'var(--text-3)'};font-weight:${(isScaduta||daIniziareOggi)?'700':'400'};font-size:11px">${isScaduta?'⚠ ':daIniziareOggi?'▶ ':''}${inizioFmt?inizioFmt+' → ':''}${scadenzaFmt||'—'}</span>`:''}
           <button class="btn btn-icon btn-sm" onclick="event.stopPropagation();spostaTask(${t.id},-1)" title="Sposta a sinistra" style="padding:3px 6px"><i class="ti ti-arrow-left" style="font-size:11px"></i></button>
           <button class="btn btn-icon btn-sm" onclick="event.stopPropagation();spostaTask(${t.id},1)" title="Sposta a destra" style="padding:3px 6px"><i class="ti ti-arrow-right" style="font-size:11px"></i></button>
           <button class="btn btn-icon btn-sm btn-danger" onclick="event.stopPropagation();eliminaTask(${t.id})" style="padding:3px 6px"><i class="ti ti-trash" style="font-size:11px"></i></button>
@@ -1632,3 +1636,46 @@ window.vediBandiTrovati = vediBandiTrovati;
     if (e.target.tagName === 'TEXTAREA') adatta(e.target);
   });
 })();
+
+
+// ── CESTINO (Impostazioni) ────────────────────────────────────────────────
+async function caricaCestino(btn){
+  const box = document.getElementById('cestino-lista');
+  if(!box) return;
+  if(btn) btn.disabled = true;
+  box.innerHTML = 'Caricamento...';
+  try{
+    const r = await api.get('/api/cestino');
+    if(r.error) throw new Error(r.error);
+    if(!r.length){ box.innerHTML = 'Il cestino è vuoto.'; return; }
+    const nomi = { leads: 'Lead', clienti: 'Cliente', ordini: 'Ordine' };
+    box.innerHTML = r.map(v => `
+      <div style="display:flex;align-items:center;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:700;color:var(--brand);width:60px">${nomi[v.tabella] || v.tabella}</span>
+        <span style="flex:1;color:var(--text-1)">${v.descrizione || ('#' + v.record_id)}</span>
+        <span style="font-size:11px;color:${v.giorni_rimasti <= 2 ? 'var(--red)' : 'var(--text-3)'}">
+          ${v.giorni_rimasti} giorni rimasti</span>
+        <button class="btn btn-sm btn-primary" onclick="ripristinaDalCestino(${v.id}, this)">
+          <i class="ti ti-arrow-back-up"></i>Ripristina</button>
+      </div>`).join('');
+  }catch(e){
+    box.innerHTML = 'Errore: ' + e.message;
+  }finally{
+    if(btn) btn.disabled = false;
+  }
+}
+
+async function ripristinaDalCestino(id, btn){
+  if(btn) btn.disabled = true;
+  try{
+    const r = await api.post('/api/cestino/' + id + '/ripristina', {});
+    if(r.error) throw new Error(r.error);
+    mostraToast('Elemento ripristinato');
+    caricaCestino();
+    if(typeof loadAllData === 'function') try{ await loadAllData(); }catch(_){}
+    if(typeof renderPipeline === 'function') try{ renderPipeline(); }catch(_){}
+  }catch(e){
+    alert('Ripristino non riuscito: ' + e.message);
+    if(btn) btn.disabled = false;
+  }
+}
