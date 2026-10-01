@@ -8027,22 +8027,77 @@ app.post('/api/followup/:id/email', async (req, res) => {
 // consegne fatte col nostro furgone.
 async function clientiDaRicontattare(giorni) {
   const g = Number(giorni) || 30;
+  // Un cliente compare quando sono passati piu' di N giorni dall'ULTIMO DDT
+  // bancale arrivato nel gestionale (le campionature non contano). Aggancio
+  // per cliente_id oppure per nome, e se il DDT non ha data uso quella di
+  // ricezione nel gestionale.
   const r = await pool.query(
     `SELECT c.id AS cliente_id, c.nome AS cliente_nome, c.citta, c.tel, c.tel2, c.email, c.tag,
-            MAX(o.data) AS ultimo_ordine,
-            (CURRENT_DATE - MAX(o.data)) AS giorni,
-            COUNT(o.id) AS n_ordini,
-            SUM(o.importo) AS totale,
-            (SELECT o2.importo FROM ordini o2 WHERE o2.cliente_id=c.id ORDER BY o2.data DESC LIMIT 1) AS ultimo_importo,
-            (SELECT f.id FROM followup_spedizioni f WHERE f.cliente_id=c.id ORDER BY f.id DESC LIMIT 1) AS followup_id,
-            (SELECT f.stato_consegna FROM followup_spedizioni f WHERE f.cliente_id=c.id ORDER BY f.id DESC LIMIT 1) AS stato_consegna
-     FROM clienti c JOIN ordini o ON o.cliente_id = c.id
-     WHERE c.tipo = 'cliente'
+            MAX(COALESCE(f.ddt_data, f.created_at::date)) AS ultimo_ordine,
+            (CURRENT_DATE - MAX(COALESCE(f.ddt_data, f.created_at::date)))::int AS giorni,
+            COUNT(f.id)::int AS n_ordini,
+            SUM(f.importo) AS totale,
+            (SELECT f2.importo FROM followup_spedizioni f2
+              WHERE (f2.cliente_id=c.id OR LOWER(TRIM(f2.cliente_nome))=LOWER(TRIM(c.nome)))
+                AND COALESCE(f2.tipo_spedizione,'bancale') <> 'campionatura'
+              ORDER BY COALESCE(f2.ddt_data, f2.created_at::date) DESC LIMIT 1) AS ultimo_importo,
+            (SELECT f3.id FROM followup_spedizioni f3
+              WHERE (f3.cliente_id=c.id OR LOWER(TRIM(f3.cliente_nome))=LOWER(TRIM(c.nome)))
+              ORDER BY f3.id DESC LIMIT 1) AS followup_id,
+            (SELECT f4.stato_consegna FROM followup_spedizioni f4
+              WHERE (f4.cliente_id=c.id OR LOWER(TRIM(f4.cliente_nome))=LOWER(TRIM(c.nome)))
+              ORDER BY f4.id DESC LIMIT 1) AS stato_consegna
+     FROM clienti c JOIN followup_spedizioni f
+       ON (f.cliente_id = c.id OR (f.cliente_id IS NULL AND LOWER(TRIM(f.cliente_nome)) = LOWER(TRIM(c.nome))))
+     WHERE COALESCE(c.tipo, 'cliente') = 'cliente'
+       AND COALESCE(f.tipo_spedizione, 'bancale') <> 'campionatura'
      GROUP BY c.id, c.nome, c.citta, c.tel, c.tel2, c.email, c.tag
-     HAVING MAX(o.data) <= CURRENT_DATE - ($1 || ' days')::interval
-     ORDER BY MAX(o.data) ASC LIMIT 150`, [String(g)]);
+     HAVING MAX(COALESCE(f.ddt_data, f.created_at::date)) <= CURRENT_DATE - ($1 || ' days')::interval
+     ORDER BY MAX(COALESCE(f.ddt_data, f.created_at::date)) ASC LIMIT 150`, [String(g)]);
   return { giorni: g, righe: r.rows };
 }
+
+// Diagnosi: spiega PERCHE' la lista "da ricontattare" e' vuota o corta.
+app.get('/api/followup/ricontatto-diagnosi', async (req, res) => {
+  try {
+    const g = Number(req.query.giorni) || 30;
+    const [ordTot, ordOrfani, ordSenzaData, cliTot, cliNonCliente, recenti, eleggibili] = await Promise.all([
+      pool.query(`SELECT COUNT(*)::int AS n FROM followup_spedizioni WHERE COALESCE(tipo_spedizione,'bancale') <> 'campionatura'`),
+      pool.query(`SELECT COUNT(*)::int AS n FROM followup_spedizioni f WHERE f.cliente_id IS NULL
+                  AND COALESCE(f.tipo_spedizione,'bancale') <> 'campionatura'
+                  AND NOT EXISTS (SELECT 1 FROM clienti c WHERE LOWER(TRIM(c.nome))=LOWER(TRIM(f.cliente_nome)))`),
+      pool.query(`SELECT COUNT(*)::int AS n FROM followup_spedizioni WHERE ddt_data IS NULL AND COALESCE(tipo_spedizione,'bancale') <> 'campionatura'`),
+      pool.query(`SELECT COUNT(*)::int AS n FROM clienti`),
+      pool.query(`SELECT COUNT(*)::int AS n FROM clienti WHERE COALESCE(tipo,'cliente') <> 'cliente'`),
+      pool.query(`SELECT c.nome, MAX(COALESCE(f.ddt_data,f.created_at::date)) AS ultimo_ddt,
+                         (CURRENT_DATE - MAX(COALESCE(f.ddt_data,f.created_at::date)))::int AS giorni_fa
+                  FROM clienti c JOIN followup_spedizioni f
+                    ON (f.cliente_id=c.id OR (f.cliente_id IS NULL AND LOWER(TRIM(f.cliente_nome))=LOWER(TRIM(c.nome))))
+                  WHERE COALESCE(c.tipo,'cliente')='cliente' AND COALESCE(f.tipo_spedizione,'bancale') <> 'campionatura'
+                  GROUP BY c.id, c.nome
+                  HAVING MAX(COALESCE(f.ddt_data,f.created_at::date)) > CURRENT_DATE - ($1 || ' days')::interval
+                  ORDER BY 2 DESC LIMIT 20`, [String(g)]),
+      pool.query(`SELECT COUNT(*)::int AS n FROM (
+                    SELECT c.id FROM clienti c JOIN followup_spedizioni f
+                      ON (f.cliente_id=c.id OR (f.cliente_id IS NULL AND LOWER(TRIM(f.cliente_nome))=LOWER(TRIM(c.nome))))
+                    WHERE COALESCE(c.tipo,'cliente')='cliente' AND COALESCE(f.tipo_spedizione,'bancale') <> 'campionatura'
+                    GROUP BY c.id
+                    HAVING MAX(COALESCE(f.ddt_data,f.created_at::date)) <= CURRENT_DATE - ($1 || ' days')::interval
+                  ) x`, [String(g)])
+    ]);
+    res.json({
+      soglia_giorni: g,
+      spedizioni_bancale_totali: ordTot.rows[0].n,
+      spedizioni_non_collegabili_a_clienti: ordOrfani.rows[0].n,
+      ddt_senza_data: ordSenzaData.rows[0].n,
+      clienti_totali: cliTot.rows[0].n,
+      clienti_esclusi_perche_non_tipo_cliente: cliNonCliente.rows[0].n,
+      clienti_che_appariranno: eleggibili.rows[0].n,
+      clienti_con_DDT_RECENTI_quindi_esclusi: recenti.rows,
+      spiegazione: 'Un cliente appare nella lista solo se il suo ULTIMO ordine e\' piu\' vecchio della soglia. Se ha ordinato da poco, e\' giusto che non compaia.'
+    });
+  } catch (e) { res.json({ error: e.message }); }
+});
 
 app.get('/api/followup/da-ricontattare', async (req, res) => {
   try { res.json(await clientiDaRicontattare(req.query.giorni)); }
