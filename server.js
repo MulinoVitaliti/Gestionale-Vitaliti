@@ -4449,6 +4449,18 @@ async function fupEvento(followupId, evento, dettaglio, utente) {
 // Crea il percorso a partire da un DDT (chiamata dalla sincronizzazione FIC)
 // tipo: 'bancale' (One Express) oppure 'campionatura' (Spedire Pro)
 async function fupCreaDaDDT({ cliente_nome, cliente_id, ddt_numero, ddt_data, ddt_id, importo, email, tracking, corriere, tipo_spedizione, corriere_id }) {
+  // se l'email del corriere non porta il collegamento, provo l'aggancio
+  // per nome normalizzato (solo se il match e' univoco)
+  if (!cliente_id && cliente_nome) {
+    try {
+      const m = await pool.query(
+        `SELECT id FROM clienti
+         WHERE length(regexp_replace(lower(nome),'[^a-z0-9]','','g')) >= 6
+           AND position(regexp_replace(lower(nome),'[^a-z0-9]','','g')
+                IN regexp_replace(lower($1),'[^a-z0-9]','','g')) > 0 LIMIT 2`, [cliente_nome]);
+      if (m.rows.length === 1) cliente_id = m.rows[0].id;
+    } catch (_) {}
+  }
   try {
     const gia = await pool.query(
       `SELECT id FROM followup_spedizioni WHERE ddt_numero=$1 AND cliente_nome=$2 LIMIT 1`,
@@ -8048,7 +8060,13 @@ async function clientiDaRicontattare(giorni) {
               WHERE (f4.cliente_id=c.id OR LOWER(TRIM(f4.cliente_nome))=LOWER(TRIM(c.nome)))
               ORDER BY f4.id DESC LIMIT 1) AS stato_consegna
      FROM clienti c JOIN followup_spedizioni f
-       ON (f.cliente_id = c.id OR (f.cliente_id IS NULL AND LOWER(TRIM(f.cliente_nome)) = LOWER(TRIM(c.nome))))
+       ON (f.cliente_id = c.id
+           OR (f.cliente_id IS NULL AND (
+                LOWER(TRIM(f.cliente_nome)) = LOWER(TRIM(c.nome))
+                OR (length(regexp_replace(lower(c.nome),'[^a-z0-9]','','g')) >= 6
+                    AND position(regexp_replace(lower(c.nome),'[^a-z0-9]','','g')
+                         IN regexp_replace(lower(coalesce(f.cliente_nome,'')),'[^a-z0-9]','','g')) > 0)
+           )))
      WHERE COALESCE(c.tipo, 'cliente') = 'cliente'
        AND COALESCE(f.tipo_spedizione, 'bancale') <> 'campionatura'
      GROUP BY c.id, c.nome, c.citta, c.tel, c.tel2, c.email, c.tag
@@ -8058,6 +8076,35 @@ async function clientiDaRicontattare(giorni) {
 }
 
 // Diagnosi: spiega PERCHE' la lista "da ricontattare" e' vuota o corta.
+// Ricollega le spedizioni senza cliente_id al cliente giusto, quando il nome
+// del cliente (normalizzato: senza punti/spazi/simboli) e' contenuto nel nome
+// riportato dall'email del corriere, e il match e' UNIVOCO. Apri da browser:
+// /api/followup/ripara-collegamenti
+app.get('/api/followup/ripara-collegamenti', async (req, res) => {
+  try {
+    const orfane = await pool.query(
+      `SELECT id, cliente_nome FROM followup_spedizioni WHERE cliente_id IS NULL AND cliente_nome IS NOT NULL`);
+    const collegati = [], ambigui = [], senza_match = [];
+    for (const s of orfane.rows) {
+      const m = await pool.query(
+        `SELECT id, nome FROM clienti
+         WHERE length(regexp_replace(lower(nome),'[^a-z0-9]','','g')) >= 6
+           AND position(regexp_replace(lower(nome),'[^a-z0-9]','','g')
+                IN regexp_replace(lower($1),'[^a-z0-9]','','g')) > 0`, [s.cliente_nome]);
+      if (m.rows.length === 1) {
+        await pool.query(`UPDATE followup_spedizioni SET cliente_id=$1 WHERE id=$2`, [m.rows[0].id, s.id]);
+        collegati.push({ spedizione: s.id, da: s.cliente_nome, a: m.rows[0].nome });
+      } else if (m.rows.length > 1) {
+        ambigui.push({ spedizione: s.id, nome: s.cliente_nome, possibili: m.rows.map(r=>r.nome) });
+      } else {
+        senza_match.push({ spedizione: s.id, nome: s.cliente_nome });
+      }
+    }
+    res.json({ collegati, ambigui, senza_match,
+      nota: 'I collegamenti ambigui o senza match vanno sistemati a mano aprendo la spedizione.' });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 app.get('/api/followup/ricontatto-diagnosi', async (req, res) => {
   try {
     const g = Number(req.query.giorni) || 30;
