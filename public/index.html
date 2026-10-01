@@ -1295,6 +1295,17 @@ window.addEventListener('unhandledrejection', function(e) {
 
       <div class="card" style="margin-bottom:20px">
         <div class="card-header">
+          <div class="card-title"><i class="ti ti-trash" style="color:var(--brand)"></i>Cestino</div>
+          <button class="btn btn-sm" onclick="caricaCestino(this)"><i class="ti ti-refresh"></i>Aggiorna</button>
+        </div>
+        <div style="padding:14px 18px">
+          <div style="font-size:13px;color:var(--text-2);margin-bottom:10px">Lead, clienti e ordini cancellati restano qui per <strong>10 giorni</strong>, poi vengono eliminati definitivamente in automatico. Da qui puoi ripristinarli con tutto quello che avevano collegato.</div>
+          <div id="cestino-lista" style="font-size:13px;color:var(--text-3)">Premi Aggiorna per vedere il contenuto.</div>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:20px">
+        <div class="card-header">
           <div class="card-title"><i class="ti ti-radar" style="color:var(--brand)"></i>Sorveglianza bandi</div>
         </div>
         <div style="padding:14px 18px">
@@ -2754,7 +2765,10 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="form-group"><label class="form-label">Assegnata a *</label><select id="task-assegnata-a"></select></div>
         <div class="form-group"><label class="form-label">Priorità</label><select id="task-priorita"><option value="bassa">🟢 Bassa</option><option value="media" selected>🟠 Media</option><option value="alta">🔴 Alta</option></select></div>
       </div>
-      <div class="form-group"><label class="form-label">Scadenza</label><input type="date" id="task-scadenza"></div>
+      <div class="form-row">
+        <div class="form-group"><label class="form-label">Inizio previsto</label><input type="date" id="task-inizio"></div>
+        <div class="form-group"><label class="form-label">Scadenza</label><input type="date" id="task-scadenza"></div>
+      </div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:5px">
         <button class="btn" onclick="closeModal('modal-task')">Annulla</button>
         <button class="btn btn-primary" onclick="salvaTask()"><i class="ti ti-check"></i>Salva</button>
