@@ -579,7 +579,7 @@ async function caricaDaRicontattare(){
         <select onchange="cambiaGiorniRicontatto(this.value)" style="padding:5px 8px;border:1px solid var(--border);border-radius:7px;font-size:12px">
           ${[20,30,45,60].map(g=>`<option value="${g}" ${g==_drGiorni?'selected':''}>${g} giorni</option>`).join('')}
         </select>
-        <span style="font-size:12px;color:var(--text-3)">dall'ultimo ordine — corriere e consegne dirette</span>
+        <span style="font-size:12px;color:var(--text-3)">dall'ultimo DDT ricevuto nel gestionale</span>
         <span style="margin-left:auto;font-size:12px;font-weight:600">${(d.righe||[]).length} clienti</span>
       </div>`;
     if(!d.righe || !d.righe.length){
@@ -592,7 +592,7 @@ async function caricaDaRicontattare(){
       return `<div style="display:flex;align-items:center;gap:12px;padding:11px 16px;border-bottom:1px solid var(--border)">
         <div style="flex:1;min-width:0">
           <div style="font-size:13px;font-weight:600">${r.cliente_nome}</div>
-          <div style="font-size:11px;color:var(--text-3)">${r.citta || ''} · ultimo ordine ${fupData(r.ultimo_ordine)}${r.ultimo_importo ? ' da € ' + Number(r.ultimo_importo).toFixed(0) : ''} · ${r.n_ordini} ordini in tutto${r.totale ? ' per € ' + Number(r.totale).toFixed(0) : ''}</div>
+          <div style="font-size:11px;color:var(--text-3)">${r.citta || ''} · ultimo DDT ${fupData(r.ultimo_ordine)}${r.ultimo_importo ? ' da € ' + Number(r.ultimo_importo).toFixed(0) : ''} · ${r.n_ordini} ordini in tutto${r.totale ? ' per € ' + Number(r.totale).toFixed(0) : ''}</div>
         </div>
         <div style="width:95px;text-align:right;font-size:12px;font-weight:600;color:${col}">${r.giorni} giorni</div>
         <div style="display:flex;gap:5px">
