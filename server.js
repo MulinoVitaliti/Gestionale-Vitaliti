@@ -313,6 +313,8 @@ async function initDB() {
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS panel_url TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS ritiro_numero TEXT;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS ritiro_data DATE;
+      ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS ritiro_richiesto DATE;
+      ALTER TABLE IF EXISTS tasks ADD COLUMN IF NOT EXISTS data_inizio DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS stato_consegna TEXT DEFAULT 'in_viaggio';
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS consegnata_il DATE;
       ALTER TABLE IF EXISTS followup_spedizioni ADD COLUMN IF NOT EXISTS note_consegna TEXT;
@@ -1495,8 +1497,92 @@ app.put('/api/leads/:id', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── CESTINO ──────────────────────────────────────────────────────────────
+// Quando si cancella un lead, un cliente o un ordine, la riga (e le righe
+// collegate) viene prima copiata qui come JSON. Resta recuperabile per 10
+// giorni, poi la pulizia automatica la elimina definitivamente.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS cestino (
+    id SERIAL PRIMARY KEY,
+    tabella TEXT NOT NULL,
+    record_id INTEGER,
+    descrizione TEXT,
+    dati JSONB NOT NULL,
+    collegati JSONB DEFAULT '[]',
+    eliminato_il TIMESTAMP DEFAULT NOW()
+  );
+`).catch(e => console.error('[CESTINO] init:', e.message));
+
+const CESTINO_COLLEGATE = {
+  leads:   [{ tabella: 'lead_pipeline_stato', fk: 'lead_id' }],
+  clienti: [{ tabella: 'note_clienti', fk: 'cliente_id' }],
+  ordini:  []
+};
+
+async function archiviaNelCestino(tabella, id, descrizione) {
+  const r = await pool.query(`SELECT row_to_json(t) AS d FROM ${tabella} t WHERE id=$1`, [id]);
+  if (!r.rows.length) return null;
+  const collegati = [];
+  for (const c of (CESTINO_COLLEGATE[tabella] || [])) {
+    const cr = await pool.query(
+      `SELECT row_to_json(t) AS d FROM ${c.tabella} t WHERE ${c.fk}=$1`, [id]).catch(() => ({ rows: [] }));
+    for (const row of cr.rows) collegati.push({ tabella: c.tabella, dati: row.d });
+  }
+  const ins = await pool.query(
+    `INSERT INTO cestino (tabella, record_id, descrizione, dati, collegati)
+     VALUES ($1,$2,$3,$4,$5) RETURNING id`,
+    [tabella, id, descrizione || null, r.rows[0].d, JSON.stringify(collegati)]);
+  return ins.rows[0].id;
+}
+
+app.get('/api/cestino', async (req, res) => {
+  try {
+    const r = await pool.query(
+      `SELECT id, tabella, record_id, descrizione, eliminato_il,
+              GREATEST(0, 10 - EXTRACT(DAY FROM NOW() - eliminato_il)::int) AS giorni_rimasti
+       FROM cestino ORDER BY eliminato_il DESC LIMIT 100`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/cestino/:id/ripristina', async (req, res) => {
+  const client = await pool.connect();
+  try {
+    const r = await client.query(`SELECT * FROM cestino WHERE id=$1`, [req.params.id]);
+    if (!r.rows.length) return res.json({ error: 'Elemento non trovato nel cestino' });
+    const v = r.rows[0];
+    await client.query('BEGIN');
+    await client.query(
+      `INSERT INTO ${v.tabella} SELECT * FROM jsonb_populate_record(NULL::${v.tabella}, $1)
+       ON CONFLICT (id) DO NOTHING`, [v.dati]);
+    await client.query(
+      `SELECT setval(pg_get_serial_sequence('${v.tabella}','id'),
+              GREATEST((SELECT COALESCE(MAX(id),1) FROM ${v.tabella}), 1))`);
+    for (const c of (v.collegati || [])) {
+      await client.query(
+        `INSERT INTO ${c.tabella} SELECT * FROM jsonb_populate_record(NULL::${c.tabella}, $1)
+         ON CONFLICT DO NOTHING`, [c.dati]).catch(() => {});
+    }
+    await client.query(`DELETE FROM cestino WHERE id=$1`, [req.params.id]);
+    await client.query('COMMIT');
+    res.json({ success: true, tabella: v.tabella, record_id: v.record_id });
+  } catch (e) {
+    await client.query('ROLLBACK').catch(() => {});
+    res.json({ error: e.message });
+  } finally { client.release(); }
+});
+
+setInterval(async () => {
+  try {
+    const r = await pool.query(`DELETE FROM cestino WHERE eliminato_il < NOW() - INTERVAL '10 days'`);
+    if (r.rowCount) console.log(`[CESTINO] pulizia: ${r.rowCount} elementi eliminati definitivamente`);
+  } catch (e) { console.error('[CESTINO] pulizia:', e.message); }
+}, 6 * 60 * 60 * 1000);
+
 app.delete('/api/leads/:id', async (req, res) => {
   try {
+    const n = await pool.query('SELECT nome FROM leads WHERE id=$1', [req.params.id]);
+    await archiviaNelCestino('leads', req.params.id, n.rows[0] ? `Lead: ${n.rows[0].nome}` : null);
     await pool.query('DELETE FROM leads WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -1614,6 +1700,8 @@ app.put('/api/clienti/:id', async (req, res) => {
 
 app.delete('/api/clienti/:id', async (req, res) => {
   try {
+    const n = await pool.query('SELECT nome FROM clienti WHERE id=$1', [req.params.id]);
+    await archiviaNelCestino('clienti', req.params.id, n.rows[0] ? `Cliente: ${n.rows[0].nome}` : null);
     await pool.query('DELETE FROM clienti WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -2174,6 +2262,9 @@ app.delete('/api/ordini/:id', async (req, res) => {
       }
     }
 
+    const n = await pool.query('SELECT cliente, fic_ddt_numero AS ddt_numero FROM ordini WHERE id=$1', [req.params.id]);
+    const de = n.rows[0] ? `Ordine: ${n.rows[0].cliente || ''}${n.rows[0].ddt_numero ? ' - DDT ' + n.rows[0].ddt_numero : ''}` : null;
+    await archiviaNelCestino('ordini', req.params.id, de);
     await pool.query('DELETE FROM ordini WHERE id=$1', [req.params.id]);
     res.json({ success: true });
   } catch (err) { res.json({ error: err.message }); }
@@ -2347,18 +2438,18 @@ app.get('/api/tasks', async (req, res) => {
 });
 
 app.post('/api/tasks', async (req, res) => {
-  const { titolo, descrizione, assegnata_a, assegnata_da, priorita, stato, scadenza } = req.body;
+  const { titolo, descrizione, assegnata_a, assegnata_da, priorita, stato, scadenza, data_inizio } = req.body;
   try {
     const r = await pool.query(
-      'INSERT INTO tasks (titolo,descrizione,assegnata_a,assegnata_da,priorita,stato,scadenza) VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *',
-      [titolo, descrizione||'', assegnata_a, assegnata_da, priorita||'media', stato||'da_fare', scadenza||null]
+      'INSERT INTO tasks (titolo,descrizione,assegnata_a,assegnata_da,priorita,stato,scadenza,data_inizio) VALUES ($1,$2,$3,$4,$5,$6,$7,$8) RETURNING *',
+      [titolo, descrizione||'', assegnata_a, assegnata_da, priorita||'media', stato||'da_fare', scadenza||null, data_inizio||null]
     );
     res.json(r.rows[0]);
   } catch (err) { res.json({ error: err.message }); }
 });
 
 app.put('/api/tasks/:id', async (req, res) => {
-  const { titolo, descrizione, assegnata_a, priorita, stato, scadenza } = req.body;
+  const { titolo, descrizione, assegnata_a, priorita, stato, scadenza, data_inizio } = req.body;
   try {
     const fields = [];
     const values = [];
@@ -2369,6 +2460,7 @@ app.put('/api/tasks/:id', async (req, res) => {
     if (priorita !== undefined) { fields.push(`priorita=$${i++}`); values.push(priorita); }
     if (stato !== undefined) { fields.push(`stato=$${i++}`); values.push(stato); }
     if (scadenza !== undefined) { fields.push(`scadenza=$${i++}`); values.push(scadenza||null); }
+    if (data_inizio !== undefined) { fields.push(`data_inizio=$${i++}`); values.push(data_inizio||null); }
     fields.push(`updated_at=NOW()`);
     values.push(req.params.id);
     await pool.query(`UPDATE tasks SET ${fields.join(',')} WHERE id=$${i}`, values);
@@ -10641,6 +10733,7 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
     // il ritiro va programmato per il giorno successivo alla creazione
     // (se domani è sabato o domenica, slitta a lunedì: i corrieri non ritirano nel weekend)
     corpo.pickup_date = prossimoGiornoLavorativo();
+    console.log(`[SPEDIREPRO] richiesta creazione con book_pickup=true e pickup_date=${corpo.pickup_date}`);
 
     const r = await spedireProChiamata('/v1/create-label', corpo);
     if (!r.ok) {
@@ -10665,6 +10758,13 @@ app.post('/api/spedirepro/campionatura', async (req, res) => {
         tipo_spedizione: 'campionatura'
       });
     } catch (e) { console.error('[SPEDIREPRO] monitoraggio non creato:', e.message); }
+
+    // ricordo per quale giorno ho chiesto il ritiro: il webhook lo confrontera'
+    if (followupId) {
+      await pool.query(
+        `UPDATE followup_spedizioni SET ritiro_richiesto=$1 WHERE id=$2`,
+        [corpo.pickup_date, followupId]).catch(() => {});
+    }
 
     // la spedizione del campione fa avanzare il lead in "Campionatura inviata"
     let leadSpostato = null;
@@ -10836,6 +10936,24 @@ app.all('/api/spedirepro/webhook', async (req, res) => {
           `Ritiro prenotato per il ${d.pickup_date || 'data da confermare'}${d.pickup_number ? ' — codice ' + d.pickup_number : ''}`,
           null).catch(() => {});
         console.log(`[SPEDIREPRO] ritiro prenotato ${d.pickup_number} il ${d.pickup_date} (${sped.cliente_nome})`);
+
+        // controllo che la data prenotata sia quella chiesta alla creazione:
+        // se Spedire Pro l'ha anticipata (es. oggi invece di domani) va saputo subito
+        try {
+          const rr = await pool.query(
+            `SELECT ritiro_richiesto FROM followup_spedizioni WHERE id=$1`, [sped.id]);
+          const richiesto = rr.rows[0]?.ritiro_richiesto;
+          if (richiesto && d.pickup_date) {
+            const prenotato = String(d.pickup_date).slice(0, 10);
+            const atteso = new Date(richiesto).toISOString().slice(0, 10);
+            if (prenotato < atteso) {
+              console.warn(`[SPEDIREPRO] ATTENZIONE: ritiro prenotato il ${prenotato} ma era richiesto per il ${atteso} (${sped.cliente_nome})`);
+              await fupEvento(sped.id, 'ritiro_anticipato',
+                `ATTENZIONE: il corriere passa il ${prenotato} invece del ${atteso}. Preparare il pacco oggi o riprenotare il ritiro dal pannello Spedire Pro.`,
+                null).catch(() => {});
+            }
+          }
+        } catch (_) {}
       } else if (!riuscito) {
         // il ritiro non e' andato: va saputo subito, altrimenti il pacco resta fermo
         console.error(`[SPEDIREPRO] RITIRO NON PRENOTATO per ${d.reference || d.merchant_reference}`);
