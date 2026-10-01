@@ -1363,11 +1363,36 @@ function renderDashTask(){
 
   const priConfig = {alta:{icon:'🔴',color:'#dc2626'},media:{icon:'🟡',color:'#d97706'},bassa:{icon:'🟢',color:'#16a34a'}};
 
-  cont.innerHTML = dailyTasks.map((t,i)=>{
+  // ── modalità "una alla volta": mostro solo il primo task non completato,
+  // gli altri restano in coda e compaiono man mano che completo ──
+  const nonFatte = dailyTasks.filter(t=>!_dailyTaskChecked[t.id]);
+  const giaFatte = dailyTasks.filter(t=>_dailyTaskChecked[t.id]);
+  const correnti = [...giaFatte, ...nonFatte.slice(0,1)];
+  const inCoda = nonFatte.slice(1);
+
+  // ── avviso ritardo: altri task (non quello corrente) con scadenza arrivata o superata ──
+  const fineOggi = new Date(); fineOggi.setHours(23,59,59,999);
+  const correnteId = nonFatte[0]?.id;
+  const inRitardo = pending.filter(t => t.id !== correnteId && t.scadenza && new Date(t.scadenza) <= fineOggi)
+    .sort((a,b)=>new Date(a.scadenza)-new Date(b.scadenza));
+  const bannerRitardo = inRitardo.length ? (()=>{
+    const t = inRitardo[0];
+    const dataFmt = new Date(t.scadenza).toLocaleDateString('it-IT',{day:'2-digit',month:'2-digit'});
+    const scaduta = new Date(t.scadenza) < new Date(new Date().toDateString());
+    return `<div onclick="apriModalTask(${JSON.stringify(t).replace(/"/g,'&quot;')})"
+      style="display:flex;align-items:center;gap:8px;background:${scaduta?'#fee2e2':'#fef3c7'};border:1px solid ${scaduta?'#fca5a5':'#fcd34d'};border-radius:var(--r);padding:8px 12px;margin-bottom:10px;cursor:pointer">
+      <span style="font-size:16px">${scaduta?'🚨':'⏰'}</span>
+      <span style="font-size:12px;color:${scaduta?'#991b1b':'#92400e'};line-height:1.4"><strong>${nomeBreve}, sei indietro!</strong>
+      Hai «${t.titolo}» da completare ${scaduta?'(era per il '+dataFmt+')':'entro oggi '+dataFmt}${inRitardo.length>1?` e altre ${inRitardo.length-1} task in ritardo`:''}.</span>
+    </div>`;
+  })() : '';
+
+  cont.innerHTML = bannerRitardo + correnti.map((t,i)=>{
     const checked = !!_dailyTaskChecked[t.id];
     const pri = priConfig[t.priorita]||priConfig.media;
-    return `<div class="dash-task-item ${checked?'completed':''}" style="animation-delay:${i*0.06}s" id="dti-${t.id}">
-      <div class="dash-task-check ${checked?'checked':''}" onclick="toggleDailyTask(${t.id},this)" title="${checked?'Segna come non fatto':'Segna come fatto'}">
+    return `<div class="dash-task-item ${checked?'completed':''}" style="animation-delay:${i*0.06}s;cursor:pointer" id="dti-${t.id}"
+      onclick="apriModalTask(${JSON.stringify(t).replace(/"/g,'&quot;')})" title="Apri il task">
+      <div class="dash-task-check ${checked?'checked':''}" onclick="event.stopPropagation();toggleDailyTask(${t.id},this)" title="${checked?'Segna come non fatto':'Segna come fatto'}">
         ${checked?'<i class="ti ti-check" style="font-size:13px;color:#fff"></i>':''}
       </div>
       <div style="font-size:16px;flex-shrink:0">${pri.icon}</div>
@@ -1376,7 +1401,11 @@ function renderDashTask(){
       <button onclick="event.stopPropagation();rimuoviDalFocus(${t.id})" title="Togli dal focus di oggi (il task resta nella pagina Task)" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--text-3);flex-shrink:0"><i class="ti ti-x" style="font-size:13px"></i></button>
       <button onclick="event.stopPropagation();eliminaTaskDaDash(${t.id})" title="Elimina il task definitivamente" style="background:none;border:none;cursor:pointer;padding:2px 4px;color:var(--red);flex-shrink:0"><i class="ti ti-trash" style="font-size:13px"></i></button>
     </div>`;
-  }).join('') + (pending.filter(t=>!_dailyTaskIds.includes(t.id)).length>0 && _dailyTaskIds.length<3 ? `
+  }).join('') + (inCoda.length>0 ? `
+    <div style="display:flex;align-items:center;gap:7px;padding:7px 12px;margin-top:2px;font-size:11.5px;color:var(--text-3);background:var(--surface-2);border-radius:var(--r)">
+      <i class="ti ti-stack-2" style="font-size:13px"></i>
+      Completa questa e passi alla prossima — in coda: ${inCoda.map(t=>`<strong>${t.titolo}</strong>`).join(', ')}
+    </div>` : '') + (pending.filter(t=>!_dailyTaskIds.includes(t.id)).length>0 && _dailyTaskIds.length<3 ? `
     <div style="margin-top:4px">
       <select onchange="aggiuntaDailyTask(this.value);this.value=''" style="width:100%;font-size:12px;padding:6px 10px;border:1.5px dashed var(--border);border-radius:var(--r);background:#fff;color:var(--text-2);cursor:pointer">
         <option value="">+ Aggiungi un task al focus...</option>
