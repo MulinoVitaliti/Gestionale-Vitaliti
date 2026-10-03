@@ -789,7 +789,13 @@ window.addEventListener('unhandledrejection', function(e) {
         <div class="card" style="margin-bottom:16px">
           <div class="card-header">
             <div class="card-title"><i class="ti ti-calendar-stats" style="color:var(--brand)"></i>Andamento mensile</div>
-            <span style="font-size:12px;color:var(--text-3)">clicca su un mese per il dettaglio per categoria</span>
+            <div style="display:flex;align-items:center;gap:10px">
+              <div class="pills" style="margin:0">
+                <div class="pill active" id="s-vista-competenza" onclick="setStatVista('competenza')" title="Tutto il maturato: anche fatture non ancora incassate/pagate">Competenza</div>
+                <div class="pill" id="s-vista-cassa" onclick="setStatVista('cassa')" title="Solo i movimenti effettivamente incassati/pagati">Cassa</div>
+              </div>
+              <span style="font-size:12px;color:var(--text-3)">clicca su un mese per il dettaglio</span>
+            </div>
           </div>
           <div class="card-body" id="s-mensile"></div>
           <div id="s-mensile-dettaglio" style="display:none;border-top:1px solid var(--border);padding:14px 18px"></div>
