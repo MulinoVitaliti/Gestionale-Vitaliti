@@ -220,6 +220,40 @@ function renderStatistiche(){
   drawCat(eMap,'s-stat-entrate','green');
   drawCat(uMap,'s-stat-uscite','');
 
+  // ── Andamento mensile: entrate e uscite mese per mese, click = dettaglio categorie ──
+  _statMovAnno = movAnno;
+  const perMese = Array.from({length:12}, ()=>({e:0,u:0}));
+  movAnno.forEach(m=>{
+    const mm = new Date(m.data||0).getMonth();
+    const v = parseFloat(m.importo)||0;
+    if(m.tipo==='entrata') perMese[mm].e += v; else if(m.tipo==='uscita') perMese[mm].u += v;
+  });
+  const mensileEl = document.getElementById('s-mensile');
+  if(mensileEl){
+    const maxV = Math.max(1, ...perMese.map(x=>Math.max(x.e,x.u)));
+    const nomi = ['Gen','Feb','Mar','Apr','Mag','Giu','Lug','Ago','Set','Ott','Nov','Dic'];
+    const meseCorrente = new Date().getMonth();
+    mensileEl.innerHTML = perMese.map((v,i)=>{
+      if(i>meseCorrente && !v.e && !v.u) return '';
+      const sel = _statMeseSel===i;
+      return `
+      <div onclick="mostraDettaglioMese(${i})" style="display:flex;align-items:center;gap:10px;padding:7px 10px;border-radius:var(--r);cursor:pointer;${sel?'background:var(--surface-2);outline:1px solid var(--border)':''}" title="Dettaglio per categoria">
+        <span style="width:34px;font-size:12px;font-weight:${i===meseCorrente?'700':'500'};color:${i===meseCorrente?'var(--brand)':'var(--text-2)'}">${nomi[i]}</span>
+        <div style="flex:1;display:grid;gap:3px">
+          <div class="stat-bar" style="height:7px"><div class="stat-bar-fill green" style="width:${Math.round(v.e/maxV*100)}%"></div></div>
+          <div class="stat-bar" style="height:7px"><div class="stat-bar-fill" style="width:${Math.round(v.u/maxV*100)}%"></div></div>
+        </div>
+        <div style="width:170px;text-align:right;font-size:11.5px;display:flex;flex-direction:column;line-height:1.5">
+          <span style="color:var(--green);font-weight:600">+${fmt(v.e)}</span>
+          <span style="color:var(--red);font-weight:600">−${fmt(v.u)}</span>
+        </div>
+        <i class="ti ti-chevron-right" style="color:var(--text-3);font-size:13px"></i>
+      </div>`;
+    }).join('');
+    // se un mese era selezionato, ridisegno il suo dettaglio con i dati freschi
+    if(_statMeseSel!==null) mostraDettaglioMese(_statMeseSel, true);
+  }
+
   // ── GRAFICI CONFEZIONI ────────────────────────────────────────────────
   const CONF_LABELS = {'sacco 5kg':'Sacco 5kg','sacco 10kg':'Sacco 10kg','sacco 30kg':'Sacco 30kg','sfuso':'Sfuso','altro':'Altro'};
   const CONF_COLORS = {'sacco 5kg':'#A8412A','sacco 10kg':'#C9A227','sacco 30kg':'#2D7A4F','sfuso':'#6366f1','altro':'#888'};
@@ -1707,4 +1741,62 @@ async function ripristinaDalCestino(id, btn){
     alert('Ripristino non riuscito: ' + e.message);
     if(btn) btn.disabled = false;
   }
+}
+
+
+// ── Statistiche: dettaglio categorie del mese cliccato ───────────────────
+let _statMovAnno = [];
+let _statMeseSel = null;
+
+function mostraDettaglioMese(mese, soloRefresh){
+  const box = document.getElementById('s-mensile-dettaglio');
+  if(!box) return;
+  if(!soloRefresh && _statMeseSel === mese){
+    // secondo click sullo stesso mese: chiudo
+    _statMeseSel = null;
+    box.style.display = 'none';
+    renderStatistiche();
+    return;
+  }
+  _statMeseSel = mese;
+  const nomi = ['Gennaio','Febbraio','Marzo','Aprile','Maggio','Giugno','Luglio','Agosto','Settembre','Ottobre','Novembre','Dicembre'];
+  const mov = _statMovAnno.filter(m => new Date(m.data||0).getMonth() === mese);
+  const eMap = {}, uMap = {};
+  mov.forEach(m=>{
+    const v = parseFloat(m.importo)||0;
+    const cat = m.cat || 'Senza categoria';
+    if(m.tipo==='entrata') eMap[cat]=(eMap[cat]||0)+v;
+    else if(m.tipo==='uscita') uMap[cat]=(uMap[cat]||0)+v;
+  });
+  const totE = Object.values(eMap).reduce((s,v)=>s+v,0);
+  const totU = Object.values(uMap).reduce((s,v)=>s+v,0);
+
+  function blocco(titolo, map, tot, colore, cls){
+    const righe = Object.entries(map).sort((a,b)=>b[1]-a[1]);
+    if(!righe.length) return `<div><div style="font-size:12px;font-weight:700;color:${colore};margin-bottom:8px">${titolo} — ${fmt(tot)}</div><div style="font-size:12px;color:var(--text-3)">Nessun movimento</div></div>`;
+    return `<div>
+      <div style="font-size:12px;font-weight:700;color:${colore};margin-bottom:8px">${titolo} — ${fmt(tot)}</div>
+      ${righe.map(([cat,val])=>`
+        <div class="stat-bar-wrap">
+          <div class="stat-bar-label">
+            <span style="color:var(--text-2)">${cat}</span>
+            <span style="font-weight:600">${fmt(val)} <span style="color:var(--text-3);font-weight:400">(${Math.round(val/tot*100)}%)</span></span>
+          </div>
+          <div class="stat-bar"><div class="stat-bar-fill ${cls}" style="width:${Math.round(val/tot*100)}%"></div></div>
+        </div>`).join('')}
+    </div>`;
+  }
+
+  box.style.display = 'block';
+  box.innerHTML = `
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px">
+      <div style="font-weight:700">${nomi[mese]} ${new Date().getFullYear()} — dettaglio per categoria</div>
+      <button class="btn btn-sm" onclick="mostraDettaglioMese(${mese})"><i class="ti ti-x"></i>Chiudi</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px">
+      ${blocco('USCITE', uMap, totU, 'var(--red)', '')}
+      ${blocco('ENTRATE', eMap, totE, 'var(--green)', 'green')}
+    </div>
+    ${totU>0 && totE>0 ? `<div style="margin-top:10px;font-size:12px;color:var(--text-3)">Saldo del mese: <strong style="color:${totE-totU>=0?'var(--green)':'var(--red)'}">${fmt(totE-totU)}</strong></div>` : ''}`;
+  if(!soloRefresh) renderStatistiche();
 }
