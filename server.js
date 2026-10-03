@@ -2279,6 +2279,101 @@ app.get('/api/movimenti', async (req, res) => {
   } catch (err) { res.json({ error: err.message }); }
 });
 
+// ── MOVIMENTI RICORRENTI ─────────────────────────────────────────────────
+// Entrate/uscite che si ripetono (rate, utenze, canoni): alla scadenza il
+// sistema registra da solo il movimento in contabilita' e riprogramma la
+// prossima data. Controllo all'avvio e poi ogni 6 ore.
+pool.query(`
+  CREATE TABLE IF NOT EXISTS movimenti_ricorrenti (
+    id SERIAL PRIMARY KEY,
+    tipo TEXT NOT NULL,
+    descrizione TEXT NOT NULL,
+    importo NUMERIC NOT NULL,
+    cat TEXT,
+    metodo_pagamento TEXT,
+    aliquota_iva INTEGER DEFAULT 0,
+    frequenza TEXT NOT NULL DEFAULT 'mensile',
+    prossima_data DATE NOT NULL,
+    fine_data DATE,
+    segna_pagato BOOLEAN DEFAULT TRUE,
+    attivo BOOLEAN DEFAULT TRUE,
+    created_at TIMESTAMP DEFAULT NOW()
+  );
+`).catch(e => console.error('[RICORRENTI] init:', e.message));
+
+function _ricAvanza(data, frequenza) {
+  const d = new Date(data);
+  const mesi = { mensile: 1, bimestrale: 2, trimestrale: 3, semestrale: 6, annuale: 12 };
+  if (frequenza === 'settimanale') d.setDate(d.getDate() + 7);
+  else d.setMonth(d.getMonth() + (mesi[frequenza] || 1));
+  return d.toISOString().slice(0, 10);
+}
+
+async function eseguiRicorrenti() {
+  try {
+    const r = await pool.query(
+      `SELECT * FROM movimenti_ricorrenti WHERE attivo=TRUE AND prossima_data <= CURRENT_DATE`);
+    for (const ric of r.rows) {
+      let prossima = new Date(ric.prossima_data).toISOString().slice(0, 10);
+      let giri = 0;
+      while (prossima <= new Date().toISOString().slice(0, 10) && giri < 24) {
+        if (ric.fine_data && prossima > new Date(ric.fine_data).toISOString().slice(0, 10)) break;
+        await pool.query(
+          `INSERT INTO movimenti (data,tipo,importo,cat,descrizione,fatturazione,pagato,aliquota_iva,metodo_pagamento)
+           VALUES ($1,$2,$3,$4,$5,'non_applicabile',$6,$7,$8)`,
+          [prossima, ric.tipo, ric.importo, ric.cat, ric.descrizione + ' (ricorrente)',
+           ric.segna_pagato, ric.aliquota_iva || 0, ric.metodo_pagamento]);
+        console.log(`[RICORRENTI] registrato: ${ric.descrizione} ${prossima} (${ric.tipo} ${ric.importo})`);
+        prossima = _ricAvanza(prossima, ric.frequenza);
+        giri++;
+      }
+      const chiuso = ric.fine_data && prossima > new Date(ric.fine_data).toISOString().slice(0, 10);
+      await pool.query(`UPDATE movimenti_ricorrenti SET prossima_data=$1, attivo=$2 WHERE id=$3`,
+        [prossima, !chiuso, ric.id]);
+      if (chiuso) console.log(`[RICORRENTI] "${ric.descrizione}" completata: raggiunta la data di fine`);
+    }
+  } catch (e) { console.error('[RICORRENTI] esecuzione:', e.message); }
+}
+setTimeout(eseguiRicorrenti, 20 * 1000);          // all'avvio (dopo le CREATE TABLE)
+setInterval(eseguiRicorrenti, 6 * 60 * 60 * 1000); // e ogni 6 ore
+
+app.get('/api/ricorrenti', async (req, res) => {
+  try {
+    const r = await pool.query(`SELECT * FROM movimenti_ricorrenti ORDER BY attivo DESC, prossima_data ASC`);
+    res.json(r.rows);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.post('/api/ricorrenti', async (req, res) => {
+  const d = req.body || {};
+  try {
+    if (!d.tipo || !d.descrizione || !d.importo || !d.prossima_data)
+      return res.json({ error: 'Servono tipo, descrizione, importo e prima data' });
+    const r = await pool.query(
+      `INSERT INTO movimenti_ricorrenti (tipo,descrizione,importo,cat,metodo_pagamento,aliquota_iva,frequenza,prossima_data,fine_data,segna_pagato)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10) RETURNING *`,
+      [d.tipo, d.descrizione, d.importo, d.cat || null, d.metodo_pagamento || null,
+       d.aliquota_iva || 0, d.frequenza || 'mensile', d.prossima_data, d.fine_data || null,
+       d.segna_pagato !== false]);
+    eseguiRicorrenti().catch(() => {});  // se la prima data e' oggi o passata, registra subito
+    res.json(r.rows[0]);
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.put('/api/ricorrenti/:id/attivo', async (req, res) => {
+  try {
+    const r = await pool.query(`UPDATE movimenti_ricorrenti SET attivo = NOT attivo WHERE id=$1 RETURNING attivo`, [req.params.id]);
+    res.json({ success: true, attivo: r.rows[0]?.attivo });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
+app.delete('/api/ricorrenti/:id', async (req, res) => {
+  try {
+    await pool.query(`DELETE FROM movimenti_ricorrenti WHERE id=$1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (e) { res.json({ error: e.message }); }
+});
+
 app.post('/api/movimenti', async (req, res) => {
   const { data, tipo, importo, cat, descrizione, fatturazione, pagato, aliquota_iva, confezione, qty_kg, prezzo_kg, metodo_pagamento, prodotti, fic_fattura_id , riferimento_doc, materia_prima } = req.body;
   try {
