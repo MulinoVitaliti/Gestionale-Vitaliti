@@ -656,23 +656,23 @@ function sendChat(){
     }).finally(()=>{document.getElementById('send-btn').disabled=false;msgs.scrollTop=msgs.scrollHeight;});
 }
 
-function calcolaImportoMov(){
-  const aliq = (parseInt(document.getElementById('mov-iva').value)||0)/100;
-  // Il totale nasce sempre dalle righe: quantita' per prezzo al kg.
-  // Vale per le entrate e per le uscite allo stesso modo.
-  const netto = sommaProdotti('mov');
+function _calcolaImportoGenerico(prefix){
+  const aliq = (parseInt(document.getElementById(prefix+'-iva').value)||0)/100;
+  // Se ci sono righe prodotto il totale nasce da quelle (quantita' x prezzo al kg).
+  // Se non ce ne sono — tasse, utenze, commissioni, importi fissi — vale
+  // l'imponibile scritto a mano, e il campo manuale viene mostrato.
+  const daRighe = sommaProdotti(prefix);
+  const manualeWrap = document.getElementById(prefix+'-importo-netto-manuale-wrap');
+  const manuale = parseFloat(document.getElementById(prefix+'-importo-netto')?.value)||0;
+  const usaRighe = daRighe > 0;
+  if(manualeWrap) manualeWrap.style.display = usaRighe ? 'none' : 'block';
+  const netto = usaRighe ? daRighe : manuale;
   const ivato = netto * (1 + aliq);
-  document.getElementById('mov-importo').value = ivato.toFixed(2);
-  document.getElementById('mov-importo-preview').textContent = fmt(ivato);
+  document.getElementById(prefix+'-importo').value = ivato.toFixed(2);
+  document.getElementById(prefix+'-importo-preview').textContent = fmt(ivato);
 }
-
-function calcolaImportoEditMov(){
-  const aliq = (parseInt(document.getElementById('edit-mov-iva').value)||0)/100;
-  const netto = sommaProdotti('edit-mov');
-  const ivato = netto * (1 + aliq);
-  document.getElementById('edit-mov-importo').value = ivato.toFixed(2);
-  document.getElementById('edit-mov-importo-preview').textContent = fmt(ivato);
-}
+function calcolaImportoMov(){ _calcolaImportoGenerico('mov'); }
+function calcolaImportoEditMov(){ _calcolaImportoGenerico('edit-mov'); }
 
 function toggleFatturazione(rowId, tipo){
   const row = document.getElementById(rowId);
