@@ -1817,3 +1817,80 @@ function mostraDettaglioMese(mese, soloRefresh){
     ${totU>0 && totE>0 ? `<div style="margin-top:10px;font-size:12px;color:var(--text-3)">Saldo del mese: <strong style="color:${totE-totU>=0?'var(--green)':'var(--red)'}">${fmt(totE-totU)}</strong></div>` : ''}`;
   if(!soloRefresh) renderStatistiche();
 }
+
+// ── MOVIMENTI RICORRENTI ─────────────────────────────────────────────────
+async function apriRicorrenti(){
+  openModal('modal-ricorrenti');
+  // suggerimenti categoria dalle categorie già usate nei movimenti
+  const dl = document.getElementById('ric-cat-suggerimenti');
+  if(dl){
+    const cats = [...new Set((state.movimenti||[]).map(m=>m.cat).filter(Boolean))].sort();
+    dl.innerHTML = cats.map(c=>`<option value="${c}">`).join('');
+  }
+  const prima = document.getElementById('ric-prima');
+  if(prima && !prima.value){
+    const d = new Date(); d.setDate(d.getDate()+1);
+    prima.value = d.toISOString().slice(0,10);
+  }
+  await caricaRicorrenti();
+}
+
+async function caricaRicorrenti(){
+  const box = document.getElementById('ric-lista');
+  if(!box) return;
+  box.innerHTML = 'Caricamento...';
+  try{
+    const r = await api.get('/api/ricorrenti');
+    if(r.error) throw new Error(r.error);
+    if(!r.length){ box.innerHTML = '<div style="font-size:12.5px;color:var(--text-3)">Nessuna ricorrenza impostata.</div>'; return; }
+    const freqLabel = {settimanale:'ogni settimana', mensile:'ogni mese', bimestrale:'ogni 2 mesi', trimestrale:'ogni 3 mesi', semestrale:'ogni 6 mesi', annuale:'ogni anno'};
+    box.innerHTML = r.map(v=>`
+      <div style="display:flex;align-items:center;gap:10px;padding:8px 10px;border:1px solid var(--border);border-radius:var(--r);margin-bottom:6px;${v.attivo?'':'opacity:0.5'}">
+        <span style="font-size:15px">${v.tipo==='entrata'?'🟢':'🔴'}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-weight:600;font-size:13px">${v.descrizione} — ${fmt(v.importo)}</div>
+          <div style="font-size:11.5px;color:var(--text-3)">${freqLabel[v.frequenza]||v.frequenza} · prossima: ${new Date(v.prossima_data).toLocaleDateString('it-IT')}${v.fine_data?' · fine: '+new Date(v.fine_data).toLocaleDateString('it-IT'):''}${v.cat?' · '+v.cat:''}</div>
+        </div>
+        <button class="btn btn-sm" onclick="toggleRicorrente(${v.id})" title="${v.attivo?'Metti in pausa':'Riattiva'}"><i class="ti ti-${v.attivo?'player-pause':'player-play'}"></i></button>
+        <button class="btn btn-sm" onclick="eliminaRicorrente(${v.id})" title="Elimina"><i class="ti ti-trash"></i></button>
+      </div>`).join('');
+  }catch(e){ box.innerHTML = 'Errore: '+e.message; }
+}
+
+async function salvaRicorrente(btn){
+  const d = {
+    tipo: document.getElementById('ric-tipo').value,
+    descrizione: document.getElementById('ric-desc').value.trim(),
+    importo: parseFloat(document.getElementById('ric-importo').value)||0,
+    cat: document.getElementById('ric-cat').value.trim() || null,
+    frequenza: document.getElementById('ric-freq').value,
+    prossima_data: document.getElementById('ric-prima').value,
+    fine_data: document.getElementById('ric-fine').value || null,
+    metodo_pagamento: document.getElementById('ric-metodo').value || null,
+    segna_pagato: document.getElementById('ric-pagato').checked
+  };
+  if(!d.descrizione || !d.importo || !d.prossima_data){ alert('Compila descrizione, importo e prima registrazione.'); return; }
+  if(btn) btn.disabled = true;
+  try{
+    const r = await api.post('/api/ricorrenti', d);
+    if(r.error) throw new Error(r.error);
+    document.getElementById('ric-desc').value='';
+    document.getElementById('ric-importo').value='';
+    document.getElementById('ric-cat').value='';
+    document.getElementById('ric-fine').value='';
+    mostraToast('Ricorrenza creata');
+    await caricaRicorrenti();
+    // se la prima data era oggi/passata il server ha già registrato: aggiorno la contabilità
+    if(typeof loadAllData==='function') try{ await loadAllData(); renderContab&&renderContab(); }catch(_){}
+  }catch(e){ alert('Errore: '+e.message); }
+  finally{ if(btn) btn.disabled=false; }
+}
+
+async function toggleRicorrente(id){
+  try{ await api.put('/api/ricorrenti/'+id+'/attivo', {}); caricaRicorrenti(); }catch(e){ alert(e.message); }
+}
+
+async function eliminaRicorrente(id){
+  if(!confirm('Eliminare questa ricorrenza? I movimenti già registrati restano in contabilità.')) return;
+  try{ await api.del('/api/ricorrenti/'+id); caricaRicorrenti(); }catch(e){ alert(e.message); }
+}
