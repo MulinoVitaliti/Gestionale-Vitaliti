@@ -934,6 +934,7 @@ window.addEventListener('unhandledrejection', function(e) {
         <div style="display:flex;gap:8px">
           <button class="btn" onclick="apriAnalisiMirko()"><i class="ti ti-chart-histogram"></i>Analisi di Mirko</button>
           <button class="btn" id="btn-sync-fatture-ricevute" onclick="sincronizzaFattureRicevute()"><i class="ti ti-cloud-download"></i>Importa spese da FIC</button>
+          <button class="btn" onclick="apriRicorrenti()"><i class="ti ti-repeat"></i>Ricorrenti</button>
           <button class="btn btn-primary" onclick="openModal('modal-movimento')"><i class="ti ti-plus"></i>Aggiungi movimento</button>
         </div>
       </div>
@@ -2857,5 +2858,57 @@ window.addEventListener('unhandledrejection', function(e) {
   #ai-bolla{ bottom:16px; right:16px; width:52px; height:52px }
 }
 </style>
+
+<!-- Modale movimenti ricorrenti -->
+<div class="modal-overlay" id="modal-ricorrenti">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-header">
+      <div class="modal-title"><i class="ti ti-repeat"></i> Entrate e uscite ricorrenti</div>
+      <button class="modal-close" onclick="closeModal('modal-ricorrenti')"><i class="ti ti-x"></i></button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12.5px;color:var(--text-2);margin-bottom:12px">
+        Rate, utenze, canoni: alla data stabilita il movimento si registra da solo in contabilità e si riprogramma per il periodo successivo.
+      </div>
+      <div id="ric-lista" style="margin-bottom:16px"></div>
+      <div style="border-top:1px solid var(--border);padding-top:14px">
+        <div style="font-weight:700;font-size:13px;margin-bottom:10px">Nuova ricorrenza</div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Tipo</label>
+            <select id="ric-tipo"><option value="uscita">Uscita</option><option value="entrata">Entrata</option></select></div>
+          <div class="form-group"><label class="form-label">Descrizione *</label>
+            <input id="ric-desc" placeholder="Es. Rata finanziamento UNI.CO."></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Importo (€) *</label>
+            <input id="ric-importo" type="number" step="0.01" placeholder="0,00"></div>
+          <div class="form-group"><label class="form-label">Categoria</label>
+            <input id="ric-cat" list="ric-cat-suggerimenti" placeholder="Es. Rata finanziamento">
+            <datalist id="ric-cat-suggerimenti"></datalist></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Frequenza</label>
+            <select id="ric-freq">
+              <option value="mensile">Mensile</option><option value="settimanale">Settimanale</option>
+              <option value="bimestrale">Bimestrale</option><option value="trimestrale">Trimestrale</option>
+              <option value="semestrale">Semestrale</option><option value="annuale">Annuale</option>
+            </select></div>
+          <div class="form-group"><label class="form-label">Prima registrazione *</label>
+            <input id="ric-prima" type="date"></div>
+          <div class="form-group"><label class="form-label">Fine (opzionale)</label>
+            <input id="ric-fine" type="date" title="Es. data dell'ultima rata; lascia vuoto se senza scadenza"></div>
+        </div>
+        <div class="form-row">
+          <div class="form-group"><label class="form-label">Metodo di pagamento</label>
+            <select id="ric-metodo"><option value="">—</option><option value="bonifico">Bonifico</option><option value="rid">RID/SDD</option><option value="contanti">Contanti</option><option value="carta">Carta</option><option value="assegno">Assegno</option></select></div>
+          <div class="form-group" style="display:flex;align-items:flex-end;padding-bottom:6px">
+            <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer">
+              <input type="checkbox" id="ric-pagato" checked> Segna come già pagato/incassato</label></div>
+        </div>
+        <button class="btn btn-primary" onclick="salvaRicorrente(this)"><i class="ti ti-check"></i>Crea ricorrenza</button>
+      </div>
+    </div>
+  </div>
+</div>
 </body>
 </html>
