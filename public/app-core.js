@@ -263,6 +263,7 @@ function openModal(id){
     document.getElementById('mov-importo-netto').value='';
     document.getElementById('mov-importo').value='';
     document.getElementById('mov-importo-preview').textContent='€0,00';
+    try{ calcolaImportoMov(); }catch(_){}
     document.getElementById('mov-desc').value='';
     document.getElementById('mov-metodo-pagamento').value='';
     const pagatoSiRadio = document.querySelector('input[name="mov-pagato-radio"][value="si"]');
