@@ -174,9 +174,16 @@ function renderStatistiche(){
     return d.getFullYear() === anno;
   });
 
-  // Totali anno
-  const totE = movAnno.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
-  const totU = movAnno.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  // Le categorie di natura finanziaria (finanziamenti, rate, giroconti) non
+  // sono business: restano fuori da totali, mensile e categorie, e vengono
+  // mostrate a parte nella striscia sotto l'intestazione.
+  const isFin = m => { const c=(m.cat||'').toLowerCase(); return c.includes('finanziament') || c.includes('giroconto'); };
+  const inVista = m => _statVista==='cassa' ? !!m.pagato : true;
+  const movBusiness = movAnno.filter(m => !isFin(m) && inVista(m));
+
+  // Totali anno (gestione business, secondo la vista Competenza/Cassa)
+  const totE = movBusiness.filter(m=>m.tipo==='entrata').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
+  const totU = movBusiness.filter(m=>m.tipo==='uscita').reduce((s,m)=>s+(parseFloat(m.importo)||0),0);
   document.getElementById('s-entrate').textContent = fmt(totE);
   document.getElementById('s-uscite').textContent = fmt(totU);
   const saldo = totE - totU;
@@ -205,8 +212,8 @@ function renderStatistiche(){
 
   // Categorie
   const eMap={}, uMap={};
-  movAnno.filter(m=>m.tipo==='entrata').forEach(m=>{eMap[m.cat]=(eMap[m.cat]||0)+(parseFloat(m.importo)||0);});
-  movAnno.filter(m=>m.tipo==='uscita').forEach(m=>{uMap[m.cat]=(uMap[m.cat]||0)+(parseFloat(m.importo)||0);});
+  movBusiness.filter(m=>m.tipo==='entrata').forEach(m=>{eMap[m.cat]=(eMap[m.cat]||0)+(parseFloat(m.importo)||0);});
+  movBusiness.filter(m=>m.tipo==='uscita').forEach(m=>{uMap[m.cat]=(uMap[m.cat]||0)+(parseFloat(m.importo)||0);});
   function drawCat(data,id,cls){
     const c=document.getElementById(id); if(!c)return;
     const total=Object.values(data).reduce((s,v)=>s+v,0);
@@ -221,9 +228,9 @@ function renderStatistiche(){
   drawCat(uMap,'s-stat-uscite','');
 
   // ── Andamento mensile: entrate e uscite mese per mese, click = dettaglio categorie ──
-  _statMovAnno = movAnno;
+  _statMovAnno = movBusiness;
   const perMese = Array.from({length:12}, ()=>({e:0,u:0}));
-  movAnno.forEach(m=>{
+  movBusiness.forEach(m=>{
     const mm = new Date(m.data||0).getMonth();
     const v = parseFloat(m.importo)||0;
     if(m.tipo==='entrata') perMese[mm].e += v; else if(m.tipo==='uscita') perMese[mm].u += v;
@@ -253,6 +260,8 @@ function renderStatistiche(){
     // se un mese era selezionato, ridisegno il suo dettaglio con i dati freschi
     if(_statMeseSel!==null) mostraDettaglioMese(_statMeseSel, true);
   }
+
+
 
   // ── GRAFICI CONFEZIONI ────────────────────────────────────────────────
   const CONF_LABELS = {'sacco 5kg':'Sacco 5kg','sacco 10kg':'Sacco 10kg','sacco 30kg':'Sacco 30kg','sfuso':'Sfuso','altro':'Altro'};
@@ -1747,6 +1756,14 @@ async function ripristinaDalCestino(id, btn){
 // ── Statistiche: dettaglio categorie del mese cliccato ───────────────────
 let _statMovAnno = [];
 let _statMeseSel = null;
+let _statVista = 'competenza';
+
+function setStatVista(v){
+  _statVista = v;
+  document.getElementById('s-vista-competenza')?.classList.toggle('active', v==='competenza');
+  document.getElementById('s-vista-cassa')?.classList.toggle('active', v==='cassa');
+  renderStatistiche();
+}
 
 function mostraDettaglioMese(mese, soloRefresh){
   const box = document.getElementById('s-mensile-dettaglio');
